@@ -279,6 +279,12 @@ check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*C
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
 check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (high effort) wrote this. [WIP](https://github.com/vikejs/vike/issues/3407#issuecomment-6100167145)*')"
+# ---------- post-lint: a reply doesn't defer a quick win ----------
+qlint() { printf '%s' "$1" > "$T/quick.md"; python3 "$R/bin/post-lint" "$T/quick.md" --kind reply --parent none 2>&1 | grep -c 'defers work'; }
+check "BLOCK: I'll do the fix after it" 1 "$(qlint $'Neither blocks Vike. So I\'ll do the Universal Middleware fix after it.\n')"
+check "BLOCK: I'll send it later" 1 "$(qlint $'I\'ll send the PR later.\n')"
+check "naming what it waits on passes" 0 "$(qlint $'I\'ll switch the adapters once vikejs/vike#3594 is released.\n')"
+
 # ---------- post-lint + gate-pass: a reply shows the mergeworthy commits the repo's maintainers asked to see ----------
 S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$m"; done
 mkdir -p "$HOME/.mergeworthy/harness-shown"; git -C "$S" rev-parse --short=7 HEAD~2 > "$HOME/.mergeworthy/harness-shown/acme"

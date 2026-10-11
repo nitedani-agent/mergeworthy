@@ -196,6 +196,9 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
     findings.append(f"the PR body opens with its status ({_first.strip()[:40]!r}): open with what's broken and what this PR changes, in a user's words; status goes after")
 if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (methodology 1.4 step 4)
     findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): a dump: cut what the reader doesn't need to decide, act or check (writing 1.11)")
+# Parallel, not later (core 1.1.7): work promised for "after it" or "later" is deferred, not waiting on anything named
+if kind in ('reply', 'proposal', 'inline') and (_d := re.search(r"\bI(?:'ll| will)\b[^.\n]*?\b(?:after (?:it|that|this)|later)\b", prose)):
+    findings.append(f"{_d.group(0)!r} defers work: start a quick win now, or name the dependency or decision it waits on (core 1.1.7)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick; cut the rest")

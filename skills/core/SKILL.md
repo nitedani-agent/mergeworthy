@@ -68,6 +68,7 @@ Run every PR through bug verification, code review and a fresh read on the final
 7. **Parallel, not later.** "A separate PR" means started now, alongside.
     - **Exactly one disposition per found defect,** in or out of scope: fixed in this change, a PR opened now (listed on the umbrella if there is one), or an issue. An issue (`open-issue`) only when there's no umbrella and the defect is unrelated. "Mentioned" is never a disposition. Upstream, take the load off the maintainer: find the fix first, decide where it belongs, and open the PR; file an issue only when you can't find a fix, and nudge nobody about one that blocks nothing.
     - **The same defect in a sibling** (another adapter, another call site) is related. Fix it in this change, a public API change included, and the PR states that change.
+    - **A quick win is started the same turn,** even when it blocks nothing and even upstream: small, and no breaking change. A reply that says you'll do it "after it" or "later" defers it; wait only on a dependency or decision you name.
     - **Count lines before deferring anything.** An item under ~20 lines that is neither a user-visible fix nor a defect on `main` goes in this PR; otherwise it gets its own PR, now. "It can be added later" is never a reason.
     - A new dependency never joins an open PR the maintainer hasn't agreed to.
     - Other follow-ups on the same topic go on the open PR. A PR that replaces another closes the old one, with a link, in the same step.
