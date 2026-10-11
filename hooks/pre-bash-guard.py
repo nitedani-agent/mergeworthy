@@ -2,7 +2,9 @@
 """Claude Code PreToolUse hook (matcher: Bash). Exit 2 blocks the command; stderr goes to the agent.
 Checks each simple command separately (split at ; && || | & and newlines, heredoc bodies and quoted text ignored).
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import json, re, sys, os, hashlib, shlex, subprocess
+import json, re, sys, os, hashlib, subprocess
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from shellcmd import segments, prog, opt, api_call
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -38,37 +40,6 @@ cwd = d.get('cwd') or os.getcwd()
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
 
-def segments(cmd):
-    """Token lists of the simple commands in cmd. Heredoc bodies are dropped; quotes are resolved by shlex."""
-    cmd = re.sub(r'\\\n', ' ', cmd)
-    lines, out, term = cmd.split('\n'), [], None
-    for l in lines:
-        if term is not None:
-            if l.strip() == term: term = None
-            continue
-        h = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", l)
-        if h: term = h.group(1)
-        out.append(l)
-    segs = []
-    for l in out:
-        lx = shlex.shlex(l, posix=True, punctuation_chars=';&|<>()')
-        lx.whitespace_split = True
-        cur = []
-        for tok in lx:  # raises ValueError on unbalanced quotes
-            if tok and set(tok) <= set(';&|()'):
-                if cur: segs.append(cur)
-                cur = []
-            else:
-                cur.append(tok)
-        if cur: segs.append(cur)
-    return segs
-
-def prog(t):
-    """Drop env assignments and wrappers; return the command's argv."""
-    while t and (re.match(r'^\w+=', t[0]) or t[0] in ('sudo', 'env', 'command', 'time', 'exec', 'nohup')):
-        t = t[1:]
-    return t
-
 def short_has(t, letter):  # -f, -9f, -fu ...
     return re.match(r'^-[A-Za-z0-9]*' + letter + r'[A-Za-z0-9]*$', t) is not None
 
@@ -101,16 +72,6 @@ def check_commit_identity(overrides, git_dir):
     if name != login:
         block(f"commit author would be {name!r}: commit as the pushing account, `git -c user.name={login} -c user.email={uid}+{login}@users.noreply.github.com commit ...`")
 
-
-def opt(t, names):
-    """Values of options in names, in --x v, --x=v and -Xv forms."""
-    vals = []
-    for i, a in enumerate(t):
-        for n in names:
-            if a == n and i + 1 < len(t): vals.append(t[i + 1])
-            elif n.startswith('--') and a.startswith(n + '='): vals.append(a[len(n) + 1:])
-            elif not n.startswith('--') and a.startswith(n) and len(a) > len(n): vals.append(a[len(n):])
-    return vals
 
 def watch_dirs():
     """Watch dirs (gh-watch-start) whose daemon is alive."""
@@ -332,16 +293,8 @@ def check(t, has_cd):
             for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
-        method = (opt(rest, ['-X', '--method']) or [''])[-1].upper()
-        fields = opt(rest, ['-f', '--raw-field', '-F', '--field'])
-        inputs = opt(rest, ['--input'])
-        if not method: method = 'POST' if fields or inputs else 'GET'
-        pos = [x for i, x in enumerate(rest) if not x.startswith('-') and (i == 0 or rest[i - 1] not in
-               ('-X', '--method', '-f', '--raw-field', '-F', '--field', '--input', '-H', '--header', '-q', '--jq', '-t', '--template', '--hostname', '--cache', '-p', '--preview'))]
-        ep = pos[0] if pos else ''
-        if ep == 'graphql':
-            if not any(re.search(r'\bmutation\b', v) for v in fields): return
-        elif method not in ('POST', 'PATCH', 'PUT') or re.search(r'/(reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(/|$|\?)', ep):
+        method, ep, fields, inputs, posts = api_call(rest)
+        if not posts:
             return
         bodies = [v[len('body=@'):] for v in opt(rest, ['-F', '--field']) if v.startswith('body=@')]
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
