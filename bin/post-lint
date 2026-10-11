@@ -186,7 +186,7 @@ if _pp and os.path.exists(_pp):
     _asked = len(re.findall(r'\?+', _q))
 extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
-    findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply; move the long material into a gist and link it")
+    findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply: cut what the reader doesn't need to decide, act or check")
 pr_budget = 300  # what's broken and what the PR changes need room; tables, code and the collapsed evidence don't count
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need, never what's broken or why")
@@ -195,10 +195,10 @@ _first = next((l for l in prose.split('\n') if l.strip() and not l.lstrip().star
 if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Status|Note)\b', _first, re.I):
     findings.append(f"the PR body opens with its status ({_first.strip()[:40]!r}): open with what's broken and what this PR changes, in a user's words; status goes after")
 if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (methodology 1.4 step 4)
-    findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (writing 1.11)")
+    findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): a dump: cut what the reader doesn't need to decide, act or check (writing 1.11)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
-    findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick, the rest linked")
+    findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick; cut the rest")
 if kind == 'issue' and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)

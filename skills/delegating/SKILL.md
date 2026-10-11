@@ -7,7 +7,7 @@ description: "Writing skills, rules or prompts, and starting, briefing or integr
 
 These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules for user-facing docs are in `docs` (and `core` 1.3, style): open `docs` before writing docs in a repo.
 - **Exactly the requested operation.** Make exactly the requested operation on exactly the named text. Anything extra gets one line in your reply, not an edit. Text the user supplied verbatim stays verbatim.
-- **The minimal delta,** usually one sentence, placed at the step where it bites.
+- **The minimal delta,** placed at the step where it bites.
     - No rationale, no incident stories, nothing a competent model does anyway.
     - Repo facts go only in the project file.
     - Grep first and change the text that already covers it, never add beside it; merge any overlap you find. Keep the word count flat or lower; the repo's word-budget test fails when the skills grow, and raising its budget needs the reason nothing existing could carry the change.

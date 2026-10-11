@@ -9,7 +9,7 @@ True docs can still be wrong for the project: a section that explains every case
 
 ### 1. The voice profile
 
-A project's profile is a `## Docs voice` section of `~/.mergeworthy/projects/<owner>/<repo>.md`, 6 to 12 lines, each a rule with a page path as its example. Read it before drafting and give it to every subagent that writes docs. If it is missing, derive it once, before the first draft:
+A project's profile is a `## Docs voice` section of `~/.mergeworthy/projects/<owner>/<repo>.md`, each line a rule with a page path as its example. Read it before drafting and give it to every subagent that writes docs. If it is missing, derive it once, before the first draft:
 - Read at least 8 sibling pages of the kinds you will write (reference, guide, concept) in full, plus the contributing guide and the docs lint.
 - Read the maintainer's own edits on docs: `git log --author=<maintainer> -p -- docs/ | head -2000`, and above all what they changed on an agent's or a contributor's page. What they cut, shorten or move is the profile.
 - Note: how a page opens, sentence length, what goes in a `>` note and what in a section, the components and link form, code block conventions (file path comment, environment line), heading case, what a reference entry contains, how long the longest section is, how pages end (see also), and what the project's docs never do.

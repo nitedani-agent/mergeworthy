@@ -100,7 +100,7 @@ Open `converge` and run its pipeline on the diff.
 ### 7. The PR
 
 ```markdown
-<Two or three plain sentences: what was wrong, what changed.>
+<What was wrong and what changed, in plain sentences.>
 
 Closes #N
 
