@@ -15,7 +15,7 @@ Every rule about how outward words read is here, and only here: comments, replie
 2. Read it out loud as them. What you wouldn't say to a colleague goes, replaced by what you would say. A newcomer who finds it later must follow it too.
 3. A passage that can't be fixed sentence by sentence is explained aloud to an imagined friend and replaced by what you said. Review findings are fixed the same way: take their substance in your own plain words, never paste a reviewer's wording, never patch clause by clause.
 4. A design reply to a maintainer, or a PR body, gets three drafts that differ in what they lead with; the review picks one against the model replies below and says why.
-5. **Start from the shortest answer:** the verdict, its one reason, the next step, often two sentences. Add a sentence only when the reader needs it to act, decide or check. How it works inside, a justification of the justification, and "which it needs anyway" stay out unless asked.
+5. **Start from the shortest answer:** the verdict, its one reason, the next step. Add a sentence only when the reader needs it to act, decide or check. How it works inside, a justification of the justification, and "which it needs anyway" stay out unless asked.
 
 ## Voice
 
@@ -114,5 +114,5 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 
 - **An inbox, not a log.** First the answers to their questions; then what needs them, each decision with your pick and quick options; then what moved. Rounds, reviewers, agents, hooks and models stay out unless they change what the user should do.
 - **Every reply carries thought.** When something went wrong: why, your judgment, and what changes. Restating their instruction and your next command is not a reply.
-- **About 12 lines** unless asked for more. Local files as absolute paths; every PR or issue with its title and link. No narration step by step.
+- **Only what they need** to answer, decide or act; more when they ask. Local files as absolute paths; every PR or issue with its title and link. No narration step by step.
 - **Then the state,** checked first: each PR's state and what changed since the last report, what's running, what waits on whom, the critical path with an ETA. State unfavorable facts, mistakes and skipped steps plainly.
