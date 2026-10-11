@@ -170,7 +170,7 @@ if kind != 'pr':
         if n > 40:
             findings.append(f"a {n}-word sentence: split it where a new point starts, keeping a cause and its effect together ({x.strip()[:60]!r}…)")
     if lens and sum(lens) / len(lens) > 25:
-        findings.append(f"sentences average {sum(lens) / len(lens):.0f} words: vary them around 20")
+        findings.append(f"sentences average {sum(lens) / len(lens):.0f} words: split the long ones where a new point starts")
     bold = sum(len(re.findall(r"[A-Za-z0-9][\w'’-]*", b)) for b in re.findall(r'\*\*(.+?)\*\*', prose))
     if words_all := len(re.findall(r"[A-Za-z0-9][\w'’-]*", prose)):
         if bold / words_all > 0.3:
