@@ -1,9 +1,9 @@
 """Tests of the watcher's share of GitHub's API budget (watcher/gh-watch.py), offline: a stand-in GitHub (watch_sim.py) with
-ETags and rate-limit headers, a simulated clock, and the real watcher code. Usage: tests/watch-budget.py <repo root>
+ETags and rate-limit headers, a simulated clock, and the real watcher code. Usage: tests/watch-budget.py [repo root]
 Prints "case: <got> (want <want>)"; exits 0 only when every case matches."""
 import collections, contextlib, importlib.util, itertools, json, os, re, shutil, sys, tempfile, threading
 
-R = os.path.realpath(sys.argv[1])
+R = os.path.realpath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import watch_sim as ws
 

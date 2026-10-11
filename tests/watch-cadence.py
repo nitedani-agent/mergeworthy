@@ -1,10 +1,10 @@
 """Tests of how often the watcher calls GitHub (watcher/gh-watch.py), offline: the stand-in GitHub of watch_sim.py, a simulated clock,
 and the real watcher code, on a machine like the user's: seven watch dirs, ~200 threads (70 in one dir, most of them merged), 11 repos.
-Every request counts, answers of 304 included. Usage: tests/watch-cadence.py <repo root>
+Every request counts, answers of 304 included. Usage: tests/watch-cadence.py [repo root]
 Prints "case: <got> (want <want>)"; exits 0 only when every case matches."""
 import collections, contextlib, importlib.util, itertools, json, os, re, shutil, sys, tempfile
 
-R = os.path.realpath(sys.argv[1])
+R = os.path.realpath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import watch_sim as ws
 

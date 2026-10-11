@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for bin/review-context. Usage: tests/review-context.sh <repo root>
+# Tests for bin/review-context. Usage: tests/review-context.sh [repo root]
 # Builds a temp git repo with a tiny TS project, changes f and removes g, and checks what review-context prints.
 # Prints "case: <got> (want <want>)"; exits 0 only when every case gives what it wants.
 set -u
-R=$(readlink -f "$1")
+R=$(readlink -f "${1:-$(dirname "$0")/..}")
 TSDIR=/home/nitedani/projects/vike/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME"
 fails=0

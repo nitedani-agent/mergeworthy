@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for the hooks: stop-lint, pre-bash-guard's check_turn, post-bash-register. Usage: tests/hooks.sh <repo root>
+# Tests for the hooks: stop-lint, pre-bash-guard's check_turn, post-bash-register. Usage: tests/hooks.sh [repo root]
 # Runs every case under a temp HOME with a stub `gh` first on PATH; prints "case: <got> (want <want>)".
 # Exits 0 only when every case gives what it wants. Stub URLs are example.invalid on purpose, except where
 # post-bash-register must see github.com URLs (those go only into the hook's stdin, never to this script's output).
 set -u
-R=$(readlink -f "$1")
+R=$(readlink -f "${1:-$(dirname "$0")/..}")
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash

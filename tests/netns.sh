@@ -1,6 +1,6 @@
 #!/bin/bash
 # netns-run: a server on a port inside doesn't hold that port on the host, and the command's status comes back.
-R=$(readlink -f "$1"); fails=0
+R=$(readlink -f "${1:-$(dirname "$0")/..}"); fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 if ! command -v slirp4netns >/dev/null; then echo "netns-run: slirp4netns missing, skipped"; exit 0; fi
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for the CLI's Codex install and the watcher. Usage: tests/watcher.sh <repo root>
+# Tests for the CLI's Codex install and the watcher. Usage: tests/watcher.sh [repo root]
 # Temp HOME, stub gh/codex first on PATH. Prints "case: <got> (want <want>)"; exits 0 only when every case matches.
 # The CLI runs from a temp copy of cli/ whose node_modules links to the repo's (read only); without them
 # (no `npm ci` yet) the CLI cases are skipped.
 set -u
-R=$(readlink -f "$1")
+R=$(readlink -f "${1:-$(dirname "$0")/..}")
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
 printf '#!/bin/sh\necho "gh stub: $*" >&2; exit 1\n' > "$T/bin/gh"
 cat > "$T/bin/codex" <<EOF

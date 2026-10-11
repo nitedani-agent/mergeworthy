@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for bin/loc-breakdown. Usage: tests/loc-breakdown.sh <repo root>
+# Tests for bin/loc-breakdown. Usage: tests/loc-breakdown.sh [repo root]
 # Builds a temp git repo whose diff spans two features in one file, a doc, a test and a lockfile, and checks the table, a gap and an overlap.
 # Prints "case: <got> (want <want>)"; exits 0 only when every case gives what it wants.
 set -u
-R=$(readlink -f "$1")
+R=$(readlink -f "${1:-$(dirname "$0")/..}")
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME"
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
