@@ -312,6 +312,15 @@ def check(t, has_cd):
                 block(NEED_DRAFT)
             if sub == 'create':
                 need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
+            if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (writing 1.11)
+                draft = '--draft' in rest or '-d' in rest
+                for f in files:
+                    f = os.path.join(cwd, os.path.expandvars(os.path.expanduser(f)))
+                    lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
+                    lead = lines[1:2] if lines[:1] and lines[0].startswith('<img') else lines[:1]  # under the badge
+                    if lines and draft != bool(re.match(r'\*\*State: draft\*\* \(.*\S.*\)$', (lead or [''])[0])):
+                        block(f"{f}: a draft PR's body starts, right under the badge, with '**State: draft** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
+                              f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
             if sub == 'comment' and '--edit-last' not in rest:
                 num = next((x for x in rest if x.isdigit()), None)
                 check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)

@@ -5,7 +5,7 @@ description: "Any change you'll open a PR for, from an issue or not: already fix
 
 # Implementing a change
 
-From an issue or a problem to one merge-ready PR. Open PRs within the task’s publishing authority and give every found defect a disposition (`core` 1.1.7); start the body with the user’s problem (`writing`). Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
+From an issue or a problem to one merge-ready PR. Open PRs within the task’s publishing authority and give every found defect a disposition (`core` 1.1.7); start the body with the user’s problem (`writing`). Steps 1 to 5 build the change, step 6 converges it with `converge`'s pipeline, and step 7 is the PR. Open it as a draft (`gh pr create --draft`) with the branch's first push after step 3 passes, its body the problem on `main` under the State line that says why it's a draft (`writing`; `post-lint --kind pr --draft`) through the fast gate, so CI runs while it converges; the fresh reader's `CLEAN` gates step 7's final body. A Tier ≥ M change (`core` 1.0) runs this once per PR.
 
 **The repo's `AGENTS.md` / `CLAUDE.md` governs how the code is written;** everything else particular to the repo is in its project file (`core` 1.3).
 
@@ -125,7 +125,7 @@ The images are the review, a sequence per `evidence`: open on the defect, close 
 
 ```bash
 gh pr create --draft --base <base> ...   # + labels per the project file, where you can label
-gh pr ready <N>                         # once `merging`'s Ready list holds on the final head
+gh pr ready <N>                         # once `merging`'s Ready list holds on the final head, its body edited first without the State line
 gh pr edit <N> --body-file body.md --attach '/abs/path/01-name.png#alt text'
 ```
 

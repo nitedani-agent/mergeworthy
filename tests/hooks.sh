@@ -347,6 +347,29 @@ printf '%s Draft until the release ships.\n\nThe fix.\n' "$B" > "$T/st.md"
 check "a PR body that opens with its status is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/st.md" --kind pr --parent none 2>&1 | grep -c 'opens with its status')"
 printf '%s Routes after vike(app) skip the auth +middleware. This PR runs it first.\n\nDraft until the release ships.\n' "$B" > "$T/st2.md"
 check "status after the opening is fine" 0 "$(python3 "$R/bin/post-lint" "$T/st2.md" --kind pr --parent none 2>&1 | grep -c 'opens with its status')"
+# ---------- post-lint + pre-bash-guard: a draft PR's body says why it's a draft, on a bold State line under the badge ----------
+dlint() { python3 "$R/bin/post-lint" "$T/ds.md" --kind pr --parent none "$@" 2>&1 | grep -c "State line\|State: draft\|opens with its status"; }
+printf '%s\n**State: draft** (waits on the Vike release with vikejs/vike#3594)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/ds.md"
+check "a draft's body with its State line passes" 0 "$(dlint --draft)"
+check "the same line in a body that isn't a draft is flagged" 1 "$(dlint)"
+sed -i 's/^\*\*State: draft\*\* (.*)$/**State: draft** ( )/' "$T/ds.md"
+check "a State line with no reason is flagged" 1 "$(dlint --draft)"
+sed -i '/^\*\*State:/d' "$T/ds.md"
+check "a draft's body without its State line is flagged" 1 "$(dlint --draft)"
+check "a body that isn't a draft needs no State line" 0 "$(dlint)"
+printf '%s\n**State: draft** (my bug check is still running)\n\nDraft: waits on the release.\n\nThe fix.\n' "$B" > "$T/ds.md"
+check "under the State line, a status opener is still flagged" 1 "$(dlint --draft)"
+mkdir -p "$T/dsd"; printf '%s *Opus 5.5 (high effort) wrote this.*\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/dsd/pr.md"
+echo CLEAN > "$T/dsd/review.out"; python3 "$R/bin/post-lint" "$T/dsd/pr.md" --kind pr --parent none --draft >/dev/null 2>&1
+check "gate-pass replays --draft from the .lint record (without it the State line fails)" 0 "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/review.out" >/dev/null 2>&1; echo $?)"
+dguard() { # body file -> exit code of the guard on `gh pr create --draft`
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo o/r --title t --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" \
+    | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?
+}
+printf '%s\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/dg.md"; sha256sum "$T/dg.md" | cut -d' ' -f1 > "$T/dg.md.gate"
+check "BLOCK: gh pr create --draft with a body that doesn't say why it's a draft" "2 1" "$(dguard "$T/dg.md") $(grep -c 'State: draft' "$T/err")"
+printf '%s\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/dg.md"; sha256sum "$T/dg.md" | cut -d' ' -f1 > "$T/dg.md.gate"
+check "gh pr create --draft with the State line, gated, passes" 0 "$(dguard "$T/dg.md")"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
 # the budget grows with the questions in the comment answered
