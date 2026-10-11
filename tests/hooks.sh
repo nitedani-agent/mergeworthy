@@ -543,6 +543,102 @@ check "a research agent passes" 0 "$(gate mcp__t3-code__delegate_task '{"role":"
 check "an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$D-work/prior-art.md\"}")"
 touch "$D-work/prior-art.md"; mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
 check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+# ---------- pre-skill-gate: an action waits for the skills its always-on row names, opened since the last compaction ----------
+sg_tr() { # <transcript> <event>...: skill:<input.skill> | typed:<name> | compact | text
+  python3 - "$@" <<'EOF'
+import json, sys
+out = open(sys.argv[1], 'w')
+w = lambda e: out.write(json.dumps(e) + '\n')
+w({"type": "user", "message": {"role": "user", "content": "open a PR for the fix"}})
+for ev in sys.argv[2:]:
+    kind, _, v = ev.partition(':')
+    if kind == 'skill':
+        w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": "Skill", "input": {"skill": v}}]}})
+        w({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": f"Launching skill: {v}"}]}})
+    elif kind == 'typed':
+        w({"type": "user", "message": {"role": "user", "content": f"<command-message>{v}</command-message>\n<command-name>/{v}</command-name>\n<command-args></command-args>"}})
+    elif kind == 'compact':  # the shapes Claude Code writes: the boundary, then the summary (whose text must not count)
+        w({"parentUuid": None, "type": "system", "subtype": "compact_boundary", "content": "Conversation compacted", "level": "info", "compactMetadata": {"trigger": "auto"}})
+        w({"type": "user", "isCompactSummary": True, "isVisibleInTranscriptOnly": True, "message": {"role": "user", "content": "This session is being continued from a previous conversation. Summary: opened <command-name>/mergeworthy:merging</command-name> and the Skill tool"}})
+    else:
+        w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Working on it."}]}})
+EOF
+}
+sg_in() { # <tool> <tool_input json> [transcript] [agent_id]
+  python3 -c 'import json,sys; d={"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3],"session_id":"s1","transcript_path":sys.argv[4]}
+if sys.argv[5]: d["agent_id"]=sys.argv[5]
+print(json.dumps(d))' "$1" "$2" "$T" "${3:-$T/sg.jsonl}" "${4:-}"
+}
+sg() { sg_in "$@" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?; }
+sgb() { sg Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$1")"; }
+sg_tr "$T/sg.jsonl" text
+check "BLOCK: gh pr create without its skills opened" 2 "$(sgb "gh pr create --draft --body-file $T/b.md")"
+check "the block names exactly pull-request and writing" "mergeworthy:pull-request mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the block gives the reason from the always-on row" 1 "$(grep -c '^- mergeworthy:writing, for gh pr create: Writing anything a person reads' "$T/sg.err")"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request text skill:writing
+check "gh pr create passes once both were opened (plugin-qualified or bare)" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request skill:mergeworthy:writing compact text
+check "BLOCK: skills opened before the last compaction don't count" 2 "$(sgb "gh pr create --draft --body-file $T/b.md")"
+check "the compact summary's text doesn't open merging either" 2 "$(sgb 'git push')"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:writing compact skill:mergeworthy:pull-request skill:mergeworthy:writing
+check "opened again after the compaction: passes" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
+check "BLOCK: gh pr ready also needs merging" 2 "$(sgb 'gh pr ready 5')"
+check "the ready block names only merging" "mergeworthy:merging" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
+check "gh pr ready --undo, back to draft, never waits" 0 "$(sgb 'gh pr ready 5 --undo')"
+check "BLOCK: git push without merging" 2 "$(sgb 'cd /x && git -C /x push origin HEAD')"
+check "BLOCK: gh pr merge without merging" 2 "$(sgb 'gh pr merge 5 --squash')"
+sg_tr "$T/sg.jsonl" typed:mergeworthy:merging
+check "a skill the user typed as /mergeworthy:merging counts" 0 "$(sgb 'git push')"
+sg_tr "$T/sg.jsonl" skill:other:merging
+check "BLOCK: another plugin's skill of the same name doesn't count" 2 "$(sgb 'git push')"
+for c in 'git status' 'git push --dry-run' 'gh pr view 5 --comments' 'gh pr list' 'gh issue view 3' 'gh api repos/o/r/pulls/5' \
+         'gh api repos/o/r/issues/comments/9/reactions -f content=eyes' 'gh pr create --help' 'ls skills/writing' 'gh pr ready 5 --undo'; do
+  check "read-only passes: $c" 0 "$(sgb "$c")"
+done
+sg_tr "$T/sg.jsonl" text
+check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
+check "the post block names github-threads and writing" "mergeworthy:github-threads mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "BLOCK: a review comment edit (PATCH)" 2 "$(sgb "gh api -X PATCH repos/o/r/pulls/comments/9 -F body=@$T/d.md")"
+check "BLOCK: gh pr review" 2 "$(sgb "gh pr review 5 --comment --body-file $T/d.md")"
+check "BLOCK: gh issue edit of the body" 2 "$(sgb "gh issue edit 5 --body-file $T/d.md")"
+check "a label-only issue edit posts nothing" 0 "$(sgb 'gh issue edit 5 --add-label bug')"
+check "BLOCK: gh issue create" 2 "$(sgb "gh issue create --title x --body-file $T/d.md")"
+check "the issue block names open-issue and writing" "mergeworthy:open-issue mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "BLOCK: post-lint without writing" 2 "$(sgb "post-lint $T/d.md --kind reply")"
+check "BLOCK: gate-pass by its path" 2 "$(sgb "python3 ~/.mergeworthy/current/bin/gate-pass $T/d.md $T/r.out")"
+check "BLOCK: pr-steps loopb" 2 "$(sgb "pr-steps loopb $T/o.md")"
+check "the loopb block names converge, guardian and review" "mergeworthy:converge mergeworthy:guardian mergeworthy:review" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "BLOCK: codex exec starts an agent" 2 "$(sgb 'codex exec "review the diff"')"
+check "BLOCK: the Agent tool without delegating" 2 "$(sg Agent '{"prompt":"x"}')"
+check "BLOCK: delegate_task without delegating" 2 "$(sg mcp__t3-code__delegate_task '{"task":"x"}')"
+check "BLOCK: editing a skill" 2 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
+check "BLOCK: writing a brief" 2 "$(sg Write '{"file_path":"/w/drafts/impl-brief.md"}')"
+check "BLOCK: editing AGENTS.md" 2 "$(sg Edit '{"file_path":"/r/AGENTS.md"}')"
+check "an ordinary edit passes" 0 "$(sg Edit '{"file_path":"/r/src/debrief.ts"}')"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:delegating
+check "the Agent tool passes once delegating was opened" 0 "$(sg Agent '{"prompt":"x"}')"
+check "editing a skill passes once delegating was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
+mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging
+check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
+sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
+check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
+check "no transcript to read: nothing to check" 0 "$(sg Bash '{"command":"git push"}' "$T/none.jsonl")"
+check "the gate's table and always-on.md's rows agree" ok "$(python3 - "$R" <<'EOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('sg', sys.argv[1] + '/hooks/pre-skill-gate.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+gated = {s for v in m.ACTIONS.values() for s in v}
+rows = set(m.rows())
+print('ok' if rows and gated | m.UNGATED == rows and not gated & m.UNGATED else f'gated-only {gated - rows}, ungated-only {m.UNGATED - rows}, rows with no decision {rows - gated - m.UNGATED}, both {gated & m.UNGATED}')
+EOF
+)"
+check "hooks.json runs the gate on Bash, the agent launchers and the editors" ok "$(python3 - "$R" <<'EOF'
+import json, re, sys
+pre = json.load(open(sys.argv[1] + '/hooks/hooks.json'))['hooks']['PreToolUse']
+m = [e['matcher'] for e in pre if any('pre-skill-gate.py' in h['command'] for h in e['hooks'])]
+tools = ['Bash', 'Agent', 'Task', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'mcp__t3-code__delegate_task', 'mcp__t3-code__t3_thread_launch']
+print('ok' if len(m) == 1 and all(re.search(m[0], t) for t in tools) and not re.search(m[0], 'Read') else m)
+EOF
+)"
 # ---------- pre-bash-guard: never kill a running agent ----------
 printf '#!/bin/sh\nsleep 600\n' > "$T/claude"; chmod +x "$T/claude"
 "$T/claude" --output-format stream-json >/dev/null 2>&1 & APID=$!

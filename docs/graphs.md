@@ -553,8 +553,11 @@ flowchart TB
   subgraph g14["session-start"]
     s14["session-start"]
   end
-  subgraph g15["netns-run"]
-    s15["netns-run"]
+  subgraph g15["pre-skill-gate.py"]
+    s15["pre-skill-gate.py"]
+  end
+  subgraph g16["netns-run"]
+    s16["netns-run"]
   end
   start --> g0
   g0 ~~~ g1
@@ -572,4 +575,5 @@ flowchart TB
   g12 ~~~ g13
   g13 ~~~ g14
   g14 ~~~ g15
+  g15 ~~~ g16
 ```

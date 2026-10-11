@@ -12,6 +12,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "^(Bash|Agent|Task|Write|Edit|MultiEdit|NotebookEdit|mcp__.*(delegate_task|t3_thread_launch|create_threads))$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-skill-gate.py"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

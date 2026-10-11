@@ -141,6 +141,17 @@ It skips its watcher checks while the user's last message says "pause". Each tur
 
 It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
+### `pre-skill-gate.py` (enforces always-on rule 1)
+
+It blocks an action until every skill its always-on row names was opened with the Skill tool, or typed as `/mergeworthy:<name>`, since the session's last compaction; a subagent counts only its own. The block names each skill and its row.
+- `gh pr create` and `gh pr edit`: `pull-request`, `writing`; `gh pr ready` adds `merging`.
+- `gh pr merge` and `git push`: `merging`.
+- A comment, reply, review or body edit (`gh api` writes included, reactions not): `github-threads`, `writing`. `gh issue create`: `open-issue`, `writing`.
+- `post-lint` and `gate-pass`: `writing`. `pr-steps <step>`: `converge` and the step's own skill (`approach`: `pull-request`).
+- Starting an agent (`Agent`, `delegate_task`, `codex exec`, `claude -p`), or editing a skill, a prompt, a brief or a rules file: `delegating`.
+
+Read-only commands pass. A row added to `always-on.md` fails `tests/hooks.sh` until the hook's table gates it or lists it as ungated.
+
 **`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. Read a terminal task’s result, then release it with `agent-job done <ticket>` (`delegating` 1.10).
 
 ### `netns-run`
