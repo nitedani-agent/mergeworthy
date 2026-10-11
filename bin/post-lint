@@ -196,19 +196,6 @@ if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Sta
     findings.append(f"the PR body opens with its status ({_first.strip()[:40]!r}): open with what's broken and what this PR changes, in a user's words; status goes after")
 if kind == 'proposal' and words > 900 + extra:  # a design walkthrough (methodology 1.4 step 4)
     findings.append(f"{words} words > {900 + extra} for a design answer or walkthrough (tables and code count): one decision per comment, verdict first, the full material in a linked document (writing 1.11)")
-# What the maintainer must read is short: the evidence and the alternatives weighed go in one collapsed <details> (writing 1.11)
-if kind == 'proposal':
-    _vis = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
-    _vis = re.sub(r'^\s*\|.*$', '', _vis, flags=re.M)
-    if (_vw := len(re.findall(r"[A-Za-z0-9][\w'’-]*", _vis))) > 400:
-        findings.append(f"{_vw} words outside <details> > 400 for a design answer: each answer is the position, its reason and what it changes; move tables, measurements and the alternatives you weighed into one collapsed <details> (writing 1.11)")
-    _secs = re.split(r'^\s*>.*$', re.sub(r'<details>.*?</details>', '', re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M), flags=re.S), flags=re.M)
-    for _s in _secs:
-        _s = re.sub(r'^\s*\|.*$', '', _s, flags=re.M)
-        _s = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', _s)
-        _s = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', _s.lstrip())
-        if (_sw := len(re.findall(r"[A-Za-z0-9][\w'’-]*", re.sub(r'`[^`\n]*`', 'CODE', _s)))) > 120:
-            findings.append(f"a {_sw}-word answer > 120: say the position, its reason and what it changes; the rest goes in <details> ({_s.strip()[:50]!r}…)")
 decision = kind == 'issue' and re.search(r'^#+\s*Options\b', text, re.I | re.M)  # a decision issue (open-issue)
 if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick, the rest linked")

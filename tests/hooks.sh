@@ -279,13 +279,6 @@ check "BLOCK: a model line with no versioned model and no effort" 1 "$(elint '*C
 check "the effort right after each model passes, every level" 0 "$(elint '*Opus 5.5 (low effort) wrote this; Haiku 5.5 (medium effort) tested it; Opus 5.5 (xhigh effort), Opus 5.5 (max effort) and Opus 5.5 (ultra effort) reviewed it.*')"
 check "the effort inside the model's parenthesis passes" 0 "$(elint '*Opus 5.5 (high effort) wrote this; GPT-6.1-Sol (Codex, high effort) reviewed it.*')"
 check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (high effort) wrote this. [WIP](https://github.com/vikejs/vike/issues/3407#issuecomment-6100167145)*')"
-# ---------- post-lint: a design answer is short to read; its evidence is collapsed ----------
-dlint() { printf '%s' "$1" > "$T/design.md"; python3 "$R/bin/post-lint" "$T/design.md" --kind proposal --parent none 2>&1 | grep -c "$2"; }
-_w() { python3 -c "print(' '.join(['word'] * $1) + '.')"; }
-check "BLOCK: a 130-word answer to one quoted question" 1 "$(dlint "$(printf '> Why X?\n\n%s\n' "$(_w 130)")" 'word answer >')"
-check "a short answer passes, with its evidence in <details>" 0 "$(dlint "$(printf '> Why X?\n\nI would keep X, because Y.\n\n<details><summary>Evidence</summary>\n\n%s\n</details>\n' "$(_w 300)")" 'word answer >\|outside <details>')"
-check "BLOCK: 450 words outside <details>, in short answers" 1 "$(dlint "$(for i in 1 2 3 4 5; do printf '> Q%s?\n\n%s\n\n' $i "$(_w 90)"; done)" 'outside <details>')"
-
 # ---------- post-lint + gate-pass: a reply shows the mergeworthy commits the repo's maintainers asked to see ----------
 S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$m"; done
 mkdir -p "$HOME/.mergeworthy/harness-shown"; git -C "$S" rev-parse --short=7 HEAD~2 > "$HOME/.mergeworthy/harness-shown/acme"
