@@ -32,7 +32,7 @@ These scripts enforce the rules that failed as text alone.
 - **The checks**, each where it applies to the kind:
   - **Writing:** banned phrases; sentences over 40 words or averaging over 25, and more than 30% bold (not for `pr`); internal labels like W2; a bold label followed by a fragment; em dashes.
   - **References:** "stacked on"; bare `#N`.
-  - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table.
+  - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table; a ready PR body without `pull-request` step 7's `### What you should see`, its numbered items showing the evidence outside `<details>`.
   - **Safety and form:** secrets; a missing badge, unless the `badge` option says otherwise (not for `tracker`).
   - **Methodology changes asked for** (`reply`, `proposal`): when `~/.mergeworthy/harness-shown/<owner>` exists, every mergeworthy commit since the one it names must appear in the draft. `gate-pass` then records the installed commit there.
 

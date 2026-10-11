@@ -348,6 +348,18 @@ check "a PR body that opens with its status is flagged" 1 "$(python3 "$R/bin/pos
 printf '%s Routes after vike(app) skip the auth +middleware. This PR runs it first.\n\nDraft until the release ships.\n' "$B" > "$T/st2.md"
 check "status after the opening is fine" 0 "$(python3 "$R/bin/post-lint" "$T/st2.md" --kind pr --parent none 2>&1 | grep -c 'opens with its status')"
 # ---------- post-lint + pre-bash-guard: a draft PR's body says why it's a draft, on a bold State line under the badge ----------
+# ---------- post-lint: a ready PR body follows pull-request step 7's template ----------
+printf 'Compression stopped after sirv() answered; this PR runs it.\n\nA wall of prose about it.\n' > "$T/s7a.md"
+printf 'Compression stopped after sirv() answered; this PR runs it.\n\n### What you should see\n\n**1.** main, then this PR:\n\n```\ncurl -sI /a.js | grep content-encoding\n```\n' > "$T/s7b.md"
+check "a ready PR body without What you should see is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7a.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+check "one with numbered evidence passes" 0 "$(python3 "$R/bin/post-lint" "$T/s7b.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+printf 'Compression stopped after sirv() answered; this PR runs it.\n\n### What you should see\n\n**1.** the asset arrives compressed:\n\n<img width="600" alt="gzip" src="https://example.invalid/a.png" />\n' > "$T/s7c.md"
+check "an uploaded image counts as the evidence" 0 "$(python3 "$R/bin/post-lint" "$T/s7c.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+printf 'Compression stopped after sirv() answered; this PR runs it.\n\n<details><summary>Evidence</summary>\n\n### What you should see\n\n**1.** main, then this PR:\n\n```\ncurl -sI /a.js\n```\n</details>\n' > "$T/s7d.md"
+check "evidence only inside <details> is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7d.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+printf 'Compression stopped after sirv() answered; this PR runs it.\n\n### What you should see\n\nThe asset arrives compressed now, as the curl output shows when you run it.\n' > "$T/s7e.md"
+check "a section without numbered evidence is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7e.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+check "a draft's body needn't have it yet" 0 "$(printf '**State: draft** (waits on the release)\n\nCompression stopped after sirv() answered.\n' > "$T/s7f.md"; python3 "$R/bin/post-lint" "$T/s7f.md" --kind pr --draft --parent none 2>&1 | grep -c 'step 7')"
 dlint() { python3 "$R/bin/post-lint" "$T/ds.md" --kind pr --parent none "$@" 2>&1 | grep -c "State line\|State: draft\|opens with its status"; }
 printf '%s\n**State: draft** (waits on the Vike release with vikejs/vike#3594)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/ds.md"
 check "a draft's body with its State line passes" 0 "$(dlint --draft)"
