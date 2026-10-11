@@ -304,6 +304,16 @@ check "a badge followed on its line by an italic model line passes, model names 
 llint() { printf '| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| %s | limitation | no | nothing |\n' "$1" > "$T/lim.md"; python3 "$R/bin/post-lint" "$T/lim.md" --kind pr --parent none 2>&1 | grep -c 'names nothing that imposes it'; }
 check "a limitation our own design could create is flagged" 1 "$(llint 'Joins past 100 at once fail with a contention error')"
 check "a limitation imposed by an outside system passes" 0 "$(llint 'Receipts omit receivers, imposed by Redis Cluster: PUBLISH counts one node')"
+# ---------- post-lint: a decision is a block with code and lettered options, never a table row (writing) ----------
+dtlint() { printf '| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| Bump srvx minor or patch | %s | no | nothing |\n' "$2" > "$T/dt.md"; python3 "$R/bin/post-lint" "$T/dt.md" --kind "$1" --parent none 2>&1 | grep -c 'decision as a table row'; }
+for k in pr proposal reply; do check "a decision-needed row in a $k is flagged" 1 "$(dtlint $k 'decision needed')"; done
+check "a not-a-regression row passes" 0 "$(dtlint pr 'not a regression')"
+dblint() { printf '%s' "$1" > "$T/db.md"; python3 "$R/bin/post-lint" "$T/db.md" --kind pr --parent none 2>&1 | grep -c 'decision block'; }
+check "a decision block in words only is flagged" 1 "$(dblint $'### Decision: who runs after a 401\n\nEither every middleware runs, or only post-handler ones. I picked the second because six servers do it.\n')"
+check "a decision block with code but no lettered options is flagged" 1 "$(dblint $'### Decision: who runs after a 401\n\n```js\napply(app, [auth, log])\n```\n\nI picked skipping log because six servers do it.\n')"
+check "options before the code are flagged" 1 "$(dblint $'### Decision: who runs after a 401\n\n(a) log runs\n(b) log is skipped\n\n```js\napply(app, [auth, log])\n```\n\nI picked (b) because six servers do it.\n')"
+check "a decision block without a pick is flagged" 1 "$(dblint $'### Decision: who runs after a 401\n\n```js\napply(app, [auth, log])\n```\n\n(a) `log` runs\n(b) `log` is skipped\n')"
+check "code, then (a) (b), then a pick passes" 0 "$(dblint $'### Decision: who runs after a 401\n\n```sh\n# auth answers 401\ncurl localhost:3000/\n```\n\n```js\napply(app, [auth, log])\n```\n\n- (a) `log` runs: `logRequest ran`\n- (b) `log` is skipped: nothing logged\n\nI picked (b) because six of the eight servers already skip it.\n\n### What you should see\n\nNo code here.\n')"
 # ---------- post-lint: each list item is its own sentence ----------
 B=$'<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">\n'
 lint() { python3 "$R/bin/post-lint" "$1" --kind issue --parent none 2>&1 | grep -c 'word sentence'; }

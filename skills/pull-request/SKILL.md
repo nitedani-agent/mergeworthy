@@ -100,7 +100,13 @@ Open `converge` and run its pipeline on the diff.
 ### 7. The PR
 
 ```markdown
-<What was wrong and what changed, in plain sentences.>
+<What was wrong, in plain sentences.>
+
+| Case | Observed | Expected |
+|---|---|---|
+| <input> | <what happens> | <what should happen> |
+
+<What changed.>
 
 Closes #N
 

@@ -66,7 +66,7 @@ When the work reshapes existing code, or a small change can't be made cleanly be
 - **Done when** every gate exits 0. Write each as `<command> -> exit <code>`, one per line, into a gates log.
 - **Record:** `pr-steps gates <the gates log>`
 
-Optional owner recommendations do not block convergence; approval required by the pipeline’s entry conditions does. Present unresolved recommendations with your pick in the PR’s notes table or your report (`writing`).
+Optional owner recommendations do not block convergence; approval required by the pipeline’s entry conditions does. Present unresolved recommendations as decision blocks with your pick, in the PR or your report (`writing`).
 
 ### Docs go through with the code
 

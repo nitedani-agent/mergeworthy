@@ -2,7 +2,7 @@
 """post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
-process machinery in the thread, questions without a recommendation, and a bare "Done" answering a question.
+process machinery in the thread, decisions not shown as code and lettered options, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
@@ -234,12 +234,25 @@ if kind == 'issue':
 if kind == 'inline' and sentences > 2:
     findings.append(f"{sentences} sentences > 2 for an inline comment")
 # maintainer notes must be classified
-for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Left to you|For you to decide|Note|Remark)[^\n]*', text, flags=re.M | re.I):
+for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Note|Remark)[^\n]*', text, flags=re.M | re.I):
     line = m.group(0)
-    if not re.search(r'\b(bug|limitation|not a regression|decision needed)\b', line, re.I) or not re.search(r'blocks', line, re.I):
-        findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression|decision needed> · blocks …: yes/no · next: …")
+    if not re.search(r'\b(bug|limitation|not a regression)\b', line, re.I) or not re.search(r'blocks', line, re.I):
+        findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression> · blocks …: yes/no · next: …, or is a '### Decision:' block (writing)")
 if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M | re.I)) >= 2:
     findings.append("notes as a list of 'kind · blocks · next' lines: put them in one table | Note | Kind | Blocks merge | Next |")
+# a decision is code, the output per lettered option, then our pick; never a table row (writing; magne4000/universal-middleware#434 comment 6112728923)
+DECIDE = "a '### Decision: <the choice>' block: the smallest code that shows it, then (a), (b) with each output, then 'I picked (x) because …' (writing)"
+if kind in ('pr', 'proposal', 'reply'):
+    for row in re.findall(r'^\|[^|\n]*\|\s*decision[ -]needed\s*\|[^\n]*$', text, flags=re.M | re.I):
+        findings.append(f"decision as a table row ({row.strip()[:50]!r}): make it {DECIDE}")
+    _unhead = re.sub(r'^(```|~~~).*?^\1[^\n]*$', lambda c: re.sub(r'^#', ' ', c.group(0), flags=re.M), text, flags=re.S | re.M)  # a '#' line in code isn't a heading
+    for m in re.finditer(r'^(?:#{1,6}\s+|\*\*)(?:decision\b|[^\n]*\b(?:decision needed|for you to decide|left to you|choose one)\b)[^\n]*\n(.*?)(?=^#{1,6}\s|\Z)', _unhead, flags=re.M | re.S | re.I):
+        body = m.group(1)
+        code = re.search(r'^(```|~~~).*?^\1[^\n]*$', body, flags=re.S | re.M)
+        after = body[code.end():] if code else ''
+        if not (code and re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?\(a\)', after, re.M) and re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?\(b\)', after, re.M)
+                and re.search(r'\bI picked \([a-z]\)', after)):
+            findings.append(f"decision block {m.group(0).splitlines()[0].strip()[:50]!r} isn't {DECIDE}")
 # evidence carries no secret (1.6): checked on the whole text, code blocks included, where logs usually sit
 SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}'
                     r'|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|^\s*(?:authorization|cookie|set-cookie)\s*:\s*(?:bearer\s+|basic\s+)?(?!<REDACTED>)\S{12,}',
@@ -299,7 +312,7 @@ if not record:
             findings.append(f"process in the thread: {m.group(0)!r}: give the result, keep reviews, rounds and ratings in the artifact root")
 # a question to the reader carries our recommendation
 asks = [q.strip() for q in re.findall(r'[^.!?\n]*\?(?=\s|$)', prose)]
-if not record and asks and not re.search(r"\b(I recommend|recommend|I'd|I would|I propose|I suggest|I'll go with)\b|^GENUINE-FORK:", prose, re.I | re.M):
+if not record and asks and not re.search(r"\b(I recommend|recommend|I'd|I would|I propose|I suggest|I'll go with|I picked)\b|^GENUINE-FORK:", prose, re.I | re.M):
     findings.append(f"question without your recommendation ({asks[0][-60:]!r}): decide or measure it yourself, or say what you'd pick and why")
 # a bare "Done" to a question or a soft suggestion: say what you checked, or push back
 if kind in ('reply', 'inline'):
