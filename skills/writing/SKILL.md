@@ -90,6 +90,7 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 | A coined term ("the runner", "the marker") | What it does, in the reader's words |
 | A sentence only the code explains ("two specs pin why it changed", "the detach skip for pending admissions") | What the user sees or does, and why, in their words; the review rejects any sentence the owner couldn't follow without the code |
 | An inventory of internals to prove completeness | What the user sees |
+| A reason that is true by definition ("the `+middleware` ordered after it didn't run before it") | The consequence the reader cares about, or cut it |
 | Opinions cut to fit a length | Keep each, with its argument; cut jargon and repeats instead |
 | "I was wrong" in every answer | One line of it, then the plan |
 | Em dashes for asides | A comma, parentheses, or two sentences |

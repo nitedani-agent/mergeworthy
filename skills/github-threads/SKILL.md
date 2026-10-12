@@ -93,7 +93,7 @@ The watcher runs independently of any session and only records events (and adds 
    - **Claims:** every claim against the code (`file:line` or a command and its output), the thread and the evidence; every claim about who said, proposed or agreed what against `thread-context.md`, which the reviewer gets as a file.
    - **Noise:**
      - every con or risk names who hits it today (a caller, repo or user), or is cut;
-     - write the shortest version that still answers (the verdict, its one reason, the next step); every sentence outside it that the reader wouldn't miss is a finding: mechanism nobody asked for, a justification of a justification, an "anyway" clause. True is not enough;
+     - write the shortest version that still answers (the verdict, its one reason, the next step); every sentence outside it that the reader wouldn't miss is a finding: mechanism nobody asked for, a justification of a justification, a reason true by definition, an "anyway" clause. True is not enough;
      - every question is answered; a gap in your own work that a question points at is fixed before the reply, not offered;
      - every absolute word ("every", "unchanged", "always", "only") quotes what proves it, or is cut;
      - maintainer requests are followed, and links are correct.
