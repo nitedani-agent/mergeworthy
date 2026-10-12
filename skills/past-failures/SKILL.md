@@ -36,7 +36,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
 | Throughput losses called trade-offs; a `read(n)` that grew the buffer until 20 GB stalled passed 200 MB probes. | 1.1.11 |
 | A regression for users of an existing feature called "limitation: experimental"; Room joins past ~100 at once rejected by a retry cap and called a limitation. | 1.1.11, `post-lint` |
-| UI bugs found by the user; UI "verified" by computed styles and scripted events; a UI change built before browser control was tried. | `evidence` (reproduce it as a person would), `pr-steps approach` |
+| UI bugs found by the user; UI "verified" by computed styles and scripted events; UI built before browser control was tried. | `evidence` (reproduce it as a person would), `pr-steps preflight` |
 | A transport fix opened with Node-script evidence only. | `evidence` (reproduce it as a person would) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |

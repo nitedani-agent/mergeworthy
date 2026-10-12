@@ -4,14 +4,39 @@
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all six.
 set -euo pipefail
-step=${1:?usage: pr-steps <approach|verify|loopb|refactor|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in approach|verify|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;; *) echo "step must be approach, verify, loopb, refactor, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <preflight|approach|verify|loopb|refactor|reverify|fresh|gates> <output-file>}; out=${2:?output file}
+case "$step" in preflight|approach|verify|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;; *) echo "step must be preflight, approach, verify, loopb, refactor, reverify, fresh or gates" >&2; exit 1;; esac
+# preflight and approach: one record per repo and branch; the hooks compute the same key
+key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
+mkdir -p ~/.claude/pr-steps
+# pr-steps preflight <app URL> [Chrome flags] | <PNG the session's browser MCP took just now> | 'none, because <why>':
+# before any code, the app runs and browser control loads it (pull-request, Check you can finish before you start)
+if [ "$step" = preflight ]; then
+  shift; proof=~/.claude/pr-steps/preflight."$key".png
+  case "$out" in
+    "none, because "?*) proof=$out ;;
+    http://*|https://*)
+      shift; chrome=${CHROME:-$(command -v google-chrome chromium chromium-browser | head -n1)}
+      [ -n "$chrome" ] || { echo "no Chrome on PATH: screenshot the app with the session's browser MCP, then pr-steps preflight <that PNG>" >&2; exit 1; }
+      profile=$(mktemp -d); trap 'rm -rf "$profile"' EXIT
+      flags=(--headless=new --user-data-dir="$profile" --ignore-certificate-errors --window-size=1440,900 --virtual-time-budget=15000 "$@")
+      timeout 120 "$chrome" "${flags[@]}" --dump-dom "$out" 2>/dev/null | python3 -c 'import re, sys; d = sys.stdin.read()
+sys.exit("main-frame-error" in d or not re.sub(r"<[^>]*>|\s", "", re.sub(r"(?is)<(script|style)\b.*?</\1>", "", d)))' ||
+        { echo "$out showed Chrome's error page or a blank page: start the app (and pass the Chrome flags its host needs), then retry" >&2; exit 1; }
+      rm -f "$proof"; timeout 120 "$chrome" "${flags[@]}" --screenshot="$proof" "$out" >/dev/null 2>&1 || { echo "Chrome could not screenshot $out" >&2; exit 1; } ;;
+    /*) [ -n "$(find "$out" -mmin -10 2>/dev/null)" ] || { echo "$out is not a screenshot taken in the last 10 minutes" >&2; exit 1; }
+        proof=$out ;;
+    *) echo "usage: pr-steps preflight <app URL> [Chrome flags], or <absolute path of a PNG the session's browser MCP just took of the app>, or 'none, because <why there is no UI or browser-run code>'" >&2; exit 1 ;;
+  esac
+  case "$proof" in none,*) ;; *) [ "$(head -c8 "$proof" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || { echo "$proof is not a PNG" >&2; exit 1; } ;; esac
+  echo "preflight $proof $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/preflight."$key"
+  echo "recorded preflight for branch $(git symbolic-ref --short -q HEAD || echo HEAD): $proof"
+  exit 0
+fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1)
 sha=$(git rev-parse HEAD)
 if [ "$step" = approach ]; then
-  # one record per repo and branch; the guard computes the same key
-  key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
   chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
   [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
   # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
@@ -20,14 +45,6 @@ if [ "$step" = approach ]; then
   rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
   [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 3); find a better candidate or stop" >&2; exit 1; }
-  # browser control is proven before building: a screenshot it took of this app, or why the change has no UI or runtime behavior
-  browser=$(sed -n 's/^[[:space:]]*Browser:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
-  case "$browser" in
-    /*) [ "$(head -c8 "$browser" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || { echo "Browser: $browser is not a PNG file" >&2; exit 1; } ;;
-    "none, because "?*) ;;
-    *) echo "$out has no line 'Browser: <absolute path of a PNG screenshot browser control took of this app on this machine>' or 'Browser: none, because <why this change has no UI or runtime behavior>'. Before building, try browser control on the app's real URL: the session's browser MCP first, then a Chrome or Playwright you launch, accepting the dev host's self-signed or expired certificate (evidence). If none works, stop and tell the user what is missing." >&2; exit 1 ;;
-  esac
-  mkdir -p ~/.claude/pr-steps
   echo "approach $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/approach."$key"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0

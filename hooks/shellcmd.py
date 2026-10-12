@@ -1,5 +1,26 @@
 """Shell command parsing shared by the Bash hooks (pre-bash-guard, pre-skill-gate, post-bash-register)."""
-import os, re, shlex
+import hashlib, os, re, shlex, subprocess
+
+
+def branch_record(d, kind):
+    """The pr-steps record kept once per repo and branch (preflight, approach; same key as bin/pr-steps), None outside git."""
+    git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
+    common = git('rev-parse', '--git-common-dir')
+    if not common:
+        return None
+    branch = git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
+    key = hashlib.sha256(f"{os.path.realpath(os.path.join(d, common))}\n{branch}".encode()).hexdigest()[:40]
+    return os.path.expanduser(f'~/.claude/pr-steps/{kind}.{key}')
+
+
+def no_preflight(d):
+    """Why code can't start yet in d's repo and branch, or '' (outside git, nothing to check)."""
+    rec = branch_record(d, 'preflight')
+    if not rec or os.path.exists(rec):
+        return ''
+    return ("no `pr-steps preflight` record for this repo and branch. Before any code, start the app, then run "
+            "`pr-steps preflight <its URL> [Chrome flags]` (or `<PNG the session's browser MCP just took>`), "
+            "or `pr-steps preflight 'none, because <why there is no UI or browser-run code>'`")
 
 
 def segments(cmd):

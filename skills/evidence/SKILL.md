@@ -7,7 +7,7 @@ description: "Showing a behavior to a reader who wasn't there: browser control, 
 
 What lets a newcomer see a behavior for themselves: where it is, what triggers it and what happens. An issue (`open-issue`), a reproduction comment and a PR's walkthrough (`pull-request`) all show it this way.
 
-**Browser control** (UI or runtime work): a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), or anything that opens a page, clicks, screenshots and records it. Try it on the app's URL before you start; nothing in a shell can test it. A dev host's bad certificate needs the MCP's `--acceptInsecureCerts` (Chrome: `--ignore-certificate-errors`). Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
+**Browser control** (UI or runtime work): a [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), or anything that opens a page, clicks, screenshots and records it. Load the app's URL with it first (`pr-steps preflight`). A dev host's bad certificate needs the MCP's `--acceptInsecureCerts` (Chrome: `--ignore-certificate-errors`). Configure the MCP with `--isolated` (e.g. `npx -y chrome-devtools-mcp@latest --headless --isolated`), so parallel sessions don't share one profile. Isolated profiles are temporary: set the cookies and storage the test needs in the page.
 
 ### Reproduce it as a person would
 

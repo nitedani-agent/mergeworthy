@@ -72,15 +72,16 @@ These scripts enforce the rules that failed as text alone.
 
 ### `pr-steps` (enforces 1.7)
 
-`pr-steps <step> <output>` checks and records one `converge` step on HEAD, one file per step:
-- `approach`: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 a line `Chosen: <candidate>` rated 7 or more, and a `Browser:` line (`pull-request`, step 3). Recorded per repo and branch, not per HEAD.
+`pr-steps <step> <output>` checks a step's output and records it, one file per step:
+- `preflight`, per repo and branch: `<app URL> [Chrome flags]` (screenshotted headlessly; an error or blank page fails), a fresh browser-MCP PNG, or `'none, because <why>'`. Edits in its work tree and `git commit` wait for it.
+- `approach`, per repo and branch: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request`, step 3).
 - `verify`: trailing `NO BUGS`.
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge`, step 3).
 - `loopb`: captured final message `CLEAN` (`review`).
 - `fresh`: `MERGE AS IS: yes` and trailing `CLEAN`; keep the posting verdict in a separate file (`converge`, step 4).
 - `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.
 - `gates`: `<command> -> exit 0` lines.
-- `gh pr create`/`glab mr create`, `gh pr ready`/`glab mr update --ready` and a push to a ready PR need the branch's `approach` record and all six on HEAD; a `--draft`/`--wip` needs only the approach.
+- `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all six and the branch has its `approach` record.
 
 ## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
 

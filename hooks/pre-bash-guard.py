@@ -4,7 +4,7 @@ Checks each simple command separately (split at ; && || | & and newlines, heredo
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import segments, prog, opt, api_call, new_post_drafts
+from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -19,14 +19,9 @@ def missing_steps(d):
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
     missing = [k for k in ('verify', 'loopb', 'refactor', 'reverify', 'fresh', 'gates') if k not in kinds]
-    # the approach is chosen once per PR: recorded per repo and branch (same key as bin/pr-steps)
-    git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
-    common = git('rev-parse', '--git-common-dir')
-    if head and common:
-        branch = git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
-        key = hashlib.sha256(f"{os.path.realpath(os.path.join(d, common))}\n{branch}".encode()).hexdigest()[:40]
-        if not os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/approach.{key}')):
-            missing.insert(0, 'approach')
+    # the approach is chosen once per PR: recorded per repo and branch
+    if head and not os.path.exists(branch_record(d, 'approach')):
+        missing.insert(0, 'approach')
     return head, missing
 
 def setting(name, default):
@@ -242,7 +237,10 @@ def check(t, has_cd):
         if not a: return
         sub, rest = a[0], a[1:]
         if sub == 'commit':
-            check_commit_identity(overrides, os.path.join(run_dir, os.path.expanduser(git_dir)))
+            repo = os.path.join(run_dir, os.path.expanduser(git_dir))
+            if why := no_preflight(repo):
+                block(why)
+            check_commit_identity(overrides, repo)
         if sub == 'stash':
             first = rest[0] if rest else ''
             ok = first in ('list', 'show', 'apply', 'branch', 'create', 'store') or \
@@ -267,10 +265,6 @@ def check(t, has_cd):
         head, missing = missing_steps(run_dir)
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
-    # even a draft publishes the work: browser control is shown working first (the approach's Browser: line)
-    elif (p == 'gh' and a[:2] == ['pr', 'create']) or (p == 'glab' and a[:2] == ['mr', 'create']):
-        if 'approach' in missing_steps(run_dir)[1]:
-            block("this branch has no `pr-steps approach` record, so not even a draft opens: rate the approach (mergeworthy:pull-request step 3) and record it with `pr-steps approach <file>`, whose `Browser:` line is a PNG screenshot browser control took of this app, or `Browser: none, because <why this change has no UI or runtime behavior>`")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')

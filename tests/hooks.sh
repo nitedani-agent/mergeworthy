@@ -556,23 +556,7 @@ check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
-g2() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; echo "exit $?"; }
-check "BLOCK: gh pr create --draft without an approach record" 1 "$(g2 'gh pr create --draft --title x' | grep -c 'exit 2')"
-check "its message names pr-steps approach and the Browser line" 1 "$(g2 'gh pr create --draft --title x' | grep -c 'pr-steps approach.*Browser:')"
-check "BLOCK: gh pr create -d without an approach record" 1 "$(g2 'gh pr create -d --title x' | grep -c 'exit 2')"
-check "BLOCK: glab mr create --draft without an approach record" 1 "$(g2 'glab mr create --draft --title x' | grep -c 'exit 2')"
-check "BLOCK: glab mr create --wip without an approach record" 1 "$(g2 'glab mr create --wip --title x' | grep -c 'exit 2')"
-cp "$T/ap.md" "$T/apnb.md"; cp "$T/ap.md" "$T/apnone.md"; printf 'Browser: /nonexistent/shot.png\n' >> "$T/ap.md"
-check "BLOCK: an approach without a Browser line" 1 "$(prs2 approach "$T/apnb.md")"
-check "BLOCK: an approach whose Browser screenshot doesn't exist" 1 "$(prs2 approach "$T/ap.md")"
-printf 'x\n' > "$T/shot.png"; printf 'Browser: %s\n' "$T/shot.png" >> "$T/apnb.md"
-check "BLOCK: an approach whose Browser screenshot isn't a PNG" 1 "$(prs2 approach "$T/apnb.md")"
-cp "$T/apnone.md" "$T/apwhy.md"; printf 'Browser: none, because\n' >> "$T/apnone.md"
-check "BLOCK: Browser: none without its reason" 1 "$(prs2 approach "$T/apnone.md")"
-printf 'Browser: none, because it only changes a CLI flag\n' >> "$T/apwhy.md"
-check "Browser: none with its reason records" 0 "$(prs2 approach "$T/apwhy.md")"
-printf '\x89PNG\r\n\x1a\n' > "$T/shot.png"
-check "an approach with three rated candidates, a chosen 8 and a PNG screenshot records" 0 "$(prs2 approach "$T/apnb.md")"
+check "an approach with three rated candidates and a chosen 8 records, with no Browser line" 0 "$(prs2 approach "$T/ap.md")"
 glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
@@ -587,12 +571,40 @@ check "a big maintainer commit carries them too: the pipeline waits for their go
 git -C "$G2" reset -q --hard HEAD~1
 printf 'y\n' > "$G2/g"; git -C "$G2" add g; git -c user.name=t -c user.email=t@t -C "$G2" commit -q -m c -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'
 check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 "$(ready)"
-check "gh pr create --draft with the approach and none of the six steps is not blocked for them" 0 "$(g2 'gh pr create --draft --title x' | grep -c 'pr-steps')"
-check "glab mr create --wip passes there too" 1 "$(g2 'glab mr create --wip --title x' | grep -c 'exit 0')"
-check "BLOCK: gh pr create, not a draft, still needs the six steps" 1 "$(g2 'gh pr create --title x' | grep -c 'no pr-steps verify')"
 check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
+# ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
+P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
+pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
+pfurl() { (cd "$P" && CHROME="$T/bin/fakechrome" FAKE_DOM="$1" bash "$R/bin/pr-steps" preflight https://app.test --host-resolver-rules=x >/dev/null 2>&1; echo $?); }
+pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$P" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
+cat > "$T/bin/fakechrome" <<'EOF'
+#!/bin/bash
+for x in "$@"; do case "$x" in --dump-dom) printf '%s' "$FAKE_DOM";; --screenshot=*) printf '\x89PNG\r\n\x1a\n' > "${x#--screenshot=}";; esac; done
+EOF
+chmod +x "$T/bin/fakechrome"
+check "BLOCK: an edit in a repo and branch with no preflight" 2 "$(pfedit "$P/a.ts")"
+check "BLOCK: a new file in a new folder there" 2 "$(pfedit "$P/new/dir/a.ts")"
+check "BLOCK: git commit there, saying how to record it" 1 "$(pfcommit | grep -c 'pr-steps preflight <its URL>')"
+mkdir -p "$T/nogit"; check "a path outside any git work tree is free" 0 "$(pfedit "$T/nogit/a.md")"
+check "BLOCK: none, because with no reason" 1 "$(pf 'none, because ')"
+printf 'x' > "$T/pf.png"; check "BLOCK: a screenshot that isn't a PNG" 1 "$(pf "$T/pf.png")"
+printf '\x89PNG\r\n\x1a\n' > "$T/pf.png"; touch -d '-20 min' "$T/pf.png"; check "BLOCK: a screenshot older than 10 minutes" 1 "$(pf "$T/pf.png")"
+check "BLOCK: a URL that shows Chrome's error page" 1 "$(pfurl '<div id="main-frame-error">This site can’t be reached</div>')"
+check "BLOCK: a URL that renders a blank page" 1 "$(pfurl '<html><body><div id="root"></div><script>boot()</script></body></html>')"
+check "an edit still waits after refused preflights" 2 "$(pfedit "$P/a.ts")"
+check "a URL that renders records the screenshot Chrome took" 0 "$(pfurl '<body><h1>Dashboard</h1></body>')"
+check "an edit passes once the branch has its preflight" 0 "$(pfedit "$P/a.ts")"
+check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight')"
+git -C "$P" checkout -q -b other
+check "BLOCK: another branch needs its own preflight" 2 "$(pfedit "$P/a.ts")"
+touch "$T/pf.png"; check "a PNG the browser MCP just took records" 0 "$(pf "$T/pf.png")"
+git -C "$P" checkout -q -b docs
+check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"
+check "an edit passes after it" 0 "$(pfedit "$P/a.ts")"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
+(cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null)
 gate() { python3 -c 'import json,sys; print(json.dumps({"tool_name":sys.argv[1],"tool_input":json.loads(sys.argv[2]),"cwd":sys.argv[3]}))' "$1" "$2" "$D" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
 check "no scope.md: an edit passes" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 printf 'Tier: M, because x\n' > "$D-work/scope.md"

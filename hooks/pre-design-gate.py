@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook (matcher: Write, Edit, MultiEdit, delegate_task). Exit 2 blocks; stderr goes to the agent.
+"""Claude Code PreToolUse hook (matcher: Write, Edit, MultiEdit, NotebookEdit, delegate_task). Exit 2 blocks; stderr goes to the agent.
+An edit inside a git work tree waits for its repo and branch's `pr-steps preflight` record.
 At Tier M or L (first line of <repo>-work/scope.md), code waits for prior art (1.3) and the design loop (1.4):
 <repo>-work/prior-art.md and a <repo>-work/decisions/*.md must exist before an edit inside the repo or an implementation agent."""
 import glob, json, os, re, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from shellcmd import no_preflight
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 tool = d.get('tool_name', '')
 cwd = d.get('cwd') or os.getcwd()
+if 'delegate_task' not in tool:
+    near = os.path.dirname(os.path.realpath(os.path.join(cwd, str(ti.get('file_path') or ti.get('notebook_path') or ''))))
+    while not os.path.isdir(near): near = os.path.dirname(near)  # a new file's folder may not exist yet
+    if why := no_preflight(near):
+        sys.stderr.write(f"BLOCKED: {why}\n")
+        sys.exit(2)
 try:
     top = subprocess.run(['git', '-C', cwd, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
 except OSError:

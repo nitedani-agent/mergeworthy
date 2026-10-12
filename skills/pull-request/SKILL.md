@@ -14,7 +14,7 @@ From an issue or a problem to one merge-ready PR. Open PRs within the task’s p
 **Work in a worktree off `<base>`** (the project file names it): `git fetch origin && git worktree add -b <branch> <artifact root>/<branch> origin/<base>`. `origin` here is the repository the PR targets; in a fork clone, fetch the upstream repository and branch from its `<base>`, never from the fork's, which may be stale. In CI, read the project file’s Gates section and the repository’s CI configuration first.
 
 **Check you can finish before you start**, both halves up front:
-- **Browser control** (UI or runtime work), set up and tried per `evidence`.
+- **Browser control** (UI or browser-run code): start the app, then `pr-steps preflight <its URL>` (`mechanisms`).
 - **The rest of the machine**: `gh` and its login, and whatever the app needs (containers, the hostname, the secrets, the data). The project file's preflight checks all of it in one pass and prints every failure together.
 
 **Install whatever doesn't need root** (a browser, the MCP server, the stack, the data; the project file has the commands). For anything that needs root, stop: the first thing in your reply is the exact steps, in order, with the commands to run.
@@ -56,7 +56,7 @@ List the distinct problems the change must solve. Then rate each candidate appro
 - If the work adds a surface, rate the **contract** (the surface, its invariants, its counterexamples) before writing a line.
 - If the work reshapes existing code, run Phases A and B of the finality pass (open `finality`: it maps the code and derives the shape it should have), and rate that shape.
 
-**Record the approach once per PR.** Write a table `| Candidate | Rating | Why |` (every candidate, *not building it* included, rated 0–10 with its reason), a line `Chosen: <candidate>` rated 7 or more, and `Browser: <absolute path of a PNG browser control took of this app>` or `Browser: none, because <why it has no UI or runtime behavior>`; a design the maintainer agreed can be the chosen candidate, with the agreement link in the file and the alternatives still rated. Run `pr-steps approach <file>` before building. The PR body carries it as an "Approach" evidence block (`converge` step 5).
+**Record the approach once per PR.** Write a table `| Candidate | Rating | Why |` (every candidate, *not building it* included, rated 0–10 with its reason) and a line `Chosen: <candidate>` rated 7 or more; a design the maintainer agreed can be the chosen candidate, with the agreement link in the file and the alternatives still rated. Run `pr-steps approach <file>` before building. The PR body carries it as an "Approach" evidence block (`converge` step 5).
 
 **If nothing rates high, abort.** Comment what you tried and why each falls short, then stop. An open product question hiding in the issue is asked before building.
 
