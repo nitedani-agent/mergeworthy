@@ -101,7 +101,7 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 
 ## Budgets and form
 
-- **Code comments:** at most one line, literally true, stating a constraint the code can't show. No links to source, and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
+- **Code comments:** at most one line, literally true, stating a constraint the code can't show. No links to source (a workaround's TODO links its upstream issue or PR, `core` 1.1.6), and no comparison with the old code ("instead of", "now", "no longer"). Names follow their siblings.
 - **One line per image or video:** what to look at and what it proves. Name the setup (page, date, filter) when the default view doesn't show it, and crop so the pixels that matter are findable.
 
 - **Length** follows the content: a post is as long as what the reader needs to decide, act or check, and no longer. A PR body is never shortened by cutting what's broken or why; an inline review comment goes only where the reader must judge. Moving prose into a table or a collapsed block hides it rather than cutting it. `post-lint` flags a dump; its ceilings are an alarm, never a size to write toward.
