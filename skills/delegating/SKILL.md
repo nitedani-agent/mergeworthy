@@ -25,7 +25,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **One agent per job, enforced by `pre-agent-dedupe`.** An agent is alive until its transcript and processes are quiet, whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message instead of starting another; a replacement goes in a fresh worktree. When two run one job, keep the one with the most progress. After reading a finished agent's result, release its job with `agent-job done <ticket>`.
 - **The main session never waits in the foreground.** No sleep loop on an agent's files or a review: agents and background commands notify you, so delegate the work and answer threads meanwhile.
 - **Every background job has a liveness check** (output size or log mtime). Check it at 2 minutes and at every wakeup; five minutes without output means investigate now. Never report "dispatched" or "armed" as progress.
-- **Relay every agent report.** When an agent reports, relay the result to the user and act on it; the user never sees the agent's report.
+- **Relay every agent report.** When an agent reports (T3's notice, or `### AGENT DONE`, which needs none), relay the result to the user and act on it; the user never sees the agent's report.
 - **Taking over another session's work starts with its state,** re-checked on the current head. Re-run each claim in the open PR's body (checks, e2e, screenshots), and list each owed reply. That state is the first answer to "done?", and the work continues from what failed.
 
 ### Choosing the model

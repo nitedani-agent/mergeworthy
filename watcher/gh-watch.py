@@ -14,6 +14,7 @@
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
+- AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
@@ -22,6 +23,8 @@ import contextlib, datetime, fcntl, hashlib, http.client, json, os, re, subproce
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 import gl_watch
+sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
+import agent_jobs, shlex
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -1599,6 +1602,7 @@ def tick():
         except Budget:
             pass
     scan_gitlab()
+    agent_jobs_pass()
     announce()
 
 
@@ -1613,6 +1617,33 @@ def scan_gitlab():
 
 
 _retire_at = [0]
+_jobs_at, _routed = [0], {}
+
+
+def agent_jobs_pass():
+    """Once a minute: `### AGENT DONE` for each job whose agent finished, once per finish, in the watch dir of the session that
+    launched it: the one its `session` file names, else one whose events.log the launcher's transcript tails."""
+    if time.time() - _jobs_at[0] < 60:
+        return
+    _jobs_at[0] = time.time()
+    try:
+        mine = open(os.path.join(HERE, 'session')).read().strip()
+    except OSError:
+        mine = ''
+    for f, j in agent_jobs.jobs():
+        done = agent_jobs.finished(j)
+        if not done or agent_jobs.reported(f, done[1]):
+            continue
+        if f not in _routed:
+            try:
+                log = open(j.get('transcript') or '', 'rb').read() if not (mine and j.get('session') == mine) else b''
+            except OSError:
+                log = b''
+            _routed[f] = bool(mine and j.get('session') == mine) or any(
+                f'{w}/events.log'.encode() in log for w in (HERE, HERE.replace(os.path.expanduser('~'), '~', 1)))
+        if _routed[f] and agent_jobs.claim(f, done[1]):
+            k = shlex.quote(j['key'])
+            emit(f"### AGENT DONE {j['key']}: read its result (task_status / its report), then agent-job done {k}")
 
 
 def main():

@@ -150,6 +150,16 @@ if watcher_on and not paused and not child:
                   "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
+# An agent this session launched has finished (its transcript went quiet) and its job is still open: its result is unread
+if not child and d.get('session_id'):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import agent_jobs
+    for f, j in agent_jobs.jobs():
+        done = j.get('session') == d['session_id'] and agent_jobs.finished(j)
+        if done:
+            print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
+                  f"result (task_status / its report), act on it, then `agent-job done '{j['key'][:200]}'` (mergeworthy:delegating 1.10).", file=sys.stderr)
+            sys.exit(2)
 # Before a turn ends, one check-in (the hook doesn't ask twice in a row: stop_hook_active lets the next stop through)
 # At most once per MERGEWORTHY_STOP_CHECKIN_SECONDS (default 30 min): every extra turn re-reads the whole context from cache
 def checkin_due():

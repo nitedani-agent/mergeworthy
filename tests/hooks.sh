@@ -575,6 +575,39 @@ check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" 
 check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AD/agent.jsonl")"
 touch -d '10 minutes ago' "$AD/agent.jsonl"
 check "a worktree with no process and only an old transcript passes" 0 "$(alive "Run e2e in $T/aw again")"
+# a finished agent is reported: the watcher's AGENT DONE once per finish, and stop-lint while its job is open
+JD="$HOME/.claude/projects/-jobs"; WJ="$T/wj"; mkdir -p "$JD" "$WJ"; echo orch > "$WJ/session"
+reg() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orch","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":sys.argv[1][:40]}}))' "$1" "$T/tr.jsonl" \
+  | python3 "$R/hooks/pre-agent-dedupe.py" register; }
+child_log() { # file brief minutes-ago last-entry(text|tool)
+  python3 -c 'import json,sys; f,b,last=sys.argv[1],sys.argv[2],sys.argv[3]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+w({"type":"user","promptSource":"sdk","message":{"role":"user","content":b}})
+w({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Bash","input":{}}] if last=="tool" else [{"type":"text","text":"Report written."}]}})' "$1" "$2" "$4"
+  touch -d "$3 minutes ago" "$1"; }
+done_events() { GH_WATCH_ME=me python3 - "$R/watcher/gh-watch.py" "$WJ" <<'EOF2'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('ghw', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.HERE = sys.argv[2]; m.agent_jobs_pass()
+EOF2
+}
+reg "Execute $T/jobs/quiet-ticket.md exactly"; child_log "$JD/quiet.jsonl" "Execute $T/jobs/quiet-ticket.md exactly" 5 text
+reg "Execute $T/jobs/busy-ticket.md exactly"; child_log "$JD/busy.jsonl" "Execute $T/jobs/busy-ticket.md exactly" 0 text
+reg "Execute $T/jobs/tool-ticket.md exactly"; child_log "$JD/tool.jsonl" "Execute $T/jobs/tool-ticket.md exactly" 5 tool
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "jobs/" in open(f).read()]'  # launched an hour ago
+done_events > "$T/ev1"; done_events > "$T/ev2"
+check "AGENT DONE for the quiet agent's job, once; not for an active one or one in a running tool call" "1 0 0 0" "$(grep -c "^### AGENT DONE $T/jobs/quiet-ticket.md: read its result (task_status / its report), then agent-job done $T/jobs/quiet-ticket.md$" "$T/ev1") $(cat "$T/ev2" | wc -l) $(grep -c busy-ticket "$T/ev1") $(grep -c tool-ticket "$T/ev1")"
+sj() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
+  | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
+tr_file 'Done.'
+check "BLOCK: stop-lint while the launching session's finished job is open, naming it; another session passes" "2 1 0" "$(sj orch) $(grep -c "quiet-ticket.md" "$T/err") $(sj other)"
+touch -d '30 minutes ago' "$JD/tool.jsonl"; python3 "$R/bin/agent-job" done "$T/jobs/quiet-ticket.md" >/dev/null
+check "a released job is never reported again; a tool call quiet past ten minutes counts as finished" "0 1" "$(done_events > "$T/ev3"; grep -c quiet-ticket "$T/ev3") $(grep -c tool-ticket "$T/ev3")"
+python3 "$R/bin/agent-job" done "$T/jobs/tool-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/busy-ticket.md" >/dev/null
+check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
+reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
+mkdir -p "$T/wj2"; rm "$WJ/session"; echo "tail -F $T/wj2/events.log" > "$T/tr.jsonl"
+check "a watch dir with no session file gets the event when the launcher tails its events.log; another doesn't" "0 1" "$(done_events | wc -l) $(WJ="$T/wj2" done_events | grep -c routed-ticket)"
 # stop-lint: a Running list is read live from T3 and names no finished task
 rl_tr() { # final-text then status events: status:<s> (a task_status read) | user
   python3 - "$T/tr.jsonl" "$@" <<'EOF'

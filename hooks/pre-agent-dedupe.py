@@ -109,7 +109,8 @@ if not key:
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 if register:
-    json.dump({'key': key, 'started': time.time()}, open(f, 'w'))
+    json.dump({'key': key, 'started': time.time(), 'brief': str(ti.get('task') or ti.get('prompt') or '')[:2000],
+               'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
 elif os.path.exists(f):
     j = json.load(open(f))
     if time.time() - j.get('started', 0) < 24 * 3600:
