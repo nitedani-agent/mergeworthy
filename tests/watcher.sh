@@ -335,7 +335,7 @@ eyes_step=$(awk '/-s "\$dir\/eyes"/ { p = 1; b = /^if/ } p { print } p && (!b ||
 check "gh-watch-start: a rate-limited login lookup writes no eyes" "0" "$(cat "$D/eyes" 2>/dev/null | wc -c)"
 
 # ---------- GitLab threads: a stub glab answers `glab api --hostname gitlab.com <path>` from $GLFX, and logs :eyes: awards ----------
-GLFX="$T/glfx"; mkdir -p "$GLFX"; export GLFX
+GLFX="$T/glfx"; mkdir -p "$GLFX"; export GLFX; GLNOW=$(date -u +%FT%TZ); export GLNOW
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = api ] || exit 1
@@ -348,7 +348,7 @@ chmod +x "$T/bin/glab"
 GLW="$T/glwatch"; mkdir -p "$GLW"
 glpy() { W="$GLW" py "
 fx = lambda name, data: json.dump(data, open(os.path.join(os.environ['GLFX'], name), 'w'))
-now = m.gl_watch.iso(__import__('time').time())
+now = os.environ['GLNOW']  # one timestamp for every step: a note whose updated_at moved is an edit
 def thread(kind, iid, state, author='me'):
     fx(f'projects_ns_2Fsub_2Fproj_{kind}_{iid}', {'state': state, 'updated_at': now, 'author': {'username': author}, 'sha': 'abc1234567890',
        'web_url': f'https://gitlab.com/ns/sub/proj/-/{kind}/{iid}', 'head_pipeline': {'id': 5, 'status': 'success'}})
