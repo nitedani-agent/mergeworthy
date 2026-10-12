@@ -824,7 +824,7 @@ echo '{"iid": 3}' > "$FX/gl_projects_ns_2Fproj_issues_3"
 glref() { printf 'See #%s.\n' "$1" > "$T/glref.md"; python3 "$R/bin/post-lint" "$T/glref.md" --kind reply --repo gitlab.com/ns/proj --parent none 2>&1 | grep -c "bare #"; }
 check "post-lint: a bare #N is checked in the GitLab project: there, missing" "0 1" "$(glref 3) $(glref 7)"
 trk() { printf '%sTracks x.\n\n## Work\n\n- [ ] o/r#1: the fix.\n%s\n' "$1" "$2" > "$T/trk.md"; python3 "$R/bin/post-lint" "$T/trk.md" --kind tracker --parent none 2>&1 | grep -c 'link the Decisions comment'; }
-check "tracker: a GitLab note link is the Decisions link" 0 "$(trk '' 'All decisions made so far: https://gitlab.com/ns/proj/-/issues/2#note_55 (kept up to date).')"
+check "tracker: a GitLab note link is the Decisions link, in either URL form" "0 0" "$(trk '' 'All decisions made so far: https://gitlab.com/ns/proj/-/issues/2#note_55 (kept up to date).') $(trk '' 'All decisions made so far: https://gitlab.com/ns/proj/-/work_items/2#note_55 (kept up to date).')"
 check "tracker: the issue's creation needs no Decisions link yet, an edit does" "0 1" "$(trk 'Title: Tracking: x
 ' '') $(trk '' '')"
 bash -c 'exec -a gh-watch-daemon sleep 600' & GPID=$!  # the guard takes a watcher as live when its command names gh-watch-daemon
@@ -837,7 +837,7 @@ check "BLOCK: glab mr create --draft in a clone of an unwatched project" 2 "$(gl
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 glreg() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
-glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/issues/12'
+glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/work_items/12'
 glreg 'glab mr create --draft --title x' 'https://gitlab.com/ns/sub/proj/-/merge_requests/3'
 glreg 'glab issue list' 'https://gitlab.com/ns/sub/proj/-/issues/13'
 check "post-bash-register: glab's new issue and MR join threads.txt, the repo line goes, a list adds nothing" "gitlab.com/ns/sub/proj 12|gitlab.com/ns/sub/proj !3|+" "$(tr '\n' '|' < "$GW/threads.txt")+$(cat "$GW/repos.txt")"

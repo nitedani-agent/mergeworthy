@@ -160,7 +160,7 @@ if kind == 'tracker':
         if not re.search(r'^## ', text, flags=re.M) or not re.search(r'^\s*- \[[ x]\] ', text, flags=re.M):
             findings.append("tracker: one '##' section per group of work, each item a '- [ ]' / '- [x]' checkbox (1.2)")
         # GitHub's comment link or GitLab's note link; the issue's creation comes before its Decisions comment, so only edits need it
-        if title is None and not re.search(r'issuecomment-|/-/issues/\d+#note_\d', text):
+        if title is None and not re.search(r'issuecomment-|/-/(?:issues|work_items)/\d+#note_\d', text):
             findings.append("tracker: link the Decisions comment ('All decisions made so far: <link> (kept up to date).') (1.2)")
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended

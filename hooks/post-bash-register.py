@@ -109,7 +109,7 @@ live_dirs = [dr for dr in dirs if live(dr)]
 own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]
 found = {(repo, num, f'{repo} {num}') for repo, num in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)} | \
     {('gitlab.com/' + repo, num, f"gitlab.com/{repo} {'!' if kind == 'merge_requests' else ''}{num}")  # gh-watch-start's GitLab line
-     for repo, kind, num in re.findall(r'gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|merge_requests)/(\d+)', out)}
+     for repo, kind, num in re.findall(r'gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|work_items|merge_requests)/(\d+)', out)}  # glab prints new issues as work_items
 for repo, num, line in found:
     if not posted(repo, num):
         continue
