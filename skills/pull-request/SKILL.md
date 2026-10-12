@@ -56,7 +56,7 @@ List the distinct problems the change must solve. Then rate each candidate appro
 - If the work adds a surface, rate the **contract** (the surface, its invariants, its counterexamples) before writing a line.
 - If the work reshapes existing code, run Phases A and B of the finality pass (open `finality`: it maps the code and derives the shape it should have), and rate that shape.
 
-**Record the approach once per PR.** Write a table `| Candidate | Rating | Why |` (every candidate, *not building it* included, rated 0–10 with its reason) and a line `Chosen: <candidate>` rated 7 or more; a design the maintainer agreed can be the chosen candidate, with the agreement link in the file and the alternatives still rated. Run `pr-steps approach <file>`; it is kept per repo and branch, so later commits don't need it again. The PR body carries it as an "Approach" evidence block (`converge` step 5).
+**Record the approach once per PR.** Write a table `| Candidate | Rating | Why |` (every candidate, *not building it* included, rated 0–10 with its reason), a line `Chosen: <candidate>` rated 7 or more, and `Browser: <absolute path of a PNG browser control took of this app>` or `Browser: none, because <why it has no UI or runtime behavior>`; a design the maintainer agreed can be the chosen candidate, with the agreement link in the file and the alternatives still rated. Run `pr-steps approach <file>` before building. The PR body carries it as an "Approach" evidence block (`converge` step 5).
 
 **If nothing rates high, abort.** Comment what you tried and why each falls short, then stop. An open product question hiding in the issue is asked before building.
 

@@ -262,7 +262,8 @@ def check(t, has_cd):
                 head, missing = missing_steps(d)
                 if pr == 'ready' and missing:
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 3, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
-    if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a)):
+    if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
+       (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")

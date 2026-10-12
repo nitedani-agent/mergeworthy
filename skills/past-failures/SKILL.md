@@ -24,7 +24,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | "Should I…? / your call" on our own recommendation. | 1.1.3, `stop-lint` |
 | A modal question answered by accident. | 1.1.3 |
 | User questions absorbed into work and never answered. | 1.1.4 |
-| Claims from memory, false "can't"s, a reversed close-the-PR advice. | 1.1.5 |
+| Claims from memory, false "can't"s (no browser, a DevTools MCP loaded), work "running" after its agents stopped, a reversed close-the-PR advice. | 1.1.5, `writing` |
 | Workarounds shipped as fixes; defects documented as caveats. | 1.1.6, `converge` (phantom and removal gates) |
 | Upstream PR for a problem our own hook choice caused. | 1.1.6 |
 | A design that sent the payload three times "for now". | 1.1.2 |
@@ -36,7 +36,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Parts of the task and of an accepted design silently dropped. | 1.1.8 |
 | Throughput losses called trade-offs; a `read(n)` that grew the buffer until 20 GB stalled passed 200 MB probes. | 1.1.11 |
 | A regression for users of an existing feature called "limitation: experimental"; Room joins past ~100 at once rejected by a retry cap and called a limitation. | 1.1.11, `post-lint` |
-| UI bugs found by the user; UI "verified" by computed styles and scripted events. | `evidence` (reproduce it as a person would) |
+| UI bugs found by the user; UI "verified" by computed styles and scripted events; a UI change built before browser control was tried. | `evidence` (reproduce it as a person would), `pr-steps approach` |
 | A transport fix opened with Node-script evidence only. | `evidence` (reproduce it as a person would) |
 | A release unlike the maintainer's past releases. | 1.3 precedent |
 | Docs in the agent's voice; repeated "I don't understand"; a coined term. | 1.3, 1.5 |

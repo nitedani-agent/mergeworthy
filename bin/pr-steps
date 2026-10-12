@@ -20,6 +20,13 @@ if [ "$step" = approach ]; then
   rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
   [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 3); find a better candidate or stop" >&2; exit 1; }
+  # browser control is proven before building: a screenshot it took of this app, or why the change has no UI or runtime behavior
+  browser=$(sed -n 's/^[[:space:]]*Browser:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
+  case "$browser" in
+    /*) [ "$(head -c8 "$browser" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || { echo "Browser: $browser is not a PNG file" >&2; exit 1; } ;;
+    "none, because "?*) ;;
+    *) echo "$out has no line 'Browser: <absolute path of a PNG screenshot browser control took of this app on this machine>' or 'Browser: none, because <why this change has no UI or runtime behavior>'. Before building, try browser control on the app's real URL: the session's browser MCP first, then a Chrome or Playwright you launch, accepting the dev host's self-signed or expired certificate (evidence). If none works, stop and tell the user what is missing." >&2; exit 1 ;;
+  esac
   mkdir -p ~/.claude/pr-steps
   echo "approach $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/approach."$key"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"

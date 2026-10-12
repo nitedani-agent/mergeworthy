@@ -39,7 +39,7 @@ These scripts enforce the rules that failed as text alone.
 ### `thread-context` (enforces 1.6 and writing step 0)
 
 `thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
-- It fetches the thread's body, issue comments, PR review comments and review bodies, each with author, time and permalink, and every thread they reference (`owner/repo#N`, bare `#N`, github.com URLs), breadth-first to `--depth`, at most `--max` threads, skipping bots. Threads are cached by `updated_at` under `~/.cache/mergeworthy/threads/`.
+- It fetches the thread's body, issue comments, PR review comments and review bodies, each with author, time and permalink, and every thread they reference (`owner/repo#N`, bare `#N`, github.com URLs), breadth-first to `--depth`, at most `--max` threads, skipping bots.
 - The file holds a header (root, `latest-human-comment`, threads included), a **Decisions and positions** ledger (one line per human comment, not the agent's, with agreement, rejection, proposal or decision language: date, author, tags, quote, permalink), the root's full transcript, then the linked transcripts (first post and last 30 comments). The agent's posts (the `claude.png` badge) are marked `AGENT` and kept out of the ledger.
 - `--latest <repo#N>` prints the latest human comment; `--verify <file> [--target <repo#N>] [--parent <file>]` is what the gate and the guard run.
 
@@ -50,7 +50,7 @@ These scripts enforce the rules that failed as text alone.
 - It checks that the review's final message is exactly `CLEAN`.
 - It records the pass as the draft's sha256 in `<draft>.gate`.
 - A `reply`, `inline` or `proposal` draft needs `thread-context.md` in its folder, newer than its `.parent.md`, recording a latest human comment (`thread-context --verify`).
-- When `thread-context.md` sits beside the draft, it must be older than the draft's last edit, and its hash goes into the gate record; posting refuses a thread context made or regenerated after the gate, so it can't be added just to pass the hook.
+- When `thread-context.md` sits beside the draft, it must be older than the draft's last edit, and its hash goes into the gate record; posting refuses a thread context made or regenerated after the gate.
 - A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
 
 ### `review-context`
@@ -58,8 +58,7 @@ These scripts enforce the rules that failed as text alone.
 `review-context <base-ref> [--max-refs N]` prints, for the symbols a diff changes, who calls them, what they call and which names the diff removes. Run it inside the repo at the head under review and paste its output into the reviewer's prompt; it costs no model tokens.
 - For each changed function, method, class, arrow function, exported const, interface or type it lists the callers grouped by file (test files tagged `[test]`, capped at `--max-refs`, default 15) and the in-repo functions it calls.
 - For each top-level name the diff removes it lists the remaining `git grep` hits at HEAD (dangling callers) under `### removed: name`.
-- It loads the repo's TypeScript, falling back to mergeworthy's own when the repo's has no compiler API (TypeScript 7). It builds one language service per tsconfig, freeing each after use; a small diff on vike takes about 3 s.
-- It never blocks a review: the analysis runs in a child with a 3 GB heap cap and a 60 s limit (`--timeout SECONDS`); on a failure, crash or timeout it prints `review-context: failed (<reason>); no context` and exits 0. Output is capped at about 400 lines.
+- It never blocks a review: on a failure, crash or timeout (60 s, `--timeout SECONDS`) it prints `review-context: failed (<reason>); no context` and exits 0. Output is capped at about 400 lines.
 
 ### `loc-breakdown`
 
@@ -74,14 +73,14 @@ These scripts enforce the rules that failed as text alone.
 ### `pr-steps` (enforces 1.7)
 
 `pr-steps <step> <output>` checks and records one `converge` step on HEAD, one file per step:
-- `approach`: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request`, step 3). Recorded per repo and branch, not per HEAD.
+- `approach`: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 a line `Chosen: <candidate>` rated 7 or more, and a `Browser:` line (`pull-request`, step 3). Recorded per repo and branch, not per HEAD.
 - `verify`: trailing `NO BUGS`.
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge`, step 3).
 - `loopb`: captured final message `CLEAN` (`review`).
 - `fresh`: `MERGE AS IS: yes` and trailing `CLEAN`; keep the posting verdict in a separate file (`converge`, step 4).
 - `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.
 - `gates`: `<command> -> exit 0` lines.
-- `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR are blocked until HEAD has all six and the branch has its `approach` record.
+- `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all six and the branch has its `approach` record.
 
 ## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
 
