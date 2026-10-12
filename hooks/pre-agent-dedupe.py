@@ -5,6 +5,8 @@ One agent per job: a launch is registered under its job key (the ticket files it
 launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import hashlib, json, os, re, sys, time
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import state_file
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -19,10 +21,10 @@ if cid:
         sys.exit(2)
     if register:
         seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
-text = ' '.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'description', 'title'))
+text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'description', 'title'))
 tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
-gate_text = text + ' ' + ' '.join(open(t).read() for t in tickets if os.path.isfile(t))
+gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
     for draft in sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
@@ -33,6 +35,23 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
         if not ok:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
+# A session working from a program state file (core 1.2) names the workstream of every agent it starts, so work the file
+# records as done or replaced isn't started again after a compaction forgot it.
+state = None if register else state_file.used(d)
+if state:
+    named = re.search(r'^\s*State:\s*(.+?)\s*$', gate_text, re.M)
+    ws = state_file.workstreams(state)
+    if not named or named.group(1) not in ws:
+        sys.stderr.write(f"BLOCKED: {'no `State: <workstream>` line in the brief' if not named else f'no workstream {named.group(1)!r} in {state}'}. "
+                         f"Read {state} first: if a workstream there already covers this job, continue it; otherwise add its block. "
+                         f"Then name it in the brief as `State: <workstream>`. Workstreams: {', '.join(ws) or 'none'}.\n")
+        sys.exit(2)
+    status = state_file.field(ws[named.group(1)], 'status')
+    if re.match(r'(done|merged|superseded|dead)\b', status, re.I):
+        sys.stderr.write(f"BLOCKED: workstream {named.group(1)!r} is `{status}` in {state}. Use its result "
+                         f"(evidence: {state_file.field(ws[named.group(1)], 'evidence') or 'none'}) or the workstream that replaced it; "
+                         "new work gets its own block saying why the old result doesn't cover it.\n")
+        sys.exit(2)
 key = ' '.join(tickets) or (str(ti.get('title') or ti.get('description') or '').strip())
 if not key:
     sys.exit(0)

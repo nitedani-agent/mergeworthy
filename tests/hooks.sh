@@ -488,6 +488,61 @@ printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
 check "agent-job done with the full key releases only that job" 1 "$(python3 "$R/bin/agent-job" done '/x/a.md /x/shared.md' >/dev/null; ls "$J"/aj*.json | wc -l)"
 rm -f "$J"/aj*.json
+# ---------- the program state file: session-start loads it, pre-agent-dedupe asks every brief for its workstream, state-reconcile checks it ----------
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+SD="$T/prog"; mkdir -p "$SD"; echo "$SD" > "$HOME/.claude/gh-watch-dirs.txt"
+git init -q -b main "$T/sr-repo"; git -C "$T/sr-repo" commit -q --allow-empty -m init
+git init -q --bare "$T/sr-origin.git"; git -C "$T/sr-repo" remote add origin "$T/sr-origin.git"; git -C "$T/sr-repo" push -q origin main
+git -C "$T/sr-repo" worktree add -q -b feat "$SD/wt"; git -C "$SD/wt" commit -q --allow-empty -m feat
+SH=$(git -C "$SD/wt" rev-parse HEAD); git -C "$SD/wt" push -q origin feat
+echo '{"state":"open","merged":false,"head":{"sha":"'"$SH"'"}}' > "$FX/repos_o_r_pulls_5"
+echo '{"state":"closed","merged":true,"head":{"sha":"'"$SH"'"}}' > "$FX/repos_o_r_pulls_4"
+cat > "$SD/state.md" <<EOF
+# State
+## Goal
+Ship feat.
+## Critical path
+1. feat
+## Workstreams
+### feat build
+- repo: o/r
+- branch: feat
+- worktree: $SD/wt
+- head: ${SH:0:10}
+- pushed: yes
+- PR: o/r#5
+- status: in review
+- next: answer the review
+### old build
+- PR: o/r#4
+- status: done, merged as o/r#4
+- evidence: $SD/old-report.md
+## Decisions
+## Lessons
+EOF
+echo result > "$SD/old-report.md"; touch -d '1 hour ago' "$SD/state.md" "$SD/old-report.md"
+check "state-reconcile: a state.md matching its worktree, origin and PRs has no drift" "0 0 drift items." "$(python3 "$R/bin/state-reconcile" "$SD" >"$T/sr.out"; echo $?) $(sed -n 3p "$T/sr.out")"
+ss_state() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":sys.argv[2]}))' "$1" "$2" | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null; }
+check "session-start prints the state file of the program the cwd works in, framed to load" "1 1 0" "$(ss_state "$SD/wt/sub" startup > "$T/ss.out"; grep -c '^IMPORTANT: The program state file' "$T/ss.out") $(grep -c '^### feat build' "$T/ss.out") $(grep -c 'state-reconcile' "$T/ss.out")"
+check "after a compaction it also says to run state-reconcile" 1 "$(ss_state "$SD/wt" compact | grep -c "just compacted: run \`state-reconcile $SD\`")"
+st_tr() { python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":sys.argv[1]}}]}}))' "$1" > "$T/st.jsonl"; }
+st_launch() { # cwd task: the session's transcript read the state file
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2" "$T/st.jsonl" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+st_tr "$SD/state.md"
+check "BLOCK: a session that read its state file starts an agent with no State line" "2 1" "$(st_launch "$T" 'Implement the cache fix') $(grep -c 'Workstreams: feat build, old build' "$T/err")"
+check "BLOCK: a State line naming no workstream in the file" 2 "$(st_launch "$T" $'Implement the cache fix\nState: cache fix')"
+check "BLOCK: a State line naming a done workstream (its result exists)" "2 1" "$(st_launch "$T" $'Redo the old build\nState: old build') $(grep -c "evidence: $SD/old-report.md" "$T/err")"
+check "a State line naming a live workstream passes" 0 "$(st_launch "$T" $'Answer the review\nState: feat build')"
+check "a session in the program's worktree is held to it without reading the file" 2 "$(st_tr /elsewhere; st_launch "$SD/wt" 'Answer the review again')"
+check "a session that never used a state file launches freely" 0 "$(st_launch "$T" 'Look up something')"
+git -C "$T/sr-repo" worktree add -q -b stray "$T/stray"; git -C "$SD/wt" commit -q --allow-empty -m local
+echo '{"state":"open","merged":false,"head":{"sha":"'"$SH"'"}}' > "$FX/repos_o_r_pulls_4"
+echo result > "$SD/finality-report.md"; rm "$SD/old-report.md"
+mkdir -p "$HOME/.claude/projects/p"; python3 -c 'import json,sys,datetime; t=datetime.datetime.now(datetime.timezone.utc).isoformat(); print(json.dumps({"type":"user","timestamp":t,"message":{"content":"Use the gated build, never redo it "+sys.argv[1]}}))' "$SD" > "$HOME/.claude/projects/p/s.jsonl"
+check "state-reconcile lists each drift and exits 1" "1 5" "$(python3 "$R/bin/state-reconcile" "$SD" >"$T/sr.out"; echo $?) $(grep -cE 'feat build: worktree head is|old build: o/r#4 is still open|old build: evidence .* is missing|stray\) of .* is in no workstream|finality-report.md .* is newer than state.md' "$T/sr.out")"
+check "state-reconcile lists the user's messages since its last run, with their offset" 1 "$(grep -cE '^- [0-9-]+T[0-9:]+[+-][0-9:]+: Use the gated build' "$T/sr.out")"
+check "the next run lists only newer messages" 0 "$(python3 "$R/bin/state-reconcile" "$SD" | grep -c 'Use the gated build')"
 check "agent-job lists jobs with the id file present" 0 "$(python3 "$R/bin/agent-job" list >/dev/null 2>&1; echo $?)"
 # a gate review starts only on a draft that passed post-lint in its current form
 mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"

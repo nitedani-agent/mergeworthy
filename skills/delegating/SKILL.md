@@ -26,7 +26,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 - **The main session never waits in the foreground.** No sleep loop on an agent's files or a review: agents and background commands notify you, so delegate the work and answer threads meanwhile.
 - **Every background job has a liveness check** (output size or log mtime). Check it at 2 minutes and at every wakeup; five minutes without output means investigate now. Never report "dispatched" or "armed" as progress.
 - **Relay every agent report.** When an agent reports, relay the result to the user and act on it; the user never sees the agent's report.
-- **Taking over another session's work starts with its state,** re-checked on the current head. Re-run each claim in the open PR's body (checks, e2e, screenshots), and list each owed reply. That state is the first answer to "done?", and the work continues from what failed.
+- **Taking over another session's work starts with its state** (`state.md`, `core` 1.2), re-checked on the current head. Re-run each claim in the open PR's body (checks, e2e, screenshots), and list each owed reply. That state is the first answer to "done?", and the work continues from what failed.
 
 ### Choosing the model
 

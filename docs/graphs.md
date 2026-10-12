@@ -529,35 +529,38 @@ flowchart TB
   subgraph g6["loc-breakdown"]
     s6["loc-breakdown"]
   end
-  subgraph g7["The finality trigger"]
-    s7["The finality trigger"]
+  subgraph g7["state-reconcile"]
+    s7["state-reconcile"]
   end
-  subgraph g8["pr-steps"]
-    s8["pr-steps"]
+  subgraph g8["The finality trigger"]
+    s8["The finality trigger"]
   end
-  subgraph g9["The watcher daemon"]
-    s9["The watcher daemon"]
+  subgraph g9["pr-steps"]
+    s9["pr-steps"]
   end
-  subgraph g10["Hooks"]
-    s10["Hooks"]
+  subgraph g10["The watcher daemon"]
+    s10["The watcher daemon"]
   end
-  subgraph g11["pre-bash-guard.py"]
-    s11["pre-bash-guard.py"]
+  subgraph g11["Hooks"]
+    s11["Hooks"]
   end
-  subgraph g12["post-bash-register.py"]
-    s12["post-bash-register.py"]
+  subgraph g12["pre-bash-guard.py"]
+    s12["pre-bash-guard.py"]
   end
-  subgraph g13["stop-lint.py"]
-    s13["stop-lint.py"]
+  subgraph g13["post-bash-register.py"]
+    s13["post-bash-register.py"]
   end
-  subgraph g14["session-start"]
-    s14["session-start"]
+  subgraph g14["stop-lint.py"]
+    s14["stop-lint.py"]
   end
-  subgraph g15["pre-skill-gate.py"]
-    s15["pre-skill-gate.py"]
+  subgraph g15["session-start"]
+    s15["session-start"]
   end
-  subgraph g16["netns-run"]
-    s16["netns-run"]
+  subgraph g16["pre-skill-gate.py"]
+    s16["pre-skill-gate.py"]
+  end
+  subgraph g17["netns-run"]
+    s17["netns-run"]
   end
   start --> g0
   g0 ~~~ g1
@@ -576,4 +579,5 @@ flowchart TB
   g13 ~~~ g14
   g14 ~~~ g15
   g15 ~~~ g16
+  g16 ~~~ g17
 ```

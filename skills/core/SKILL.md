@@ -50,7 +50,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     Then write one line starting `GENUINE-FORK:` with the options and your recommendation, and continue with everything else. If nobody answers by the time you need the answer, take your recommendation and say so, unless an option regresses against `main` (a slower or costlier benchmark cell, a lost behavior): that is not a fork to default on but a design that isn't done, so keep looking for the option without the regression. Ask in plain text, never in a modal pop-up, and only after re-reading every message the user sent since your last reply; if they already answered, don't ask.
 4. **Every user message gets answered, first.** At each turn, list the user's messages since your last reply, including ones typed while you worked. Handle every one before ending the turn.
     - **Questions:** answer each before status (`writing`, Reports to the user). A question that needs investigation goes on `questions-owed.md` with an ETA.
-    - **Keep `user-asks.md` at the artifact root** in a long session: each question and standing instruction ("how to behave") the user gave, open or done. Read it before every reply; a long session forgets what only lives in the chat.
+    - **Keep each question and standing instruction** ("how to behave") the user gave, open or done, in `state.md`'s Goal (1.2). Read it before every reply; a long session forgets what only lives in the chat.
     - **How-to instructions** are done right away, as given. Try another way only after the given way fails, and quote the failure.
     - **User decisions stay decided.** Mark a setting or design the user decided where it lives (`# user decision YYYY-MM-DD: <what, why>`); a session that never saw the decision reads the marker, not the chat. If you find a problem with the decision, keep it and report the problem with evidence.
     - **A broken premise** (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
@@ -146,6 +146,11 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Record exit codes (`EXIT=$?`) and quote them, never a log tail.
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
+- **`state.md` in the artifact root** carries a session past compactions and days, from its first compaction or second workstream on (Tier L: from the start). `session-start` loads it into every session and compaction; answer every status question from it.
+    - Sections: `## Goal` (the goal, the user's rulings and questions, dated), `## Critical path` (in order), `## Workstreams`, `## Decisions`, `## Lessons`. Times carry their offset (`date -Iminutes`).
+    - One `### <workstream>` block per job: `- repo:`, `- branch:`, `- worktree:`, `- head:`, `- pushed:`, `- PR: owner/repo#N`, `- status:` (`done`, `SUPERSEDED by <workstream>`, `DEAD: <why>`, else where it stands), `- evidence:` (the report file), `- next:`.
+    - Update it in the same step as each agent result, push, post or ruling. Every agent brief names its block (`State: <workstream>`); `pre-agent-dedupe` blocks a launch without one, or of a closed workstream.
+    - Run `state-reconcile <artifact root>` after each compaction and daily (T3 Code: `schedule_task`; elsewhere cron), and fold each drift and user message it lists into the file.
 - **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` (with the critical-path and feature list) and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
 - **Tier M:** keep these files:
     - `ledger.md`: one row per event (time | unit | event | head SHA | result). Events are each pass, round, fix with its commits, gate or lane run with its exit status, push, and CI result. Head it with the ordered work and passes still owed (1.1.1). Answer every status and convergence question from the ledger, skipped steps included.

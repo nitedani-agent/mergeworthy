@@ -66,6 +66,10 @@ These scripts enforce the rules that failed as text alone.
 - Docs (one row, one number), Tests, Lockfile and Generated are separate rows and not features; docs, tests and lockfiles are recognized by path, and the map can assign any path to those names.
 - It exits 1 and lists the lines when a changed line is in no entry or in two, so the totals equal `git diff --numstat`. `post-lint` doesn't count the table in a PR's word budget.
 
+### `state-reconcile` (enforces 1.2)
+
+`state-reconcile <artifact root>` checks `state.md` against the ground truth and lists each drift: a worktree's head or branch, the pushed head (`git ls-remote`), a PR's state and head, a missing evidence file, a worktree of a listed repo in no block, a report newer than `state.md` that it doesn't name, and the user's messages since the last run (from the transcripts naming the root). It writes the list to `state-reconcile.md` and exits 1 on drift.
+
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`finality`, When to run it) and update the thread's WIP comment from it (`github-threads`).
@@ -141,7 +145,7 @@ It skips its watcher checks while the user's last message says "pause". Each tur
 
 ### `session-start` (enforces the always-on rules)
 
-It puts the always-on rules into context and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
+It puts the always-on rules into context, then the `state.md` of the watch dir holding the cwd or naming a path holding it, else the newest one (after a compaction, with the order to run `state-reconcile`), and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
 ### `pre-skill-gate.py` (enforces always-on rule 1)
 
@@ -154,7 +158,7 @@ It blocks an action until every skill its always-on row names was opened with th
 
 Read-only commands pass. A row added to `always-on.md` fails `tests/hooks.sh` until the hook's table gates it or lists it as ungated.
 
-**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. Read a terminal task’s result, then release it with `agent-job done <ticket>` (`delegating` 1.10).
+**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. A session working from a `state.md` (its cwd is in the program, or it read the file) needs a `State: <workstream>` line naming a live block of it. Read a terminal task’s result, then release it with `agent-job done <ticket>` (`delegating` 1.10).
 
 ### `netns-run`
 
