@@ -98,6 +98,11 @@ for m in re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
 for m in re.finditer(r'^\s*[-*]\s+\*\*[^*\n]+\*\*:?\s+([^\n]*)$', prose, flags=re.M):
     if len(m.group(1).split()) < 6 and m.group(1).rstrip().endswith('.'):
         findings.append(f"a bold label with a fragment ({m.group(0).strip()[:60]!r}): write it as a full sentence")
+# A paragraph opening with a bold label ("**Problem.**", "**Fix:**") reads as a report, not as the account owner talking (writing 1.11)
+if kind != 'tracker':
+    for m in re.finditer(r'^\*\*([^*\n]{1,40}?)[.:]\*\*[ \t]+\S', prose, flags=re.M):
+        if len(m.group(1).split()) <= 4 and not m.group(1).strip().isdigit():
+            findings.append(f"a paragraph opening with a bold label ({m.group(0).strip()[:40]!r}): say it the way you would to a colleague")
 # A label and a colon opening a sentence ("Done: …", "One change I didn't make: …") reads as a report line, not a person (writing 1.11)
 if kind in ('reply', 'inline', 'proposal', 'issue'):
     for m in re.finditer(r"(?:^|(?<=[.!?]\s))([A-Z][^:\n.!?`|*]{0,50}?):[ \t]+(?=\S)", prose, flags=re.M):
