@@ -189,6 +189,19 @@ grep -o 'records the latest comment.*' "$T/err" | sed "s#$T#<T>#g; s/ (mergewort
 check "BLOCK: a thread-context.md regenerated after the gate needs a new review" 2 "$(tcguard)"
 sha256sum "$TD/r.md" | cut -d' ' -f1 > "$TD/r.md.gate"; tcbind "$TD/r.md"
 check "the regenerated thread-context.md passes once gated again" 0 "$(tcguard)"
+# the .posted marker: written once the post succeeded (PostToolUse), so a post another hook blocked, or that failed, can be retried
+postreg() { # tool_response json: post-bash-register after `gh issue comment 41 ... --body-file $TD/r.md`
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1],"tool_response":json.loads(sys.argv[3])}))' "$T" "$TD/r.md" "$1" \
+    | python3 "$R/hooks/post-bash-register.py"; [ -f "$TD/r.md.posted" ] && echo marker || echo none; }
+check "a post the guard let through but that never ran (blocked by another hook) leaves no marker" none "$([ -f "$TD/r.md.posted" ] && echo marker || echo none)"
+check "a failed post leaves no marker" none "$(postreg '"Error: Exit code 1\ngh: Not Found (HTTP 404)"')"
+check "an interrupted post leaves no marker" none "$(postreg '{"stdout":"","stderr":"","interrupted":true}')"
+check "a successful post writes the marker" marker "$(postreg '{"stdout":"https://example.invalid/c","stderr":"","interrupted":false}')"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh issue comment 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
+check "BLOCK: the same draft posted again as new" 2 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>"$T/err"; echo $?)"
+grep -c 'was already posted' "$T/err"
+python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr edit 41 --repo o/r --body-file "+sys.argv[2]},"cwd":sys.argv[1]}))' "$T" "$TD/r.md" > "$T/in.json"
+check "an edit from a posted draft may repeat" 0 "$(python3 "$R/hooks/pre-bash-guard.py" < "$T/in.json" 2>/dev/null; echo $?)"
 touch -d '+1 minute' "$TD/r.parent.md"
 check "BLOCK: older than the comment the draft answers" 2 "$(tcguard)"
 rm "$TD/r.parent.md"

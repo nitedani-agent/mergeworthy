@@ -1,5 +1,5 @@
-"""Shell command parsing shared by the Bash hooks (pre-bash-guard, pre-skill-gate)."""
-import re, shlex
+"""Shell command parsing shared by the Bash hooks (pre-bash-guard, pre-skill-gate, post-bash-register)."""
+import os, re, shlex
 
 
 def segments(cmd):
@@ -58,3 +58,17 @@ def api_call(rest):
     else:
         posts = method in ('POST', 'PATCH', 'PUT') and not re.search(r'/(reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(/|$|\?)', ep)
     return method, ep, fields, inputs, posts
+
+def new_post_drafts(t):
+    """Draft files a gh argv posts as something new (an issue, PR, comment or review): each draft is posted as new once, edits may repeat."""
+    t = prog(t)
+    if not t or os.path.basename(t[0]) != 'gh' or '--help' in t or '-h' in t:
+        return []
+    a = t[1:]
+    if a[:1] in (['issue'], ['pr']) and a[1:2] and a[1] in ('comment', 'create', 'review'):
+        return opt(a[2:], ['--body-file', '-F'])
+    if a[:1] == ['api']:
+        method, _, _, inputs, posts = api_call(a[1:])
+        if posts and method == 'POST':
+            return [v[len('body=@'):] for v in opt(a[1:], ['-F', '--field']) if v.startswith('body=@')] + inputs
+    return []

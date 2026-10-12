@@ -1,43 +1,15 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of the posting session's watcher, else of the one that covers its repo, else of the first live
-watcher, so maintainer comments on it are answered (mergeworthy:github-threads)."""
-import json, os, re, shlex, sys, time
+watcher, so maintainer comments on it are answered (mergeworthy:github-threads). A gated draft it posted as new gets its
+.posted marker, which pre-bash-guard reads to refuse posting it as new again."""
+import hashlib, json, os, re, sys, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from shellcmd import segments, prog, new_post_drafts
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
 out = r.get('stdout', '') if isinstance(r, dict) else str(r)
-
-def segments(cmd):  # copied from pre-bash-guard.py, which can't be imported (it reads stdin at import)
-    """Token lists of the simple commands in cmd. Heredoc bodies are dropped; quotes are resolved by shlex."""
-    cmd = re.sub(r'\\\n', ' ', cmd)
-    lines, out, term = cmd.split('\n'), [], None
-    for l in lines:
-        if term is not None:
-            if l.strip() == term: term = None
-            continue
-        h = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", l)
-        if h: term = h.group(1)
-        out.append(l)
-    segs = []
-    for l in out:
-        lx = shlex.shlex(l, posix=True, punctuation_chars=';&|<>()')
-        lx.whitespace_split = True
-        cur = []
-        for tok in lx:  # raises ValueError on unbalanced quotes
-            if tok and set(tok) <= set(';&|()'):
-                if cur: segs.append(cur)
-                cur = []
-            else:
-                cur.append(tok)
-        if cur: segs.append(cur)
-    return segs
-
-def prog(t):  # copied from pre-bash-guard.py
-    """Drop env assignments and wrappers; return the command's argv."""
-    while t and (re.match(r'^\w+=', t[0]) or t[0] in ('sudo', 'env', 'command', 'time', 'exec', 'nohup')):
-        t = t[1:]
-    return t
 
 def target(t):
     """(repo or None, number or None) a posting gh argv writes to; None when the argv doesn't post.
@@ -64,16 +36,28 @@ def target(t):
     return None
 
 try:
-    targets = [x for x in (target(s) for s in segments(cmd)) if x]
+    segs = segments(cmd)
 except ValueError:
     sys.exit(0)
+# Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
+if isinstance(r, dict) and not r.get('interrupted'):
+    for s in segs:
+        for f in new_post_drafts(s):
+            f = os.path.join(d.get('cwd') or os.getcwd(), os.path.expandvars(os.path.expanduser(f)))
+            try:
+                sha = hashlib.sha256(open(f, 'rb').read()).hexdigest()
+                if open(f + '.gate').read().split('\n')[0].strip() == sha:
+                    open(f + '.posted', 'w').write(sha)
+            except OSError:
+                pass
+targets = [x for x in (target(s) for s in segs) if x]
 if not targets:
     sys.exit(0)
 def posted(repo, num):  # a URL in stdout counts only when it is the thread a posting segment wrote to
     return any((tr is None or tr == repo) and (tn is None or tn == num) for tr, tn in targets)
 # The agent and the user may share one login, so the watcher knows a comment is the agent's by its body's hash.
 # `gh --attach` rewrites the body as it posts, so register the body that was actually posted, not only the draft's.
-import hashlib, subprocess
+import subprocess
 def register_posted(out):
     gated = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))
     for repo, num, kind, cid in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)(?:#(issuecomment|discussion_r)-?(\d+))?', out):
@@ -93,7 +77,7 @@ def body_files(t):
     a = prog(t)
     return [a[i + 1] for i in range(len(a) - 1) if a[i] in ('--body-file', '-F', '--field', '--input')] + \
         [x.split('=', 1)[1] for x in a if x.startswith('--body-file=')]
-for s in segments(cmd):
+for s in segs:
     tg = target(s)
     if not tg or not tg[0] or not tg[1]:
         continue

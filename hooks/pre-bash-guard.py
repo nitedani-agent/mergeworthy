@@ -4,7 +4,7 @@ Checks each simple command separately (split at ; && || | & and newlines, heredo
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import segments, prog, opt, api_call
+from shellcmd import segments, prog, opt, api_call, new_post_drafts
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -55,11 +55,10 @@ def gated_file(p, has_cd, create=False):
     sha = hashlib.sha256(open(p, 'rb').read()).hexdigest()
     if sha != open(gate).read().split('\n')[0].strip():
         block(f"{p} changed after its gate: review it again and re-run gate-pass")
-    if create:  # a new comment/issue/PR from this exact draft: only once (edits may repeat)
+    if create:  # a new comment/issue/PR from this exact draft: only once (edits may repeat); post-bash-register writes .posted once it succeeded
         posted = p + '.posted'
         if os.path.exists(posted) and open(posted).read().strip() == sha:
-            block(f"{p} was already posted: edit that post instead (PATCH / gh … edit); if the earlier post failed, delete {posted}")
-        open(posted, 'w').write(sha)
+            block(f"{p} was already posted: edit that post instead (PATCH / gh … edit)")
 
 def check_commit_identity(overrides, git_dir):
     """Commits are authored as the GitHub account that pushes them, never the global git identity (a user checkout's worktrees share its config)."""
@@ -290,7 +289,7 @@ def check(t, has_cd):
             if sub != 'create':
                 r_ = (opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir)
                 check_context(next((thread_of_ref(r_, x) for x in rest if x.isdigit() or 'github.com/' in x), None), files)
-            for f in files: gated_file(f, has_cd, create=sub in ('comment', 'create', 'review'))
+            for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]
         method, ep, fields, inputs, posts = api_call(rest)
@@ -314,7 +313,7 @@ def check(t, has_cd):
                 n_ = re.search(r'/(\d+)\s*$', r_.stdout) if r_.returncode == 0 else None
                 thread = f'{c_.group(1)}#{n_.group(1)}' if n_ else None
         check_context(thread, bodies + inputs)
-        for f in bodies + inputs: gated_file(f, has_cd, create=method == 'POST')
+        for f in bodies + inputs: gated_file(f, has_cd, create=f in new_post_drafts(t))
 
 try:
     segs = segments(cmd)
