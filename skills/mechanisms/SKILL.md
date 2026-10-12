@@ -80,7 +80,7 @@ These scripts enforce the rules that failed as text alone.
 - `fresh`: `MERGE AS IS: yes` and trailing `CLEAN`; keep the posting verdict in a separate file (`converge`, step 4).
 - `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.
 - `gates`: `<command> -> exit 0` lines.
-- `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all six and the branch has its `approach` record.
+- `gh pr create`/`glab mr create`, `gh pr ready`/`glab mr update --ready` and a push to a ready PR need the branch's `approach` record and all six on HEAD; a `--draft`/`--wip` needs only the approach.
 
 ## The watcher daemon: `watcher/gh-watch.py` (enforces 1.5)
 

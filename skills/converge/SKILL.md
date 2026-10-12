@@ -13,7 +13,7 @@ Converging a pull request means working it to a final state: no reviewer, agent 
 
 ### The pipeline
 
-Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse `gh pr create` (unless `--draft`), `gh pr ready` and a push to a ready PR until the final head has all six and the branch has its `approach` record (`pull-request` step 3; recorded once per branch, not per head). A head that changes afterwards re-runs and re-records the steps it re-opens.
+Converged means every step below is done **on the final head**. A step that leaves no record can't be told from a skipped one, so each ends with its `pr-steps` line; the hooks refuse a draft `gh pr create` until the branch has its `approach` record (`pull-request` step 3, once per branch); a ready create, `gh pr ready` and a push to a ready PR also need all six on the final head. A head that changes afterwards re-runs and re-records the steps it re-opens.
 
 **Converge per push, not per commit.** Agent runs cost the user's subscription, so spend them where they can still find something.
 - **Batch:** collect the commits a round of review or a maintainer's ask produces, and converge the batch once, right before its push. A maintainer's commits get one `github-threads` 1.5 review once they stop.
