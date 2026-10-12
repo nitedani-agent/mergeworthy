@@ -562,6 +562,19 @@ check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS'
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research on a topic nothing covers passes" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
+# pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
+git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
+alive() { # task [transcript_path]
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50]}}))' "$OC" "$1" "${2:-}" \
+    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+(cd "$T/aw/src" && exec sleep 600) & APID=$!; sleep 0.2
+check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "Run e2e in $T/aw/src") $(grep -c "$APID (sleep)" "$T/err")"
+kill $APID; wait $APID 2>/dev/null
+echo "{\"cwd\":\"$T/aw\"}" > "$AD/agent.jsonl"
+check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AD/agent.jsonl" "$T/err")"
+check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AD/agent.jsonl")"
+touch -d '10 minutes ago' "$AD/agent.jsonl"
+check "a worktree with no process and only an old transcript passes" 0 "$(alive "Run e2e in $T/aw again")"
 # stop-lint: a Running list is read live from T3 and names no finished task
 rl_tr() { # final-text then status events: status:<s> (a task_status read) | user
   python3 - "$T/tr.jsonl" "$@" <<'EOF'

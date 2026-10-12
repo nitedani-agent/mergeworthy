@@ -159,7 +159,7 @@ It blocks an action until every skill its always-on row names was opened with th
 
 Read-only commands pass. A row added to `always-on.md` fails `tests/hooks.sh` until the hook's table gates it or lists it as ungated.
 
-**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It blocks a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list, and, in an orchestrator's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the artifact root not named in a `Checked:` line.
+**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It blocks a brief naming a linked worktree (not the launcher's own) that a process has as its cwd or an agent transcript written in the last five minutes names, and one pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list, and, in an orchestrator's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the artifact root not named in a `Checked:` line.
 
 ### `netns-run`
 

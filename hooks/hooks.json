@@ -30,7 +30,7 @@
         ]
       },
       {
-        "matcher": "^(Agent|Task|mcp__.*delegate_task)$",
+        "matcher": "^(Agent|Task|mcp__.*(delegate_task|t3_thread_launch))$",
         "hooks": [
           {
             "type": "command",
