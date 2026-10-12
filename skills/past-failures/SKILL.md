@@ -48,7 +48,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Choices handed back that we could settle. | 1.6, `post-lint` |
 | A design credited to the maintainer who couldn't recall it. | `writing` credit |
 | Review reports and raw rater output posted on PRs. | `writing` process invisible, `post-lint` |
-| Over-engineering the maintainer cut (long collision checks, a tiny cache, rare-case docs, lookup tests); the maintainer cut most submitted test lines. | 1.1.15, 1.1.16 |
+| Over-engineering the maintainer cut (long collision checks, a tiny cache, rare-case docs, lookup tests, most test lines, planner hints after a 250× index fix). | 1.1.15, 1.1.16 |
 | A 100-line feature with no user. | 1.1.16 feature list |
 | Five new core hooks where an existing extension point sufficed; a diff viewer the named project already had, rewritten; a "reference" project imported. | 1.4 step 0, 1.3, 1.1.8 |
 | A panel shipped unreadable. A browser extension went through 30 tickets passing its own frame timings and the orchestrator's glance at 1280 px screenshots. In the user's Chrome, every page still popped in and shifted, and Octave's layers added noise. | 1.1.11 (fresh reviewer, whole page, screencast) |

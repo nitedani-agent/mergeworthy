@@ -82,7 +82,6 @@ Run every PR through bug verification, code review and a fresh read on the final
 9. **Respect decision authority.** Record each maintainer request with its link and date. Do it as asked, or ask back with a recommendation; never decide otherwise and inform. A security or bug fix closes only the hole: a change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision, so it goes to its own decision issue (`open-issue`), not into the fix.
     - The newest statement on a subject wins. Re-read the thread before citing anyone.
     - "The rest LGTM" agrees to every unquestioned proposal in the comment it answers: record those proposals as agreed and start.
-    - Answer a question before treating it as a decision (`github-threads` 1.5 step 2).
 10. **Names match behavior; no invented options.** Every new public name gets a one-line "name → what it does in every case" check. A new option needs a named user scenario that can't be served without it.
 11. **No regressions, no artificial limits.** Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation. So is a cap our own design creates (a retry budget, one lock every writer shares) that makes realistic use fail: redesign so it succeeds. A real limit is imposed from outside, and its note names the source.
     - So is every row of your own comparison where the head is worse than the run-to-run spread.
@@ -92,7 +91,7 @@ Run every PR through bug verification, code review and a fresh read on the final
       - every buffer has a cap, including an unread `tee()` or `clone()` branch;
       - listeners, timers and readers are released on every exit path, and what the code still needs is held by more than a listener;
       - a stream is read once, or copied before its first read.
-    - Probe each on every runtime the code ships to: cancel mid-stream from each end, a body past runtime caps (Node: 1 GiB) into a slow consumer, listener counts after many requests. Deterministic probes (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than the spread is fixed or reverted, never called a trade-off without the user's OK.
+    - Probe each on every runtime the code ships to: cancel mid-stream from each end, a body past runtime caps (Node: 1 GiB) into a slow consumer, listener counts after many requests. Deterministic probes (memory bound, listener or request count) become tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than `main` beyond the spread is fixed or reverted, never called a trade-off without the user's OK.
     - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count. New UI ships after a fresh reviewer, never the orchestrator, passes its screenshot's hierarchy and noise. The screenshot must be the whole page at the user's real viewport, with real data. For a product that changes how pages load, judge the whole page as the user sees it: record a screencast from navigation to settled, then count every visible pop-in and shift, GitHub's own included. Never judge by how fast your own pieces are ready.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure ("why didn’t you…?" or "why are you not…?" about something already required), give one line of why, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
@@ -121,7 +120,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - **How likely does a real user hit it, and what happens then?** A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root (1.1.6).
     - **What does `main` do for the analogous case?** Add guards, asserts and caches only where `main` has an analogous one.
     - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
-    - **Would the maintainer write it?** Lean code, no special-casing, no caches that save milliseconds, tests and docs per 1.1.16.
+    - **Would the maintainer write it?** Lean code, no special-casing, tests and docs per 1.1.16. Performance work stops at the plainest conventional code winning the order of magnitude; more shaving (planner hints, caches, odd query or code shapes) waits for the user's ask.
 
     It judges findings and patches, never the shape of a design (`design-loop`).
 
