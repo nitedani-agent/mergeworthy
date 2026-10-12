@@ -219,6 +219,16 @@ def check_compose(env, t):
               "(`ports: !override [\"<container port>\"]` for Docker-assigned ports, found with `docker compose port <svc> <port>`; `ports: !reset []` where the host needs none; "
               "`container_name: !reset null`) (mergeworthy:core 1.8). Only when the user asked for the stack on its usual ports: prefix MERGEWORTHY_HOST_PORTS=user-asked")
 
+def under_t3():
+    """The session's claude process was started by T3 Code with T3's MCP server: its delegate_task runs other providers' agents."""
+    pid = os.getppid()
+    while pid > 1:
+        ppid, _, args = subprocess.run(['ps', '-o', 'ppid=,args=', '-p', str(pid)], capture_output=True, text=True).stdout.strip().partition(' ')
+        if os.path.basename(args.split(' ', 1)[0]) == 'claude':
+            return '"t3-code"' in args
+        pid = int(ppid or 0)
+    return False
+
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
@@ -226,6 +236,14 @@ def check(t, has_cd):
     t = prog(t)
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
+    if p in ('bash', 'sh', 'zsh'):  # bash -c '<script>' / -lc: its commands are checked too
+        script = next((a[i + 1] for i in range(len(a) - 1) if re.fullmatch(r'-\w*c\w*', a[i])), None)
+        try: inner = segments(script) if script else []
+        except ValueError: inner = [script.split()]
+        for s in inner: check(s, has_cd)
+    if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
+        block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
+              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:review)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):

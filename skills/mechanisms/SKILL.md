@@ -119,6 +119,7 @@ It blocks:
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (1.7);
 - `docker compose up` (or `run --service-ports`) publishing a fixed host port or a `container_name`, unless prefixed `MERGEWORTHY_HOST_PORTS=user-asked`;
+- `codex exec` when T3 Code started the session (`review`: `delegate_task`);
 - `pkill -f` and `killall`;
 - `kill` of a running agent's process (a `claude … stream-json` session): stop an agent through its task, after reading its status;
 - a foreground wait loop (`until`/`while` with `sleep`); run it with `run_in_background` or rely on the completion notification;

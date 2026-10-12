@@ -85,6 +85,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | Asked an upstream maintainer for a release two hours after a review ping, while the Vike PR that would use it wasn't merged; the user: "Don't ping magne too much unless it's really blocking you." | `github-threads` 1.5, The wait ping (blocking means now) |
 | A decision issue recommended the smallest change over the option users want. | `mergeworthy:writing`, How a good colleague writes (recommendations) |
 | Agents taken for dead when their turn ended, retried and killed; the orchestrator blocked on wait loops. | 1.10, `pre-agent-dedupe`, `agent-job`, `pre-bash-guard` |
+| Under T3 Code, Codex reviews ran as `codex exec` in a shell, invisible to the user. | `review` (start it in the orchestrator), `pre-bash-guard` |
 | Design-thread replies chased the latest comment, flipped without evidence, argued from execution cost and left invariants open (the user's too). | `writing` (Design threads), `github-threads` 1.5 step 3, `finality`, `design-loop` (end state first) |
 | Replies read like reports: label lines ("Two decisions:"), options described in words instead of code, a bug backlog sent as "holes". | `writing` (draft by talking; the reply that carries the load) |
 | A reply to a maintainer was drafted from the agent's memory or a session summary and misstated who agreed to what; the full record also bloats the main session until compaction drops it. | `writing` step 0 (a drafter subagent reads `thread-context.md`), `thread-context`, `gate-pass`, `pre-bash-guard` |

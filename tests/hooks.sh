@@ -602,6 +602,21 @@ touch "$T/pf.png"; check "a PNG the browser MCP just took records" 0 "$(pf "$T/p
 git -C "$P" checkout -q -b docs
 check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"
 check "an edit passes after it" 0 "$(pfedit "$P/a.ts")"
+# ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
+# the hook's nearest `claude` ancestor is the session; T3 starts it with its MCP server in --mcp-config
+cx() { # <mcp config> <command>: the guard run under a claude process given that config
+  (exec -a claude "$(python3 -c 'import sys; print(sys.executable)')" -c 'import json, subprocess, sys
+r = subprocess.run(["python3", sys.argv[4]], input=json.dumps({"tool_input": {"command": sys.argv[3]}, "cwd": sys.argv[5]}), capture_output=True, text=True)
+print(r.returncode)' --mcp-config "$1" "$2" "$R/hooks/pre-bash-guard.py" "$T")
+}
+T3CFG='{"mcpServers":{"t3-code":{"type":"http","url":"http://127.0.0.1:3774/mcp"}}}'
+check "BLOCK: codex exec under T3" 2 "$(cx "$T3CFG" 'codex exec -m m -o /tmp/o "$(cat /tmp/p)" < /dev/null')"
+check "BLOCK: codex exec resume under T3" 2 "$(cx "$T3CFG" 'codex exec resume -c sandbox_mode=x abc "more"')"
+check "BLOCK: codex exec through bash -c under T3" 2 "$(cx "$T3CFG" "bash -lc 'cd /tmp && FOO=1 codex exec hi'")"
+check "BLOCK: codex exec inside \$(...) under T3" 2 "$(cx "$T3CFG" 'out=$(codex exec hi)')"
+check "codex exec without T3 (a terminal session) passes" 0 "$(cx '{"mcpServers":{}}' 'codex exec -m m hi')"
+check "codex exec through bash -c without T3 passes" 0 "$(cx '{"mcpServers":{}}' "bash -c 'codex exec hi'")"
+check "codex login under T3 passes" 0 "$(cx "$T3CFG" 'codex login status')"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
 (cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null)

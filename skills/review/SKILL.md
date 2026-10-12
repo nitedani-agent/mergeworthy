@@ -7,7 +7,11 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 **Every independent review picks its reviewer in this order.** That covers the posting gate (1.6), the PR review round below, a standalone review, and the fresh reader of a PR's final head (`converge`). The loop agents, the PR review round included, run on the session's tier (`delegating`).
 
-1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session. Under an orchestrator that spawns other providers' agents (T3 Code's `delegate_task`), start it there, on the highest provider model allowed by `core`’s model authorization limits, so the run is tracked, notifies you and can be cancelled; the prompt names the output file. Elsewhere:
+1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session, on the highest provider model `core`’s model authorization limits allow. Start it through the orchestrator, so it is tracked, notifies you and can be cancelled; in T3 Code, one `delegate_task` per round, the model from `orchestrator_capabilities`:
+   ```json
+   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>"}, "clientRequestId": "<review>-<round>"}
+   ```
+   Without orchestrator tools:
    ```bash
    codex exec -m "$(codex-review-model)" --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null
    ```
@@ -17,11 +21,11 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 After the review:
 - Send fixes to the same reviewer and start a fresh one only when the artifact changes beyond them or needs a final cold read (`delegating`, One run).
 - **A failure is not a review.** An error, a hang or "out of credits" counts as no review.
-- **Record which reviewer ran.** On Tier ≥ M work, re-review on the other company's model once it's back.
+- **Record which reviewer ran,** and what it found, in the ledger (1.2). On Tier ≥ M work, re-review on the other company's model once it's back.
 
 **The prompt is a file.** It holds the charter: the gate's checks in 1.6, the reviewer charter below, `guardian`'s charter or `refactor`'s prompt. Read the artifact at the brief’s pinned SHAs (`delegating` 1.10), with one sentence on what it claims to do. For a code change it also holds the output of `review-context <base>` (`mechanisms`), run at the head: who calls each changed symbol, what it calls, and which removed names are still used. Give the reviewer facts and questions, never a desired verdict (`delegating` 1.10). The posting-gate prompt also names the draft folder's `thread-context.md`: the reviewer checks every attribution (who said, proposed or agreed what) against its permalinks, and an unsupported one is a finding.
 
-**The reviewer's final message is exactly `CLEAN`, or the findings (past 15 lines, in the output file).** One run may follow several briefs that have their own output (the reviewer charter's verdict, the verifier's count). Then each brief writes to its own output file, and the final message is exactly `CLEAN` only when none of them has a finding.
+**The reviewer's final message is exactly `CLEAN`, or the findings (past 15 lines, in the output file).** When one run follows several briefs, each writes its own output file, and the final message is `CLEAN` only when none has a finding.
 
 **Behavior is settled by a run, not a reading.** A behavior finding from a reviewer, a bot or a maintainer is a candidate, and so is a reviewer's "this case is correct". Run the case on the head first. If it doesn't reproduce, reply with the output; to a maintainer, add your recommendation (1.1.9). If an earlier verdict says the opposite, argue both ways first. Judge the rest per 1.1.15, and rewrite the real fixes in your own plain words (`writing`, Draft by talking). Never write `CLEAN` yourself.
 
@@ -36,7 +40,7 @@ Run the reviewer charter with the pipeline’s assigned agent; outside a PR pipe
 
 Run this review during Loop B and the final fresh read (`converge`, steps 2 and 4).
 
-**Outside a PR's pipeline, one round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15). The same reviewer then confirms the fixes (above), with no fresh audit. Record who reviewed (or why review was blocked) and what they found, including nothing, in the ledger (1.2).
+**Outside a PR's pipeline, one round.** Fix real defects, and decline the rest as above, with the run's output or a one-line reason (1.1.15).
 
 ## Reviewer charter
 
