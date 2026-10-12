@@ -30,6 +30,7 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | A design that sent the payload three times "for now". | 1.1.2 |
 | Hooks named against their behavior; options nobody asked for. | 1.1.10 |
 | A proposal that pulled in unrelated behavior, with unexplained shorthand. | 1.4 walkthrough |
+| PR prose moved into table cells to pass the word ceiling. | `writing`, `post-lint` |
 | A design comparison sent as a table; the user needed code. A PR body's decisions sat in long notes-table rows, semver and an export among them; the maintainer: "not have to read Harry Potter … don't defer it to us". | `writing` (a decision block: code, each option's output, our pick), 1.4, `post-lint` |
 | Side-PR review rounds while the critical-path feature stayed a prototype. | 1.1.1 |
 | "Separate PR" meaning "later"; a 5-minute item deferred twice; a promised PR never opened. | 1.1.7, 1.5 `PROMISED`, `gate-pass` |

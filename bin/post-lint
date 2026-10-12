@@ -38,18 +38,30 @@ _m = BADGE.match(text.lstrip())
 if _m:
     text = text.lstrip()[_m.end():].lstrip()
 # What GitHub renders as the author's prose. Code (fenced, inline), quotes of others and
-# HTML comments are neither linted nor counted; tables, images and URLs are evidence: linted, not counted.
-prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
-prose = re.sub(r'<!--.*?-->', '', prose, flags=re.S)
-prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
-prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
+# HTML comments are neither linted nor counted; data tables, images and URLs are evidence: linted, not counted.
+prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 # A maintainer who asked for the full lists (his refactor prompt: ratings old => new) gets them, collapsed in <details>: not linted or counted
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
 if _rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b', open(_rp).read(), re.I | re.S):
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
 # The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
 prose = re.sub(r'<details>\s*<summary>(?:Approach|Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
-counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                 # table rows
+code = '\n'.join(m.group(2) for m in re.finditer(r'^(```|~~~)[^\n]*\n(.*?)^\1[^\n]*$', prose, flags=re.S | re.M))
+prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', prose, flags=re.S | re.M)
+prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
+prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
+WORD = r"[A-Za-z0-9][\w'’-]*"
+# Prose moved into a table or a code block is still prose (writing 1.11), so it counts: a sentence-long cell (more than 15
+# words besides numbers and inline code) or the only cell of its row, and a code line of six or more words with no flag,
+# path, code symbol or `->` that isn't mostly numbers
+cells = []
+for l in re.findall(r'^\s*\|(.*)$', prose, flags=re.M):
+    row = l.rstrip().rstrip('|').split('|')
+    if not re.fullmatch(r'[\s:|-]*', l):  # a separator row
+        cells += [c for c in row if len(row) == 1 or len([w for w in re.findall(WORD, c) if w != 'CODE' and not w[0].isdigit()]) > 15]
+lines = [l for l in code.split('\n') if len(w := re.findall(WORD, l)) >= 6 and not re.search(r"[^\w\s,.;:'’\"()%-]|->|(^|\s)-", l)
+         and sum(x[0].isdigit() for x in w) * 4 < len(w)]
+counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M) + '\n' + '\n'.join(cells + lines)   # table rows: their prose cells only
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
@@ -196,9 +208,9 @@ if _pp and os.path.exists(_pp):
 extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
     findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply: cut what the reader doesn't need to decide, act or check")
-pr_budget = 300  # what's broken and what the PR changes need room; tables, code and the collapsed evidence don't count
+pr_budget = 300  # what's broken and what the PR changes need room; data tables, code and the collapsed evidence don't count
 if kind == 'pr' and words > pr_budget:
-    findings.append(f"{words} words > {pr_budget} for a PR body (tables, code, images and URLs not counted): cut what the reader doesn't need, never what's broken or why")
+    findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need, never what's broken or why")
 # A draft PR's body says why it's a draft on a bold line right under the badge; a ready PR's body has no such line (writing 1.11)
 STATE = re.compile(r'^\*\*State: draft\*\* \(.*\S.*\)$')
 if kind == 'pr' and draft and not STATE.match(next((l.strip() for l in text.split('\n') if l.strip()), '')):

@@ -33,7 +33,7 @@ After the review:
 
 Run the reviewer charter with the pipeline’s assigned agent; outside a PR pipeline, choose an independent reviewer in the order above (`converge`).
 
-1. Write the charter below to `<artifact root>/review-<pass id>.md`. Name an output file for the full verdict and findings, and capture the final `CLEAN` message or findings separately (`review`, final-message contract).
+1. Write the charter below to `<artifact root>/review-<pass id>.md`. Name an output file for the full verdict and findings, and capture the final message separately.
 2. Append the diff command against `git merge-base HEAD origin/<base>`, the issue link (Tier ≥ M: also `acceptance.md`), and one sentence on what the change claims to do. Name the defect it fixes and that defect's sibling sites (1.1.7): one still failing on the head is the change's own, not the base's.
 3. Where the reviewer can't run your gates, paste the gate commands, exit codes and output; it says UNKNOWN for anything it could not observe.
 4. If no independent reviewer is available, record the block and keep the PR draft; continue work that does not depend on the review.

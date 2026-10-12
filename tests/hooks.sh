@@ -377,6 +377,14 @@ printf '%s Fixes the leak.\n\n<details>\n<summary>Refactor pass, run 2 (head abc
 printf '%s Fixes the leak.\n\n<details>\n<summary>Approach (head abc1234)</summary>\n\n%s\n</details>\n' "$B" "$(printf 'word %.0s' $(seq 300))" > "$T/apb.md"
 check "an Approach block collapsed in a PR body is not counted" 0 "$(python3 "$R/bin/post-lint" "$T/apb.md" --kind pr --parent none 2>&1 | grep -c 'words >')"
 check "the converge steps' runs collapsed in a PR body are not linted or counted" 0 "$(python3 "$R/bin/post-lint" "$T/rpb.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >')"
+# a PR body of 280 prose words plus <extra>: prose moved into a table or a code block still counts, data doesn't
+tblint() { printf 'Fixes the leak. %s\n\n%s\n' "$(printf 'word %.0s' $(seq 280))" "$1" > "$T/tb.md"; python3 "$R/bin/post-lint" "$T/tb.md" --kind pr --parent none 2>&1 | grep -c 'words >'; }
+SETUP='Each run started from a cold cache on the same laptop with nothing else running, three warmups first, and the median of ten runs reported.'
+check "a prose sentence moved into a table row counts" 1 "$(tblint "$(printf '| Run | main | head |\n|---|---|---|\n| setup | %s | same |\n| p50 | 22.6 s | 6.1 s |' "$SETUP")")"
+check "a note in a one-cell table counts" 1 "$(tblint "$(printf '| Note |\n|---|\n| The old cache path stays readable for one more release, so that a rollback to the previous version keeps finding its files. |')")"
+check "a data table of numbers, names and statuses stays free" 0 "$(tblint "$(printf '| Test | main | head | Result |\n|---|---|---|---|\n'; for i in $(seq 40); do printf '| `case-%s` | 22.6 s, peak 1008 MiB | 6.1 s, peak 329 MiB | pass |\n' "$i"; done)")"
+check "prose lines in a code block count" 1 "$(tblint "$(printf '```\n%s\n%s\n```' "$SETUP" "$SETUP")")"
+check "commands, paths and results in a code block stay free" 0 "$(tblint "$(printf '```bash\npnpm --filter api test -- stats\ncat /tmp/bench/out.txt\npnpm test -> exit 0\nrequests per second 1204 1187 1199 1210\n```')")"
 printf '%s Draft until the release ships.\n\nThe fix.\n' "$B" > "$T/st.md"
 check "a PR body that opens with its status is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/st.md" --kind pr --parent none 2>&1 | grep -c 'opens with its status')"
 printf '%s Routes after vike(app) skip the auth +middleware. This PR runs it first.\n\nDraft until the release ships.\n' "$B" > "$T/st2.md"
