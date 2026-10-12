@@ -682,6 +682,17 @@ kill_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"com
 check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
+# ---------- pre-bash-guard: a compose stack takes no fixed host port or container name ----------
+printf '#!/bin/sh\ncase " $* " in *" config "*) [ -f "$DC_FX" ] && cat "$DC_FX";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
+echo '{"services":{"db":{"ports":[{"target":5432,"published":"5432"}]}}}' > "$T/fixed.json"
+echo '{"services":{"web":{"container_name":"web","ports":[{"target":80}]}}}' > "$T/named.json"
+echo '{"services":{"web":{"ports":[{"target":80}]}}}' > "$T/assigned.json"
+dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?; }
+check "BLOCK: compose up publishing a fixed host port" 2 "$(dc_guard "DC_FX=$T/fixed.json docker compose -p x up -d")"
+check "BLOCK: compose up with a container_name" 2 "$(dc_guard "DC_FX=$T/named.json docker compose -p x up -d")"
+check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/assigned.json docker compose -p x up -d")"
+check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
+check "compose up whose config fails passes" 0 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"

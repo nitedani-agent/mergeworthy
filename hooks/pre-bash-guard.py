@@ -189,12 +189,40 @@ def cwd_repo(run_dir):
     m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
     return m.group(1) if m else None
 
-NEED_DRAFT = "post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
+def check_compose(env, t):
+    """core 1.8 own ports: a compose stack you start publishes no fixed host port and pins no container name;
+    netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read isn't checked."""
+    n = 2 if os.path.basename(t[0]) == 'docker' else 1
+    if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
+    keep = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file')
+    a, glob = t[n:], []
+    while a and a[0].startswith('-'):
+        k = 2 if a[0] in keep + ('--ansi', '--parallel', '--progress') else 1
+        if a[0].split('=')[0] in keep: glob += a[:k]
+        a = a[k:]
+    if not (a[:1] == ['up'] or a[:1] == ['run'] and '--service-ports' in a): return
+    try:
+        r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=run_dir, env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
+        svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+        return
+    bad = [f"{s} container_name {c['container_name']}" for s, c in svcs.items() if c.get('container_name')] + \
+          [f"{s} host port {p['published']}" for s, c in svcs.items() for p in c.get('ports') or [] if p.get('published')]
+    if bad:
+        block(f"this stack takes what another session's stack needs ({', '.join(bad)}), and netns-run doesn't isolate ports Docker publishes. "
+              "Start it with a unique project name (-p or COMPOSE_PROJECT_NAME) and the override the project file's Running the app → Start names "
+              "(`ports: !override [\"<container port>\"]` for Docker-assigned ports, found with `docker compose port <svc> <port>`; `ports: !reset []` where the host needs none; "
+              "`container_name: !reset null`) (mergeworthy:core 1.8). Only when the user asked for the stack on its usual ports: prefix MERGEWORTHY_HOST_PORTS=user-asked")
+
+NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
+    env = dict(x.split('=', 1) for x in t[:len(t) - len(prog(t))] if re.match(r'^\w+=', x))
     t = prog(t)
     if not t: return
     p, a = os.path.basename(t[0]), t[1:]
+    if p in ('docker', 'docker-compose'):
+        check_compose(env, t)
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
