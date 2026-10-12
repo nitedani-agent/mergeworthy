@@ -15,6 +15,8 @@ def target(t):
     """(repo or None, number or None) a posting gh argv writes to; None when the argv doesn't post.
     Only a real `gh` argv counts: text that merely mentions one (an echo, a grep, a fixture) posts nothing."""
     t = prog(t)
+    if t and os.path.basename(t[0]) == 'glab' and t[2:3] in (['create'], ['note']) and t[1] in ('issue', 'mr') and '--help' not in t and '-h' not in t:
+        return None, None  # glab prints the thread's URL: that names it
     if not t or os.path.basename(t[0]) != 'gh' or len(t) < 2 or '--help' in t or '-h' in t:
         return None
     a = t[1:]
@@ -105,10 +107,12 @@ live_dirs = [dr for dr in dirs if live(dr)]
 # The posting session's own dirs come first (gh-watch-start records the session): its Monitor tails only those, and an
 # older dir can stay live after its session ended, kept by a forgotten repos.txt line
 own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]
-for repo, num in set(re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)):
+found = {(repo, num, f'{repo} {num}') for repo, num in re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)} | \
+    {('gitlab.com/' + repo, num, f"gitlab.com/{repo} {'!' if kind == 'merge_requests' else ''}{num}")  # gh-watch-start's GitLab line
+     for repo, kind, num in re.findall(r'gitlab\.com/([\w.-]+(?:/[\w.-]+)+?)/-/(issues|merge_requests)/(\d+)', out)}
+for repo, num, line in found:
     if not posted(repo, num):
         continue
-    line = f'{repo} {num}'
     home = next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None)
     if not home:
         covering = [dr for dr in live_dirs if repo in lines(dr, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(dr, 'threads.txt'))]

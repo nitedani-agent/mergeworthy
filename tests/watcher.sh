@@ -94,7 +94,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher"; cp "$R/watcher/gh-watch.py" "$C/watcher/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -333,6 +333,74 @@ D="$RL/dir"; mkdir -p "$D"
 eyes_step=$(awk '/-s "\$dir\/eyes"/ { p = 1; b = /^if/ } p { print } p && (!b || /^fi/) { exit }' "$R/bin/gh-watch-start")
 ( dir="$D"; PATH="$RL/bin:$PATH"; eval "$eyes_step" ) 2>/dev/null
 check "gh-watch-start: a rate-limited login lookup writes no eyes" "0" "$(cat "$D/eyes" 2>/dev/null | wc -c)"
+
+# ---------- GitLab threads: a stub glab answers `glab api --hostname gitlab.com <path>` from $GLFX, and logs :eyes: awards ----------
+GLFX="$T/glfx"; mkdir -p "$GLFX"; export GLFX
+cat > "$T/bin/glab" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = api ] || exit 1
+p=$4; shift 4
+[ "$*" = "--method POST -f name=eyes" ] && { echo "$p" >> "$GLFX/awards"; echo '{}'; exit 0; }
+f="$GLFX/$(printf '%s' "$p" | tr '/?&=%' '_____')"
+[ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
+EOF
+chmod +x "$T/bin/glab"
+GLW="$T/glwatch"; mkdir -p "$GLW"
+glpy() { W="$GLW" py "
+fx = lambda name, data: json.dump(data, open(os.path.join(os.environ['GLFX'], name), 'w'))
+now = m.gl_watch.iso(__import__('time').time())
+def thread(kind, iid, state, author='me'):
+    fx(f'projects_ns_2Fsub_2Fproj_{kind}_{iid}', {'state': state, 'updated_at': now, 'author': {'username': author}, 'sha': 'abc1234567890',
+       'web_url': f'https://gitlab.com/ns/sub/proj/-/{kind}/{iid}', 'head_pipeline': {'id': 5, 'status': 'success'}})
+    fx(f'projects_ns_2Fsub_2Fproj_{kind}_{iid}_notes_sort_desc_order_by_updated_at_per_page_100', notes.get((kind, iid), []))
+def run(fn):
+    s = m.load_state(); [t.update(next=0) for t in s.get('gl', {}).values()]; m.save_state(s)  # every thread due now
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        try: fn()
+        except SystemExit: pass
+    return buf.getvalue()
+fx('user', {'username': 'me'})
+note = lambda i, who, body, system=False: {'id': i, 'author': {'username': who, 'id': i}, 'body': body, 'updated_at': now, 'system': system}
+notes = {('issues', '4'): [note(3, 'alice', 'changed the description', True),
+                           note(2, 'me', '<img src=\"https://github.com/claude.png\" width=\"20\"> The fix is in.'),
+                           note(1, 'alice', 'Does this cover nested groups?')]}
+$1
+"; }
+printf 'gitlab.com/ns/sub/proj 4\ngitlab.com/ns/sub/proj !9\n' > "$GLW/threads.txt"
+got=$(glpy '
+thread("issues", "4", "opened"); thread("merge_requests", "9", "opened")
+out = run(m.scan_gitlab) + run(m.scan_gitlab)
+owed = open(os.path.join(m.HERE, "replies-owed.md")).read()
+print(out.count("### gitlab.com/ns/sub/proj#4 note 1 by alice"), out.count(" note 2 "), out.count(" note 3 "), open(os.path.join(os.environ["GLFX"], "awards")).read().split(), owed.count(" note 1 by alice "))
+')
+check "GitLab: a human note is reported once, with :eyes:; the badge note and a system note aren't" "1 0 0 ['projects/ns%2Fsub%2Fproj/issues/4/notes/1/award_emoji'] 1" "$got"
+got=$(glpy '
+thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
+out = run(m.scan_gitlab)
+print(out.count("### PR CHANGED gitlab.com/ns/sub/proj!9: {"), "merged" in out, out.count("### ISSUE CHANGED"))
+')
+check "GitLab: a merged MR emits PR CHANGED" "1 True 0" "$got"
+got=$(glpy '
+thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
+print(repr(run(m.scan_gitlab) + run(m.retire_if_done)))
+')
+check "GitLab: an open issue keeps the watcher" "''" "$got"
+got=$(glpy '
+thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
+out = run(m.scan_gitlab) + run(m.retire_if_done)
+print(out.count("### ISSUE CHANGED gitlab.com/ns/sub/proj#4: open -> closed"), out.count("WATCHER RETIRED"))
+')
+check "GitLab: an issue close is reported, and with every thread closed or merged the watcher retires" "1 1" "$got"
+got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
+check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
+# gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused
+GS="$T/glstart"; mkdir -p "$GS"; : > "$GS/threads.txt"; echo gitlab.com/ns/sub/proj > "$GS/repos.txt"
+args_step=$(awk '/^while \[ \$# -gt 0 \]/ { p = 1 } p { print } p && /^done$/ { exit }' "$R/bin/gh-watch-start")
+( dir="$GS"; set -- gitlab.com/ns/sub/proj 4 gitlab.com/ns/sub/proj '!9'; eval "$args_step" ) >/dev/null 2>&1
+check "gh-watch-start stores the GitLab lines and drops the covered repo line" "gitlab.com/ns/sub/proj 4|gitlab.com/ns/sub/proj !9|+" "$(tr '\n' '|' < "$GS/threads.txt")+$(cat "$GS/repos.txt")"
+( dir="$GS"; set -- o/r '!9'; eval "$args_step" ) >/dev/null 2>&1
+check "gh-watch-start: !N on a GitHub repo is not a thread" "o/r" "$(cat "$GS/repos.txt")"
 
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

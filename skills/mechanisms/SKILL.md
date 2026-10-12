@@ -16,7 +16,7 @@ These scripts enforce the rules that failed as text alone.
 ### `gh-watch-start` (enforces 1.5)
 
 `gh-watch-start [--main] <dir> [owner/repo [N]]…` is the one way to start watching; running it again is harmless.
-- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists; a thread of that repo joining the dir drops that line.
+- **What it adds.** It adds `owner/repo N` (GitLab: `gitlab.com/<path> N`, `!N` for an MR) to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists; a thread of that repo joining the dir drops that line.
 - **`--main`:** this dir gets the user's `/ai` calls on threads no watcher watches. The default is the first live dir.
 - **The supervisor.** It starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives.
 - **Maintainers.** `GH_WATCH_EYES` names the maintainers whose commits and 👍/👎 are reported; without it, `<dir>/eyes`, else your own login.
@@ -28,7 +28,7 @@ These scripts enforce the rules that failed as text alone.
 `post-lint drafts/x.md --kind reply|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
 - **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.
 - **A draft PR's body** takes `--kind pr --draft`: its first line under the badge must be `**State: draft** (<why>)`; without `--draft` that line is a finding. The guard checks the same line on `gh pr create`.
-- **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked, a ticked item's end state, and the Decisions comment's sections. Leave tracker posts badge-free (`writing`).
+- **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked (except at creation), a ticked item's end state, and the Decisions comment's sections. Leave tracker posts badge-free (`writing`).
 - **The checks**, each where it applies to the kind:
   - **Writing:** banned phrases; sentences over 40 words or averaging over 25, and more than 30% bold (not for `pr`); internal labels like W2; a bold label followed by a fragment; em dashes.
   - **References:** "stacked on"; bare `#N`.
@@ -87,23 +87,23 @@ These scripts enforce the rules that failed as text alone.
 
 The daemon reports to `<dir>/events.log` and never starts an agent.
 - **Comments.** Answer reported comments from the owed list; reactions follow the detection schedule (`github-threads` 1.5).
-- **Thread events.** On watched threads it reports pushes, merges and closes (`### PR CHANGED`), CI results (`### CI`), and 👍/👎 on the agent's comments (`### THUMBS UP` / `### THUMBS DOWN`).
+- **Thread events.** On watched threads it reports pushes, merges and closes (`### PR CHANGED`), CI results (`### CI`), and 👍/👎 on the agent's comments (`### THUMBS UP` / `### THUMBS DOWN`). GitLab threads (`glab`, each minute while active) get only comments, `### PR CHANGED`, `### CI` and `### ISSUE CHANGED`.
 - **Other events:**
     - `### ACK`: an acknowledgement that answers your last open proposal;
     - `### MAINTAINER COMMITS`: commits a maintainer pushed to your PR;
     - `### TRACKER STALE`: a PR merged or closed, and the umbrella issue named in `<dir>/umbrella.txt` doesn't show it ticked with that state;
     - `### REFACTOR STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps refactor`;
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
-    - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once. The watcher records the PR's lines at the merge; a commit counts within 3 lines of them. Bots' commits, and hunks that only change dependency versions in `package.json` or a lockfile, don't count. Read each as `core` 1.3 says (Learning from follow-ups).
-- **`/agent` commands.** Your comment starting with `/agent` on a thread no live watch dir lists is found in the recent issue and review comments of every repo a live watch dir lists (the comments feeds are live; the search index and your events feed lag by many minutes, so a search of your comments only backs it up), since you and the agent post as one account. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: to the dir named by `/agent <folder name>`, else to the dir listing a thread this one links to or is linked from (most matches; a tie goes to the `--main` dir), else to the `--main` dir as `### UNROUTED /agent`.
+    - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits, and hunks that only change dependency versions in `package.json` or a lockfile, don't count. Read each as `core` 1.3 says (Learning from follow-ups).
+- **`/agent` commands.** Your comment starting with `/agent` on a thread no live watch dir lists is found in the recent issue and review comments of every repo a live watch dir lists (a search of your comments backs it up: the index lags), since you and the agent post as one account. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: to the dir named by `/agent <folder name>`, else to the dir listing a thread this one links to or is linked from (most matches; a tie goes to the `--main` dir), else to the `--main` dir as `### UNROUTED /agent`.
 - **Retiring.** It retires itself, service, launchd agent and cron lines included, once every thread is merged or closed and `repos.txt` is empty.
-- **API budget.** All watchers share one account's 5,000 calls an hour, so they keep one budget in `~/.mergeworthy/shared-watch.json`, and every request counts, a 304 included.
-    - **Calls.** Every call goes through one helper that records GitHub's rate-limit headers, sends the `ETag` it saw for the URL and counts the request per minute in the daemon's state. `gh-watch.py --stats` prints the counted requests a minute; once an hour the daemon adds them to `<dir>/gh-watch-stats.log`.
+- **API budget.** All watchers share one account's 5,000 calls an hour and one budget in `~/.mergeworthy/shared-watch.json`; a 304 counts too.
+    - **Calls.** One helper makes every call: it records GitHub's rate-limit headers, sends the URL's last `ETag` and counts the request per minute. `gh-watch.py --stats` prints the counted requests a minute; once an hour the daemon adds them to `<dir>/gh-watch-stats.log`.
     - **Reserve.** Below 1500 calls left, shared work and follow-ups wait for the reset. Below 500, only the notifications and the threads they report are read. After a rate-limit answer every daemon waits for the reset and prints one `WATCH ERROR API budget: paused until <time>`.
-    - **Cadence.** A thread is checked (its PR or issue, and an open PR's CI) every 5 minutes if open and changed in the last day, every 30 if open, every 6 hours if merged or closed. It is read in full when a check finds a change, when a notification or issue list names it, and every hour (open and recent) or day (others): a 👍 on a quiet thread can wait a day.
+    - **Cadence.** A thread is checked (its PR or issue, and an open PR's CI) every 5 minutes if open and changed in the last day, every 30 if open, every 6 hours if merged or closed. It is read in full when a check finds a change or a notification or issue list names it, and hourly (open and recent) or daily: a 👍 on a quiet thread can wait.
     - **Polls.** Once per GitHub's `X-Poll-Interval` (60 s): the notifications and your events feed by the `--main` dir's daemon, and for every dir, by the lease holder, one issue list of your own threads and one per repo with a watched open thread of someone else's.
     - **Shared work.** Discovery (every 5 minutes for a repo something moved in, else every 30) and follow-ups (every 30) run in one daemon at a time, the holder of the lease `~/.mergeworthy/shared-watch.lease`, for every live dir. A pass makes at most 40 requests and the next goes on. A commit's detail is read once, ever.
-- **State.** State lives in `gh-watch-state.json` and the shared file, so restarts and plugin updates lose nothing and cost no calls. A daemon's own ETags stay in its file: a validator shared between readers would hide one's change from the other.
+- **State.** State lives in `gh-watch-state.json` and the shared file, so restarts lose nothing and cost no calls. A daemon's own ETags stay in its file: a validator shared between readers would hide one's change from the other.
 
 ## Hooks
 
@@ -111,7 +111,7 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
 
 It blocks:
 - a `gh` post or edit whose body isn't a gated draft, or changed since its gate (use absolute draft paths);
-- opening an issue or PR in a repo no running watcher covers;
+- opening an issue or PR (`gh` or `glab`) in a repo no running watcher covers;
 - the same gated draft posted twice as new;
 - a post or edit on a thread (comment, review, PR or issue body edit, comment PATCH) whose draft folder has no `thread-context.md` for that thread recording its current latest human comment, or older than the draft's parent; the message gives the `thread-context` command. `--kind tracker` drafts and new issues and PRs are exempt;
 - a third comment on a thread (1.6 states the condition);
@@ -127,7 +127,7 @@ It blocks:
 
 ### `post-bash-register.py` (enforces 1.5)
 
-It adds a thread you just opened or posted in to your session's watch dir, else one covering its repo. A read that only prints URLs adds nothing.
+It adds a thread you just opened or posted in (its `gh` or `glab` URL) to your session's watch dir, else one covering its repo. A read that only prints URLs adds nothing.
 
 ### `stop-lint.py` (enforces 1.1.3, 1.5)
 

@@ -733,5 +733,36 @@ check "compose up whose config fails passes" 0 "$(dc_guard "DC_FX=$T/missing.jso
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
+
+# ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
+cat > "$T/bin/glab" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = api ] || exit 1
+f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
+[ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
+EOF
+chmod +x "$T/bin/glab"
+echo '{"iid": 3}' > "$FX/gl_projects_ns_2Fproj_issues_3"
+glref() { printf 'See #%s.\n' "$1" > "$T/glref.md"; python3 "$R/bin/post-lint" "$T/glref.md" --kind reply --repo gitlab.com/ns/proj --parent none 2>&1 | grep -c "bare #"; }
+check "post-lint: a bare #N is checked in the GitLab project: there, missing" "0 1" "$(glref 3) $(glref 7)"
+trk() { printf '%sTracks x.\n\n## Work\n\n- [ ] o/r#1: the fix.\n%s\n' "$1" "$2" > "$T/trk.md"; python3 "$R/bin/post-lint" "$T/trk.md" --kind tracker --parent none 2>&1 | grep -c 'link the Decisions comment'; }
+check "tracker: a GitLab note link is the Decisions link" 0 "$(trk '' 'All decisions made so far: https://gitlab.com/ns/proj/-/issues/2#note_55 (kept up to date).')"
+check "tracker: the issue's creation needs no Decisions link yet, an edit does" "0 1" "$(trk 'Title: Tracking: x
+' '') $(trk '' '')"
+bash -c 'exec -a gh-watch-daemon sleep 600' & GPID=$!  # the guard takes a watcher as live when its command names gh-watch-daemon
+GW="$T/glw"; mkdir -p "$GW"; : > "$GW/threads.txt"; : > "$GW/repos.txt"
+echo "$GPID" > "$GW/gh-watch.pid"; echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
+glguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+check "BLOCK: glab issue create with no watcher on the project" "2 1" "$(glguard 'glab issue create -R ns/sub/proj --title x') $(grep -c 'gitlab.com/ns/sub/proj' "$T/err")"
+git init -q "$T/glrepo"; git -C "$T/glrepo" remote add origin git@gitlab.com:ns/sub/proj.git
+check "BLOCK: glab mr create --draft in a clone of an unwatched project" 2 "$(glguard 'glab mr create --draft --title x' "$T/glrepo")"
+echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
+check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
+glreg() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
+glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/issues/12'
+glreg 'glab mr create --draft --title x' 'https://gitlab.com/ns/sub/proj/-/merge_requests/3'
+glreg 'glab issue list' 'https://gitlab.com/ns/sub/proj/-/issues/13'
+check "post-bash-register: glab's new issue and MR join threads.txt, the repo line goes, a list adds nothing" "gitlab.com/ns/sub/proj 12|gitlab.com/ns/sub/proj !3|+" "$(tr '\n' '|' < "$GW/threads.txt")+$(cat "$GW/repos.txt")"
+kill "$GPID"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

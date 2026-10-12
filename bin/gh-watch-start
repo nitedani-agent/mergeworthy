@@ -3,6 +3,7 @@
 # - --main: this dir gets your /ai calls, and /agent calls no dir claims, on threads no watcher watches (default: the first live dir).
 # - <dir> is the session's artifact root; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
+#   GitLab: "gitlab.com/<namespace>/<project>" with N for an issue, !N for a merge request.
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - A thread line drops its repo's bare line from repos.txt; <dir>/session records the Claude session that ran it.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
@@ -10,7 +11,7 @@
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:github-threads).
 set -e
 main=; [ "${1:-}" = --main ] && { main=1; shift; }
-[ -n "$1" ] || { sed -n '2,8p' "$0"; exit 1; }
+[ -n "$1" ] || { sed -n '2,9p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
 [ -n "$main" ] && { mkdir -p ~/.mergeworthy; echo "$dir" > ~/.mergeworthy/main-watch; }
 # link through the stable path when installed as a plugin (its own folder changes with every update), even when this
@@ -21,7 +22,7 @@ for f in gh-watch.py gh-watch-daemon.sh; do ln -sfn "$root/watcher/$f" "$dir/$f"
 while [ $# -gt 0 ]; do
   repo=$1; shift
   [[ $repo == */* ]] || { echo "not owner/repo: $repo"; exit 1; }
-  if [[ ${1:-} =~ ^[0-9]+$ ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
+  if [[ ${1:-} =~ ^[0-9]+$ || ( $repo == gitlab.com/* && ${1:-} =~ ^![0-9]+$ ) ]]; then line="$repo $1"; file=threads.txt; shift; else line=$repo; file=repos.txt; fi
   # One watcher per thread: a second would report the same comment to a second session
   if [ "$file" = threads.txt ]; then
     while read -r other; do

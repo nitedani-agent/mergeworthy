@@ -6,7 +6,7 @@ process machinery in the thread, decisions not shown as code and lettered option
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
-import hashlib, os, re, sys, subprocess
+import hashlib, os, re, sys, subprocess, urllib.parse
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -122,7 +122,9 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
     if not repo:
         findings.append(f"bare #{m.group(1)}: write owner/repo#{m.group(1)} (or pass --repo when it's the same repo)")
     else:
-        _r = subprocess.run(['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True, text=True)
+        _gl = repo.startswith('gitlab.com/')  # GitLab's #N is an issue of the same project too
+        _r = subprocess.run(['glab', 'api', '--hostname', 'gitlab.com', f"projects/{urllib.parse.quote(repo[len('gitlab.com/'):], safe='')}/issues/{m.group(1)}"] if _gl else
+                            ['gh', 'api', f'repos/{repo}/issues/{m.group(1)}', '--silent'], capture_output=True, text=True)
         if _r.returncode != 0 and 'HTTP 404' in _r.stderr:
             findings.append(f"bare #{m.group(1)} doesn't exist in {repo}: another repo's item? write owner/repo#{m.group(1)}")
         elif _r.returncode != 0:  # a rate limit or an outage proves nothing about the reference
@@ -145,7 +147,8 @@ if kind == 'tracker':
             findings.append("tracker: items are checkboxes under '##' sections, not a table (1.2)")
         if not re.search(r'^## ', text, flags=re.M) or not re.search(r'^\s*- \[[ x]\] ', text, flags=re.M):
             findings.append("tracker: one '##' section per group of work, each item a '- [ ]' / '- [x]' checkbox (1.2)")
-        if 'issuecomment-' not in text:
+        # GitHub's comment link or GitLab's note link; the issue's creation comes before its Decisions comment, so only edits need it
+        if title is None and not re.search(r'issuecomment-|/-/issues/\d+#note_\d', text):
             findings.append("tracker: link the Decisions comment ('All decisions made so far: <link> (kept up to date).') (1.2)")
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended

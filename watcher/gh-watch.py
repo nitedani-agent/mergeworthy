@@ -13,12 +13,15 @@
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
+- GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
 import contextlib, datetime, fcntl, hashlib, http.client, json, os, re, subprocess, sys, threading, time, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
+import gl_watch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -484,7 +487,7 @@ def append_owed(entry, d=None):
         f.write(entry + '\n')
 
 
-def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra=''):
+def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='', react=None):
     """An answerable comment (mergeworthy:github-threads): an event, an owed reply and an :eyes: reaction, each once."""
     sk = f"{kind}:{cid}"
     if state['seen'].get(sk) == upd:
@@ -499,7 +502,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='')
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
         emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:github-threads)")
     if not ONCE and kind != 'review':  # GitHub has no reactions on a review
-        react_eyes(repo, kind, cid)
+        (react or react_eyes)(repo, kind, cid)
 
 
 def watch_dirs():
@@ -618,6 +621,8 @@ def read_threads():
     threads = []
     for l in open(THREADS):
         w = l.split('#', 1)[0].split() if not l.lstrip().startswith('#') else []
+        if w[:1] and w[0].startswith(gl_watch.HOST):
+            continue  # gl_watch reads it
         if len(w) == 2 and w[1].isdigit():
             threads.append(w)
         elif w:
@@ -943,7 +948,7 @@ def feed_repos():
             st = {'prs': {}}
         repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}
         try:
-            repos |= {l.split('#', 1)[0].strip() for l in open(os.path.join(d, 'repos.txt')) if l.split('#', 1)[0].strip()}
+            repos |= github_repo_lines(d)
         except OSError:
             pass
     return repos
@@ -1001,10 +1006,15 @@ def live_dirs():
     return [d for d in dict.fromkeys(watch_dirs()) if live(d)]
 
 
+def github_repo_lines(d):
+    """The GitHub whole-repo lines of d's repos.txt."""
+    return {r for r in (l.split('#', 1)[0].strip() for l in open(os.path.join(d, 'repos.txt'))) if r and not r.startswith(gl_watch.HOST)}
+
+
 def listed_threads(d):
     """The threads watch dir d scans: its threads.txt and the PRs its waiting-on.txt waits on."""
     try:
-        listed = {f"{w[0]}#{w[1]}" for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'threads.txt'))) if len(w) == 2}
+        listed = {f"{w[0]}#{w[1]}" for w in (l.split('#', 1)[0].split() for l in open(os.path.join(d, 'threads.txt'))) if len(w) == 2 and not w[0].startswith(gl_watch.HOST)}
     except OSError:
         listed = set()
     return listed | {key for _, key in waiting_keys(d)}
@@ -1087,7 +1097,7 @@ def watched_repos():
     for d in dict.fromkeys(live_dirs() + [HERE]):
         repos |= {t.rsplit('#', 1)[0] for t in listed_threads(d)}
         try:
-            repos |= {l.split('#', 1)[0].strip() for l in open(os.path.join(d, 'repos.txt')) if l.split('#', 1)[0].strip()}
+            repos |= github_repo_lines(d)
         except OSError:
             pass
     return repos
@@ -1479,11 +1489,13 @@ def retire_if_done():
     repos = os.path.join(HERE, 'repos.txt')
     if os.path.exists(repos) and open(repos).read().strip():
         return
-    threads = read_threads()
-    if not threads:
+    threads, gl = read_threads(), gl_watch.threads(THREADS)
+    if not threads and not gl:
         return
     with locked():
         state = load_state()
+    if not all(gl_watch.done(state, key) for key, *_ in gl):
+        return
     fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher
     if any(state['prs'].get(k, {}).get('state') == 'merged' and state.get('author', {}).get(k) == ME and fu.get(k, {'until': float('inf')})['until'] > time.time()
            for k in (f"{r}#{n}" for r, n in threads)):
@@ -1586,7 +1598,18 @@ def tick():
             shared_pass()
         except Budget:
             pass
+    scan_gitlab()
     announce()
+
+
+def scan_gitlab():
+    """GitLab threads (gl_watch): outside GitHub's budget levels, which they don't spend."""
+    threads = gl_watch.threads(THREADS)
+    if threads:
+        with locked():
+            state = load_state()
+            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK)
+            save_state(state)
 
 
 _retire_at = [0]

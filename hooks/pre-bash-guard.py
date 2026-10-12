@@ -184,6 +184,16 @@ def cwd_repo(run_dir):
     m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
     return m.group(1) if m else None
 
+def gitlab_repo(a, run_dir):
+    """`gitlab.com/<namespace>/<project>` a glab command acts on: its -R value (a path or URL), else the cwd's origin."""
+    repo = (opt(a, ['--repo', '-R']) or [None])[-1]
+    if repo:
+        repo = re.sub(r'^(https://)?gitlab\.com/', '', repo)
+    else:
+        url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+        repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
+    return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
+
 def check_compose(env, t):
     """core 1.8 own ports: a compose stack you start publishes no fixed host port and pins no container name;
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read isn't checked."""
@@ -265,6 +275,8 @@ def check(t, has_cd):
         head, missing = missing_steps(run_dir)
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
+    if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
+        need_watch(gitlab_repo(a[2:], run_dir))
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
