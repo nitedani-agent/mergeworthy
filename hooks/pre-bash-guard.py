@@ -267,6 +267,10 @@ def check(t, has_cd):
         head, missing = missing_steps(run_dir)
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
+    # even a draft publishes the work: browser control is shown working first (the approach's Browser: line)
+    elif (p == 'gh' and a[:2] == ['pr', 'create']) or (p == 'glab' and a[:2] == ['mr', 'create']):
+        if 'approach' in missing_steps(run_dir)[1]:
+            block("this branch has no `pr-steps approach` record, so not even a draft opens: rate the approach (mergeworthy:pull-request step 3) and record it with `pr-steps approach <file>`, whose `Browser:` line is a PNG screenshot browser control took of this app, or `Browser: none, because <why this change has no UI or runtime behavior>`")
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')

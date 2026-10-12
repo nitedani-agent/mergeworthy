@@ -556,6 +556,12 @@ check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
+g2() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; echo "exit $?"; }
+check "BLOCK: gh pr create --draft without an approach record" 1 "$(g2 'gh pr create --draft --title x' | grep -c 'exit 2')"
+check "its message names pr-steps approach and the Browser line" 1 "$(g2 'gh pr create --draft --title x' | grep -c 'pr-steps approach.*Browser:')"
+check "BLOCK: gh pr create -d without an approach record" 1 "$(g2 'gh pr create -d --title x' | grep -c 'exit 2')"
+check "BLOCK: glab mr create --draft without an approach record" 1 "$(g2 'glab mr create --draft --title x' | grep -c 'exit 2')"
+check "BLOCK: glab mr create --wip without an approach record" 1 "$(g2 'glab mr create --wip --title x' | grep -c 'exit 2')"
 cp "$T/ap.md" "$T/apnb.md"; cp "$T/ap.md" "$T/apnone.md"; printf 'Browser: /nonexistent/shot.png\n' >> "$T/ap.md"
 check "BLOCK: an approach without a Browser line" 1 "$(prs2 approach "$T/apnb.md")"
 check "BLOCK: an approach whose Browser screenshot doesn't exist" 1 "$(prs2 approach "$T/ap.md")"
@@ -581,6 +587,9 @@ check "a big maintainer commit carries them too: the pipeline waits for their go
 git -C "$G2" reset -q --hard HEAD~1
 printf 'y\n' > "$G2/g"; git -C "$G2" add g; git -c user.name=t -c user.email=t@t -C "$G2" commit -q -m c -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'
 check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 "$(ready)"
+check "gh pr create --draft with the approach and none of the six steps is not blocked for them" 0 "$(g2 'gh pr create --draft --title x' | grep -c 'pr-steps')"
+check "glab mr create --wip passes there too" 1 "$(g2 'glab mr create --wip --title x' | grep -c 'exit 0')"
+check "BLOCK: gh pr create, not a draft, still needs the six steps" 1 "$(g2 'gh pr create --title x' | grep -c 'no pr-steps verify')"
 check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
 # ---------- pre-design-gate: Tier M code waits for prior-art.md and decisions/*.md ----------
 D="$T/dg"; mkdir -p "$D" "$D-work"; git -C "$D" init -q
