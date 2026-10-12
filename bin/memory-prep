@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """memory-prep init <artifact root> <T3 thread id> | prep <artifact root> | digest <artifact root>: the memory file (core 1.2).
-init: run once from the orchestrator's checkout; records its cwd, thread and session-log dir in memory.source.
-prep: extracts the orchestrator's log lines after the position memory.md covered (the first time, the last 24 hours) into
-memory-new.txt, and writes the brief one Haiku follows to merge them in; prints the brief's path, or that nothing is new.
+init: run once from the orchestrator's checkout; records its cwd, thread, session and session-log dir in memory.source.
+prep: extracts the user's prompts and the orchestrator's text from its session logs, after
+the position memory.md covered (the first time, the last 24 hours), into memory-new.txt; writes the brief one Haiku follows
+to merge them in (the memory-refresh skill) and prints its path, or that nothing is new.
 digest: prints the Standing part session-start injects."""
 import datetime as dt, glob, json, os, re, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
@@ -18,7 +19,10 @@ if cmd == 'init':
     if not os.path.isdir(logdir):
         sys.exit(f'memory-prep: no session-log dir {logdir}: run init from the orchestrator\'s own checkout')
     os.makedirs(root, exist_ok=True)
-    json.dump({'cwd': cwd, 'thread': tid, 'logdir': logdir}, open(os.path.join(root, 'memory.source'), 'w'))
+    sessions = mf.source(root).get('sessions', []) if os.path.isfile(os.path.join(root, 'memory.source')) else []
+    sid = os.environ.get('CLAUDE_CODE_SESSION_ID')
+    sessions += [sid] if sid and sid not in sessions else []
+    json.dump({'cwd': cwd, 'thread': tid, 'logdir': logdir, 'sessions': sessions}, open(os.path.join(root, 'memory.source'), 'w'))
     os.makedirs(os.path.dirname(mf.REG), exist_ok=True)
     if root not in mf.roots():
         open(mf.REG, 'a').write(root + '\n')
@@ -29,11 +33,13 @@ if not os.path.isfile(os.path.join(root, 'memory.source')):
 if cmd == 'digest':
     print(mf.digest(root)); sys.exit(0)
 
-KEEP = re.compile(r'\b(gh (pr|issue|api)|glab|git (push|commit)|agent-job|delegate_task)\b')
+# T3 Code's own messages, sent through the SDK like the user's; the log has no field that tells them apart
+T3 = ('Delegated task', 'Context handoff (manual_context)', 'Note: the T3 server restarted', 'The T3 server restarted')
+WRAP = 1500  # Read cuts longer lines
 cov = mf.covered(root)
 # the first run covers the last 24 hours, never more
 after = cov or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-entries, until = [], ''
+entries, until, said = [], '', set()
 for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:00')).timestamp() - 60):
     for l in open(p, errors='replace'):
         m = re.search(r'"timestamp":"([0-9T:.\-]+Z)"', l)
@@ -41,30 +47,27 @@ for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:
             continue
         try: o = json.loads(l)
         except ValueError: continue
-        t = m.group(1); until = max(until, t); c = (o.get('message') or {}).get('content'); role = o.get('type')
-        at = t[:10] + ' ' + t[11:16] + 'Z'
-        if o.get('isCompactSummary'):
-            continue  # the built-in summary's own text: the lines it summarized are read instead
-        if isinstance(c, str):
-            if role == 'user' and not c.startswith('<'): entries.append((t, f'[{at} USER] {c}'))
-            continue
-        for b in c or []:
-            k = b.get('type')
-            if k == 'text' and role == 'assistant': entries.append((t, f'[{at} ASSISTANT] {b["text"]}'))
-            elif k == 'text' and role == 'user' and not b['text'].startswith('<'): entries.append((t, f'[{at} USER] {b["text"]}'))
-            elif k == 'tool_use':
-                inp = json.dumps(b.get('input'))
-                if KEEP.search(inp) or b.get('name', '').endswith(('delegate_task', 'task_cancel')):
-                    entries.append((t, f'[{at} TOOL {b.get("name")}] {inp[:600]}'))
+        t = m.group(1); until = max(until, t); c = (o.get('message') or {}).get('content')
+        if mf.prompt(o):
+            for x in mf.texts(o):
+                if x and not x.startswith(('<',) + T3) and x not in said:  # a scheduled prompt repeats verbatim
+                    said.add(x); entries.append((t, f'[{t} USER] {x}'))
+        elif o.get('type') == 'assistant' and isinstance(c, list):
+            entries += [(t, f'[{t} ASSISTANT] {b["text"]}') for b in c if b.get('type') == 'text']
 if not entries:
     print(f'memory: nothing new after {after}'); sys.exit(0)
 new = os.path.join(root, 'memory-new.txt')
-open(new, 'w').write('\n\n'.join(x for _, x in sorted(entries)))
+text = '\n\n'.join([x for _, x in sorted(entries)] + [f'[{until} END] the logs are read through here'])
+text = '\n'.join(l[i:i + WRAP] for l in text.split('\n') for i in range(0, len(l) or 1, WRAP))
+open(new, 'w').write(text + '\n')
+# the run notes each chunk it read here; memory.md never counts as covered past them
+open(mf.notes_path(root), 'w').write(f'# Notes on {new}\nread-through: {after}\n')
 brief = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks', 'memory-brief.md')).read()
-for k, v in {'MEMORY': mf.path(root), 'NEW': new, 'UNTIL': until, 'NOW': until[:10] + ' ' + until[11:16] + 'Z'}.items():
+for k, v in {'MEMORY': mf.path(root), 'NEW': new, 'NOTES': mf.notes_path(root), 'LINES': str(text.count('\n') + 1),
+             'AFTER': after, 'UNTIL': until}.items():
     brief = brief.replace(f'<{k}>', v)
 out = os.path.join(root, f"memory-brief-{re.sub(r'[^0-9]', '', until)[:14]}.md")
 for old in glob.glob(os.path.join(root, 'memory-brief-*.md')):
     os.remove(old)
 open(out, 'w').write(brief)
-print(f'memory: {len(entries)} new log entries after {after}; brief: {out}')
+print(f'memory: {len(entries)} new log entries after {after}, {len(text)} characters; brief: {out}')

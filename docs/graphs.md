@@ -16,6 +16,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `github-threads` | `writing`, `converge`, `review`, `refactor`, `core`, `pull-request`, `finality` |
 | `guardian` | `delegating`, `converge`, `refactor`, `design-loop`, `core`, `writing` |
 | `mechanisms` | nothing |
+| `memory-refresh` | nothing |
 | `merging` | nothing |
 | `open-issue` | `core`, `evidence`, `writing`, `github-threads` |
 | `past-failures` | nothing |

@@ -68,7 +68,7 @@ These scripts enforce the rules that failed as text alone.
 
 ### `memory-prep` (enforces 1.2)
 
-`memory-prep init <root> <T3 thread id>`, run from the orchestrator's checkout, records it, its thread and its session-log dir (`~/.claude/projects/<checkout path, non-alphanumerics as dashes>`). `memory-prep prep <root>` extracts the user's and orchestrator's messages and the git, gh and agent commands logged after `memory.md`'s `covered-until` position (the first time, the last 24 hours), from the logs naming the thread, into `memory-new.txt`, and writes the brief one Haiku follows to merge them in. `memory-prep digest <root>` prints the Standing part, one line per item, cut to about 2k tokens, hard cap 4k.
+`memory-prep init <root> <T3 thread id>`, run from the orchestrator's checkout, records it, its thread, its session and its session-log dir (`~/.claude/projects/<checkout path, non-alphanumerics as dashes>`). `memory-prep prep <root>` extracts the user's prompts (no skill bodies, hook feedback, notifications or compaction summary) and the orchestrator's text logged after `memory.md`'s `covered-until` position (the first time, the last 24 hours), from the orchestrator's own logs (init ran there, or a prompt names the thread), into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. `covered-until` never counts past the last chunk noted in `memory-notes.txt`. `memory-prep digest <root>` prints the Standing part, one line per item, cut to about 2k tokens, hard cap 4k.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 

@@ -500,22 +500,33 @@ rm -f "$J"/aj*.json
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"
 check "memory-prep init refuses a checkout with no session logs" 1 "$(cd "$T" && python3 "$R/bin/memory-prep" init "$MR" thread-1 >/dev/null 2>&1; echo $?)"
-(cd "$OC" && python3 "$R/bin/memory-prep" init "$MR" thread-1 >/dev/null)
-mlog() { # file hours-ago text [thread]: one user line, and the thread id when given
+(cd "$OC" && CLAUDE_CODE_SESSION_ID=orch python3 "$R/bin/memory-prep" init "$MR" thread-1 >/dev/null)
+mlog() { # file hours-ago text [thread] [extra fields as JSON]: one user prompt; with a thread, T3's handoff naming it first
   python3 -c 'import json,sys,datetime as d; f,h,txt=sys.argv[1:4]; t=(d.datetime.now(d.timezone.utc)-d.timedelta(hours=float(h))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 w=lambda o: open(f,"a").write(json.dumps(o,separators=(",",":"))+"\n")
-w({"type":"user","timestamp":t,"message":{"role":"user","content":txt}})
-if len(sys.argv)>4: w({"type":"assistant","timestamp":t,"message":{"content":[{"type":"text","text":"T3 thread "+sys.argv[4]}]}})' "$@"; }
+if len(sys.argv)>4 and sys.argv[4]: w({"type":"user","timestamp":t,"promptSource":"sdk","message":{"role":"user","content":"Context handoff (manual_context):\nThread: "+sys.argv[4]}})
+w({"type":"user","timestamp":t,"promptSource":"sdk","message":{"role":"user","content":txt},**json.loads(sys.argv[5] if len(sys.argv)>5 else "{}")})' "$@"; }
 mlog "$LD/a.jsonl" 30 "an old ruling" thread-1; mlog "$LD/a.jsonl" 2 "never use cron" thread-1; mlog "$LD/b.jsonl" 1 "another thread's line"
+# the harness's own user-role entries, and a child session whose tool output names the thread
+for e in '{"isMeta":true,"message":{"content":[{"type":"text","text":"Base directory for this skill: x"}]}}' '{"isMeta":true}' \
+  '{"isCompactSummary":true,"promptSource":null}' '{"promptSource":"system","origin":{"kind":"task-notification"}}'; do mlog "$LD/a.jsonl" 1.5 "harness entry" "" "$e"; done
+mlog "$LD/a.jsonl" 1.5 "Delegated task node:delegated-task:x reached a terminal state."
+mlog "$LD/a.jsonl" 1.4 "RSC check-in."; mlog "$LD/a.jsonl" 1.3 "RSC check-in."
+mlog "$LD/orch.jsonl" 1 "said in the session init ran in"; mlog "$LD/c.jsonl" 1 "a child's brief"; mlog "$LD/c.jsonl" 1 "tool output" "" '{"toolUseResult":{},"promptSource":null,"message":{"content":"thread-1"}}'
 ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":"compact"}))' "$1" | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null; }
 check "session-start in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
-check "the first prep takes the thread's last 24 hours only" "1 0 0 1" "$(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "^- End the file with the \`<!-- covered-until: 20" "$MB")"
-UNTIL=$(grep -o 'covered-until: [^ ]*' "$MB" | head -1 | cut -d' ' -f2)
+check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'mergeworthy:memory-refresh' "$MB")"
+check "prep drops the harness's entries (skill bodies, hook feedback, summaries, notifications, T3's own) and repeats" "0 0 0 1 1" "$(grep -c 'harness entry\|Base directory' "$MR/memory-new.txt") $(grep -c 'Delegated task' "$MR/memory-new.txt") $(grep -c 'Context handoff' "$MR/memory-new.txt") $(grep -c 'RSC check-in' "$MR/memory-new.txt") $(grep -c '^\[20[0-9T:.-]*Z END\]' "$MR/memory-new.txt")"
+UNTIL=$(sed -n 's/^\[\(.*\) END\].*/\1/p' "$MR/memory-new.txt")
+echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
 printf '# Memory\n## Standing\n### Rulings in force\n- **No cron** (now). "never use cron".\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n### Superseded\n- **Day files → one memory file** (now).\n### Still intended\n- **Ship it** (now).\n## Recent\n- now: refreshed.\n<!-- covered-until: %s -->\n' "$UNTIL" > "$MR/memory.md"
 check "fresh memory: no refresh order, the Standing digest without the Recent part" "0 1 1 0" "$(ss_mem "$OC" > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^- \*\*Cron jobs\*\*' "$T/ss.out") $(grep -c 'Day files → one memory file' "$T/ss.out") $(grep -c 'refreshed' "$T/ss.out")"
+sed -i '$d' "$MR/memory-notes.txt"
+check "memory.md never counts as covered past the chunks its run noted" "1 1" "$(ss_mem "$OC" | grep -c 'is behind'; python3 "$R/bin/memory-prep" prep "$MR" >/dev/null) $(grep -c 'never use cron' "$MR/memory-new.txt")"
+echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
 mlog "$LD/a.jsonl" 0 "a new ruling"
 check "a new log line makes it behind; prep then extracts only what follows the covered position" "1 1 0" "$(ss_mem "$OC" | grep -c 'is behind'; python3 "$R/bin/memory-prep" prep "$MR" >/dev/null) $(grep -c 'a new ruling' "$MR/memory-new.txt") $(grep -c 'never use cron' "$MR/memory-new.txt")"
 python3 - "$MR/memory.md" <<'EOF'
