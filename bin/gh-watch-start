@@ -4,6 +4,7 @@
 # - <dir> is the session's artifact root; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`).
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
+# - A thread line drops its repo's bare line from repos.txt; <dir>/session records the Claude session that ran it.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
 # - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:github-threads).
@@ -32,7 +33,11 @@ while [ $# -gt 0 ]; do
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
   fi
   grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
+  # the thread covers its repo now: a bare repo line left behind would keep the watcher from retiring
+  if [ "$file" = threads.txt ]; then grep -vxF "$repo" "$dir/repos.txt" > "$dir/repos.txt.tmp" || true; mv "$dir/repos.txt.tmp" "$dir/repos.txt"; fi
 done
+# the session that started it owns it: post-bash-register adds that session's new threads here (cron's revival has no session)
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then echo "$CLAUDE_CODE_SESSION_ID" > "$dir/session"; fi
 reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
 if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi

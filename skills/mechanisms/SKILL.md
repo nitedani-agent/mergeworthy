@@ -16,7 +16,7 @@ These scripts enforce the rules that failed as text alone.
 ### `gh-watch-start` (enforces 1.5)
 
 `gh-watch-start [--main] <dir> [owner/repo [N]]…` is the one way to start watching; running it again is harmless.
-- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists; delete that line once the thread exists, or the watcher never retires.
+- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt`. A bare `owner/repo` goes to `repos.txt`, which covers a repo before an issue exists; a thread of that repo joining the dir drops that line.
 - **`--main`:** this dir gets the user's `/ai` calls on threads no watcher watches. The default is the first live dir.
 - **The supervisor.** It starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives.
 - **Maintainers.** `GH_WATCH_EYES` names the maintainers whose commits and 👍/👎 are reported; without it, `<dir>/eyes`, else your own login.
@@ -126,7 +126,7 @@ It blocks:
 
 ### `post-bash-register.py` (enforces 1.5)
 
-It adds a thread you just posted in (a new issue or PR, a comment, a review) to the watch list. A read that only prints URLs adds nothing.
+It adds a thread you just opened or posted in to your session's watch dir, else one covering its repo. A read that only prints URLs adds nothing.
 
 ### `stop-lint.py` (enforces 1.1.3, 1.5)
 

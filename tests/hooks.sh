@@ -241,6 +241,15 @@ check "gh api read (-X GET with fields)" none \
   "$(register "gh api -X GET repos/o/r/issues -f state=open" "$U5")"
 check "gh --help on a comment command" none \
   "$(register "gh issue comment 5 --repo o/r --help" "$U5")"
+# Two live dirs cover o/r: an older one whose session is gone, then the posting session's (gh-watch-start recorded it)
+D1="$T/reg-old"; D2="$T/reg-own"; mkdir -p "$D1" "$D2"
+for d in "$D1" "$D2"; do echo "$SPID" > "$d/gh-watch.pid"; echo o/r > "$d/repos.txt"; done
+echo sess-2 > "$D2/session"; printf '%s\n' "$D1" "$D2" > "$HOME/.claude/gh-watch-dirs.txt"
+python3 -c 'import json; print(json.dumps({"session_id":"sess-2","tool_input":{"command":"gh pr create --repo o/r --fill"},"tool_response":{"stdout":"https://github.com/o/r/pull/8"}}))' \
+  | python3 "$R/hooks/post-bash-register.py"
+check "a new PR joins the posting session's dir, not an older dir covering the repo" "o/r 8|none" \
+  "$(cat "$D2/threads.txt" 2>/dev/null)|$(cat "$D1/threads.txt" 2>/dev/null || echo none)"
+check "the thread replaces that dir's bare repo line, so the watcher can retire" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------

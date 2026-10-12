@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
-joins the threads.txt of the watcher that covers its repo, else of the first live watcher, so maintainer comments on
-it are answered (mergeworthy:github-threads)."""
+joins the threads.txt of the posting session's watcher, else of the one that covers its repo, else of the first live
+watcher, so maintainer comments on it are answered (mergeworthy:github-threads)."""
 import json, os, re, shlex, sys, time
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
@@ -118,14 +118,24 @@ def live(dr):
     except (IndexError, OSError, ValueError):
         return False
 live_dirs = [dr for dr in dirs if live(dr)]
+# The posting session's own dirs come first (gh-watch-start records the session): its Monitor tails only those, and an
+# older dir can stay live after its session ended, kept by a forgotten repos.txt line
+own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]
 for repo, num in set(re.findall(r'github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', out)):
     if not posted(repo, num):
         continue
     line = f'{repo} {num}'
-    if any(line in lines(dr, 'threads.txt') for dr in live_dirs):
-        continue
-    covering = [dr for dr in live_dirs if repo in lines(dr, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(dr, 'threads.txt'))]
-    target = (covering or live_dirs or [None])[0]
-    if target:
-        open(os.path.join(target, 'threads.txt'), 'a').write(line + '\n')
+    home = next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None)
+    if not home:
+        covering = [dr for dr in live_dirs if repo in lines(dr, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(dr, 'threads.txt'))]
+        home = ([dr for dr in own if dr in covering] + own + covering + live_dirs + [None])[0]
+        if home:
+            open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
+    # the thread now covers its repo there: a bare repo line left behind would keep the watcher from retiring
+    if home and repo in lines(home, 'repos.txt'):
+        p = os.path.join(home, 'repos.txt')
+        keep = [l for l in open(p) if l.split('#', 1)[0].strip() != repo]
+        with open(p + '.tmp', 'w') as f:
+            f.writelines(keep)
+        os.replace(p + '.tmp', p)
 sys.exit(0)
