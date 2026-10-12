@@ -31,7 +31,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 ### Choosing the model
 
 The main session runs on the strongest tier: it plans, briefs, makes every decision, spot-checks results, and approves every word to a maintainer. Independent reviews follow `review`.
-- **The main session's tier, at high effort, for everything that writes or judges:** code of any size, docs, PR bodies, replies, design answers, fan-out (exploration, designs, finality branches), root causes, verification, every `converge` loop agent and audits. Cleaning up a weaker model's output costs more than writing it well once.
+- **The main session's tier, at medium effort, for everything that writes or judges:** code of any size, docs, PR bodies, replies, design answers, fan-out (exploration, designs, finality branches), root causes, verification, every `converge` loop agent and audits. Cleaning up a weaker model's output costs more than writing it well once.
 - **The smallest tier with an effort setting, at high effort, only for work where nothing it writes ships:** running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping. If its result fails your spot-check, or it is blocked, redo the work on your tier with what failed.
 
 ### Briefing an agent
