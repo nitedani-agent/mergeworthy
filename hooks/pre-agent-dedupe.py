@@ -6,7 +6,7 @@ launch of the same job is blocked until `agent-job done <key>` releases it. A tu
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import state_file
+import memory_file, subprocess
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -35,22 +35,34 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
         if not ok:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
-# A session working from a program state file (core 1.2) names the workstream of every agent it starts, so work the file
-# records as done or replaced isn't started again after a compaction forgot it.
-state = None if register else state_file.used(d)
-if state:
-    named = re.search(r'^\s*State:\s*(.+?)\s*$', gate_text, re.M)
-    ws = state_file.workstreams(state)
-    if not named or named.group(1) not in ws:
-        sys.stderr.write(f"BLOCKED: {'no `State: <workstream>` line in the brief' if not named else f'no workstream {named.group(1)!r} in {state}'}. "
-                         f"Read {state} first: if a workstream there already covers this job, continue it; otherwise add its block. "
-                         f"Then name it in the brief as `State: <workstream>`. Workstreams: {', '.join(ws) or 'none'}.\n")
+# A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
+# commit) re-runs work on code that has moved on.
+if not register:
+    shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
+    git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
+    for wt in sorted({p.rstrip('/.,:') for p in re.findall(r'(/[^\s`\'"()<>,;]+)', gate_text)} if shas else ()):
+        head = git(wt, 'rev-parse', 'HEAD').stdout.strip() if os.path.isfile(os.path.join(wt, '.git')) else ''
+        if head and not any(head.startswith(x) for x in shas):
+            old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
+            if old:
+                root = memory_file.for_cwd(d.get('cwd') or '')
+                ruled = memory_file.section(open(memory_file.path(root)).read(), 'Ruled out') if root and os.path.isfile(memory_file.path(root)) else ''
+                sys.stderr.write(f"BLOCKED: the brief pins {', '.join(sorted(old))} in {wt}, which has moved on to {head[:12]}. "
+                                 "Pin the live head (and check the work isn't already done there)." + (f" Ruled out:\n{ruled}\n" if ruled else "\n"))
+                sys.exit(2)
+# Research the program already wrote up (memory.md, the notes) is read, not redone.
+root = None if register else memory_file.for_cwd(d.get('cwd') or '')
+if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):
+    topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', gate_text, re.M)
+    if not topic:
+        sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the program's notes are searched first.\n")
         sys.exit(2)
-    status = state_file.field(ws[named.group(1)], 'status')
-    if re.match(r'(done|merged|superseded|dead)\b', status, re.I):
-        sys.stderr.write(f"BLOCKED: workstream {named.group(1)!r} is `{status}` in {state}. Use its result "
-                         f"(evidence: {state_file.field(ws[named.group(1)], 'evidence') or 'none'}) or the workstream that replaced it; "
-                         "new work gets its own block saying why the old result doesn't cover it.\n")
+    words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
+    checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', gate_text, re.M))
+    hits = [p for p in memory_file.notes(root) if p not in checked and all(w in open(p, errors='replace').read().lower() for w in words)]
+    if hits:
+        sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
+                         "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
         sys.exit(2)
 key = ' '.join(tickets) or (str(ti.get('title') or ti.get('description') or '').strip())
 if not key:

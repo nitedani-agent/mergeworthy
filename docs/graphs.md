@@ -529,8 +529,8 @@ flowchart TB
   subgraph g6["loc-breakdown"]
     s6["loc-breakdown"]
   end
-  subgraph g7["state-reconcile"]
-    s7["state-reconcile"]
+  subgraph g7["memory-prep"]
+    s7["memory-prep"]
   end
   subgraph g8["The finality trigger"]
     s8["The finality trigger"]

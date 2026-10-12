@@ -66,9 +66,9 @@ These scripts enforce the rules that failed as text alone.
 - Docs (one row, one number), Tests, Lockfile and Generated are separate rows and not features; docs, tests and lockfiles are recognized by path, and the map can assign any path to those names.
 - It exits 1 and lists the lines when a changed line is in no entry or in two, so the totals equal `git diff --numstat`. `post-lint` doesn't count the table in a PR's word budget.
 
-### `state-reconcile` (enforces 1.2)
+### `memory-prep` (enforces 1.2)
 
-`state-reconcile <artifact root>` checks `state.md` against the ground truth and lists each drift: a worktree's head or branch, the pushed head (`git ls-remote`), a PR's state and head, a missing evidence file, a worktree of a listed repo in no block, a report newer than `state.md` that it doesn't name, and the user's messages since the last run (from the transcripts naming the root). It writes the list to `state-reconcile.md` and exits 1 on drift.
+`memory-prep init <root> <T3 thread id>`, run from the orchestrator's checkout, records it, its thread and its session-log dir (`~/.claude/projects/<checkout path, non-alphanumerics as dashes>`). `memory-prep prep <root>` extracts the user's and orchestrator's messages and the git, gh and agent commands logged after `memory.md`'s `covered-until` position (the first time, the last 24 hours), from the logs naming the thread, into `memory-new.txt`, and writes the brief one Haiku follows to merge them in. `memory-prep digest <root>` prints the Standing part, one line per item, cut to about 2k tokens, hard cap 4k.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
@@ -139,13 +139,14 @@ It adds a thread you just opened or posted in (its `gh` or `glab` URL) to your s
 It blocks ending a turn when:
 - it ends with "want me to / should I / your call…" and no `GENUINE-FORK:` line;
 - you posted on GitHub and no live Monitor watches a watcher's `events.log` (a `claude -p` run's caller watches);
-- a watch dir it worked in owes a reply.
+- a watch dir it worked in owes a reply;
+- in a session that started T3 tasks, its `Running:` list wasn't read with `task_status` since the user's last message, or names a terminal task.
 
 It skips its watcher checks while the user's last message says "pause". Each turn's first stop also gets a check-in: work to start, or anything waiting?
 
 ### `session-start` (enforces the always-on rules)
 
-It puts the always-on rules into context, then the `state.md` of the watch dir holding the cwd or naming a path holding it, else the newest one (after a compaction, with the order to run `state-reconcile`), and writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
+It puts the always-on rules into context, then, in an orchestrator's checkout, `memory.md`'s Standing digest (never the Recent part), with the order to refresh it first when it is behind the session log. It writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
 ### `pre-skill-gate.py` (enforces always-on rule 1)
 
@@ -158,7 +159,7 @@ It blocks an action until every skill its always-on row names was opened with th
 
 Read-only commands pass. A row added to `always-on.md` fails `tests/hooks.sh` until the hook's table gates it or lists it as ungated.
 
-**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. A session working from a `state.md` (its cwd is in the program, or it read the file) needs a `State: <workstream>` line naming a live block of it. Read a terminal task’s result, then release it with `agent-job done <ticket>` (`delegating` 1.10).
+**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It blocks a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list, and, in an orchestrator's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the artifact root not named in a `Checked:` line.
 
 ### `netns-run`
 

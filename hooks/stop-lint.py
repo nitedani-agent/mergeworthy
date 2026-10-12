@@ -72,6 +72,38 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
     sys.exit(2)
+# A Running list in the reply is checked against T3 task status: it is read live (task_status) after the user's last
+# message, and names no task whose last read status is terminal.
+running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', last, re.M)  # a `Running:` label or heading
+if running and not child:
+    titles, status, launched, fresh = {}, {}, False, False
+    for line in lines:
+        try: e = json.loads(line)
+        except ValueError: continue
+        c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
+        if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
+            fresh = False
+        for b in c if isinstance(c, list) else []:
+            if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status)$', b.get('name', '')):
+                titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
+                launched = launched or not titles[b['id']][0]
+            elif b.get('type') == 'tool_result' and b.get('tool_use_id') in titles:
+                r = b.get('content'); r = ''.join(x.get('text', '') for x in r) if isinstance(r, list) else str(r or '')
+                try: r = json.loads(r)
+                except ValueError: continue
+                if isinstance(r, dict) and r.get('taskId'):
+                    is_read, title = titles[b['tool_use_id']]
+                    old = status.get(r['taskId'], ('', ''))
+                    status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
+                    fresh = fresh or is_read
+    text = running.group(1).lower()
+    done = [t or i for i, (st, t) in status.items() if re.match(r'(completed|failed|cancel+ed|interrupted|error)', st)
+            and ((t and t.lower() in text) or i.rsplit('%3A', 1)[-1].lower() in text)]
+    if launched and (done or not fresh):
+        print(f"Your Running list names {', '.join(done)}, whose task status is terminal." if done else
+              "Your Running list wasn't read from T3 since the user's last message.", "Read task_status for each agent you list "
+              "and list only the ones still working (mergeworthy:writing).", file=sys.stderr)
+        sys.exit(2)
 own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 cwd_d = d.get('cwd') or ''

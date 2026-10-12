@@ -14,18 +14,20 @@ IMPORTANT: These are the user's instructions for every session (the mergeworthy 
 
 FRAME
 cat "$CLAUDE_PLUGIN_ROOT/always-on.md"
-# The program state file (core 1.2): compaction summaries drop workstreams, so every session and compaction starts from it
-input=$(timeout 2 cat 2>/dev/null)
-cwd=$(printf '%s' "$input" | python3 -c "import json,sys;print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
-source=$(printf '%s' "$input" | python3 -c "import json,sys;print(json.load(sys.stdin).get('source',''))" 2>/dev/null)
-state=$(python3 "$CLAUDE_PLUGIN_ROOT/hooks/state_file.py" "${cwd:-$PWD}" 2>/dev/null)
-if [ -n "$state" ]; then
-  cat <<FRAME
-
-IMPORTANT: The program state file $state (core 1.2) follows: the user's goal and rulings, the critical path, every workstream with its head, PR, evidence and next step, and the decisions. Load it as your record of this program's work before acting, over any summary of this conversation: continue each workstream from its next step, never redo one marked done, SUPERSEDED or DEAD, and update the file in the same step as each agent result, push, post or ruling. If this session's task is not this program, ignore it.
-FRAME
-  [ "$source" = compact ] && echo "This session was just compacted: run \`state-reconcile $(dirname "$state")\` now and fold its drift into the file before anything else."
-  echo; cat "$state"
-fi
+# The memory file (core 1.2): what the built-in compaction summary loses, injected as its capped Standing digest
+cwd=$(timeout 2 cat 2>/dev/null | python3 -c "import json,sys;print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
+python3 - "$CLAUDE_PLUGIN_ROOT/hooks" "${cwd:-$PWD}" <<'PY' 2>/dev/null
+import sys; sys.path.insert(0, sys.argv[1]); import memory_file as mf
+root = mf.for_cwd(sys.argv[2])
+if root:
+    if mf.behind(root):
+        print(f"\nIMPORTANT: {mf.path(root)} is behind your session log. If you are a delegated sub-agent, ignore this. Before resuming: "
+              f"run `memory-prep prep {root}`; start ONE Haiku at high effort (T3 Code: delegate_task, mode async) on the brief file it names; "
+              f"wait for its completion without starting other work and without reading its report; then run `memory-prep digest {root}`, "
+              "read it, and resume. Until then, the digest below is the last one.")
+    print(f"\nThe standing memory of this program ({mf.path(root)}, core 1.2): rulings in force, what is ruled out, what was superseded, "
+          "what is still intended. They hold over this conversation's summary: never retry what is ruled out or resume what was superseded.\n")
+    print(mf.digest(root))
+PY
 # The plugin's options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>; scripts run from Bash read this file instead
 env | sed -n 's/^CLAUDE_PLUGIN_OPTION_\([A-Z_]*\)=/MERGEWORTHY_\1=/p' > ~/.mergeworthy/settings.env

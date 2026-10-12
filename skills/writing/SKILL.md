@@ -44,7 +44,7 @@ Every post brings something the reader didn't have: a finding, a measurement, a 
 
 **Evidence for every claim, in chat too.** Each factual sentence about code, a package, a release or runtime behavior carries its source (`file:line`, `npm view`, command output), or is marked `guess:`. Say what you could not verify.
 
-- A "can't" needs the failed attempt quoted, the session's own tools (its MCP servers) tried first, plus one alternative. Check a blocker you report ("X isn't running") again right before you report it.
+- A "can't" needs the failed attempt quoted, the session's own tools (its MCP servers) tried first, plus one alternative. Check a blocker you report ("X isn't running") again right before you report it, and a `Running:` list against `task_status` (`stop-lint`).
 - If you contradict something you said earlier, say so.
 - A job you report as running is one you saw make progress in this turn (its task status, log, output file, CPU or GPU busy), not one you started or saw earlier.
 - A check covers only what it exercised. "Works", "fixed" or "converged" names what ran and what didn't: a stand-in instead of the real thing, a subset of a list, a unit test instead of the real entry, the source instead of the installed copy.

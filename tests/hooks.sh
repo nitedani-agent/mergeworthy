@@ -496,61 +496,82 @@ printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
 check "agent-job done with the full key releases only that job" 1 "$(python3 "$R/bin/agent-job" done '/x/a.md /x/shared.md' >/dev/null; ls "$J"/aj*.json | wc -l)"
 rm -f "$J"/aj*.json
-# ---------- the program state file: session-start loads it, pre-agent-dedupe asks every brief for its workstream, state-reconcile checks it ----------
+# ---------- the memory file: session-start injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
-SD="$T/prog"; mkdir -p "$SD"; echo "$SD" > "$HOME/.claude/gh-watch-dirs.txt"
-git init -q -b main "$T/sr-repo"; git -C "$T/sr-repo" commit -q --allow-empty -m init
-git init -q --bare "$T/sr-origin.git"; git -C "$T/sr-repo" remote add origin "$T/sr-origin.git"; git -C "$T/sr-repo" push -q origin main
-git -C "$T/sr-repo" worktree add -q -b feat "$SD/wt"; git -C "$SD/wt" commit -q --allow-empty -m feat
-SH=$(git -C "$SD/wt" rev-parse HEAD); git -C "$SD/wt" push -q origin feat
-echo '{"state":"open","merged":false,"head":{"sha":"'"$SH"'"}}' > "$FX/repos_o_r_pulls_5"
-echo '{"state":"closed","merged":true,"head":{"sha":"'"$SH"'"}}' > "$FX/repos_o_r_pulls_4"
-cat > "$SD/state.md" <<EOF
-# State
-## Goal
-Ship feat.
-## Critical path
-1. feat
-## Workstreams
-### feat build
-- repo: o/r
-- branch: feat
-- worktree: $SD/wt
-- head: ${SH:0:10}
-- pushed: yes
-- PR: o/r#5
-- status: in review
-- next: answer the review
-### old build
-- PR: o/r#4
-- status: done, merged as o/r#4
-- evidence: $SD/old-report.md
-## Decisions
-## Lessons
+OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"
+check "memory-prep init refuses a checkout with no session logs" 1 "$(cd "$T" && python3 "$R/bin/memory-prep" init "$MR" thread-1 >/dev/null 2>&1; echo $?)"
+(cd "$OC" && python3 "$R/bin/memory-prep" init "$MR" thread-1 >/dev/null)
+mlog() { # file hours-ago text [thread]: one user line, and the thread id when given
+  python3 -c 'import json,sys,datetime as d; f,h,txt=sys.argv[1:4]; t=(d.datetime.now(d.timezone.utc)-d.timedelta(hours=float(h))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+w=lambda o: open(f,"a").write(json.dumps(o,separators=(",",":"))+"\n")
+w({"type":"user","timestamp":t,"message":{"role":"user","content":txt}})
+if len(sys.argv)>4: w({"type":"assistant","timestamp":t,"message":{"content":[{"type":"text","text":"T3 thread "+sys.argv[4]}]}})' "$@"; }
+mlog "$LD/a.jsonl" 30 "an old ruling" thread-1; mlog "$LD/a.jsonl" 2 "never use cron" thread-1; mlog "$LD/b.jsonl" 1 "another thread's line"
+ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":"compact"}))' "$1" | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null; }
+check "session-start in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
+check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
+python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
+MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
+check "the first prep takes the thread's last 24 hours only" "1 0 0 1" "$(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "^- End the file with the \`<!-- covered-until: 20" "$MB")"
+UNTIL=$(grep -o 'covered-until: [^ ]*' "$MB" | head -1 | cut -d' ' -f2)
+printf '# Memory\n## Standing\n### Rulings in force\n- **No cron** (now). "never use cron".\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n### Superseded\n- **Day files → one memory file** (now).\n### Still intended\n- **Ship it** (now).\n## Recent\n- now: refreshed.\n<!-- covered-until: %s -->\n' "$UNTIL" > "$MR/memory.md"
+check "fresh memory: no refresh order, the Standing digest without the Recent part" "0 1 1 0" "$(ss_mem "$OC" > "$T/ss.out"; grep -c 'is behind' "$T/ss.out") $(grep -c '^- \*\*Cron jobs\*\*' "$T/ss.out") $(grep -c 'Day files → one memory file' "$T/ss.out") $(grep -c 'refreshed' "$T/ss.out")"
+mlog "$LD/a.jsonl" 0 "a new ruling"
+check "a new log line makes it behind; prep then extracts only what follows the covered position" "1 1 0" "$(ss_mem "$OC" | grep -c 'is behind'; python3 "$R/bin/memory-prep" prep "$MR" >/dev/null) $(grep -c 'a new ruling' "$MR/memory-new.txt") $(grep -c 'never use cron' "$MR/memory-new.txt")"
+python3 - "$MR/memory.md" <<'EOF'
+import sys
+items = lambda k: ''.join(f'- **{k} item {i}** (2026-10-12 10:00Z). ' + 'A long standing line about the work. ' * 12 + '\n' for i in range(300))
+open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + items(h) for h in ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')) + '## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n')
 EOF
-echo result > "$SD/old-report.md"; touch -d '1 hour ago' "$SD/state.md" "$SD/old-report.md"
-check "state-reconcile: a state.md matching its worktree, origin and PRs has no drift" "0 0 drift items." "$(python3 "$R/bin/state-reconcile" "$SD" >"$T/sr.out"; echo $?) $(sed -n 3p "$T/sr.out")"
-ss_state() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":sys.argv[2]}))' "$1" "$2" | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null; }
-check "session-start prints the state file of the program the cwd works in, framed to load" "1 1 0" "$(ss_state "$SD/wt/sub" startup > "$T/ss.out"; grep -c '^IMPORTANT: The program state file' "$T/ss.out") $(grep -c '^### feat build' "$T/ss.out") $(grep -c 'state-reconcile' "$T/ss.out")"
-check "after a compaction it also says to run state-reconcile" 1 "$(ss_state "$SD/wt" compact | grep -c "just compacted: run \`state-reconcile $SD\`")"
-st_tr() { python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":sys.argv[1]}}]}}))' "$1" > "$T/st.jsonl"; }
-st_launch() { # cwd task: the session's transcript read the state file
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2" "$T/st.jsonl" \
+check "the digest of a huge memory stays under the aim, one line per item" "yes 0" "$(n=$(python3 "$R/bin/memory-prep" digest "$MR" | wc -c); [ "$n" -le 8400 ] && echo yes || echo "no $n") $(python3 "$R/bin/memory-prep" digest "$MR" | awk 'length > 240' | wc -l)"
+if [ -d "${MW_REAL_DAYS:-/nonexistent}" ]; then  # local only: the real day files are private
+  python3 - "$MR/memory.md" "$MW_REAL_DAYS"/2026-10-12.md "$MW_REAL_DAYS"/2026-10-11.md <<'EOF'
+import re, sys
+def sec(t, h):
+    m = re.search(r'^## *(?:\d+\. *)?' + h + r'[^\n]*\n(.*?)(?=^## |\Z)', t, re.M | re.S | re.I); return m.group(1) if m else ''
+days = [open(p).read() for p in sys.argv[2:]]
+parts = {'Rulings in force': 'How the user wants', 'Ruled out': 'Ruled out', 'Superseded': 'How the plan changed', 'Still intended': 'Still intended'}
+open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {k}\n' + ''.join(sec(d, v) for d in days) for k, v in parts.items()) + '## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n')
+EOF
+  check "the digest of the real 2026-10-11/12 files stays under the 4k-token cap" yes "$(n=$(ss_mem "$OC" | wc -c); [ "$n" -le 16000 ] && echo yes || echo "no $n")"
+fi
+# pre-agent-dedupe: a brief pinned to an old commit of a linked worktree, and research the notes already cover
+git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=$(git -C "$T/gr" rev-parse HEAD)
+git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-empty -m two; NEW=$(git -C "$T/gw" rev-parse HEAD)
+git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
+ag() { # cwd task [role]
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3]}}))' "$1" "$2" "${3:-implementation}" \
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
-st_tr "$SD/state.md"
-check "BLOCK: a session that read its state file starts an agent with no State line" "2 1" "$(st_launch "$T" 'Implement the cache fix') $(grep -c 'Workstreams: feat build, old build' "$T/err")"
-check "BLOCK: a State line naming no workstream in the file" 2 "$(st_launch "$T" $'Implement the cache fix\nState: cache fix')"
-check "BLOCK: a State line naming a done workstream (its result exists)" "2 1" "$(st_launch "$T" $'Redo the old build\nState: old build') $(grep -c "evidence: $SD/old-report.md" "$T/err")"
-check "a State line naming a live workstream passes" 0 "$(st_launch "$T" $'Answer the review\nState: feat build')"
-check "a session in the program's worktree is held to it without reading the file" 2 "$(st_tr /elsewhere; st_launch "$SD/wt" 'Answer the review again')"
-check "a session that never used a state file launches freely" 0 "$(st_launch "$T" 'Look up something')"
-git -C "$T/sr-repo" worktree add -q -b stray "$T/stray"; git -C "$SD/wt" commit -q --allow-empty -m local
-echo '{"state":"open","merged":false,"head":{"sha":"'"$SH"'"}}' > "$FX/repos_o_r_pulls_4"
-echo result > "$SD/finality-report.md"; rm "$SD/old-report.md"
-mkdir -p "$HOME/.claude/projects/p"; python3 -c 'import json,sys,datetime; t=datetime.datetime.now(datetime.timezone.utc).isoformat(); print(json.dumps({"type":"user","timestamp":t,"message":{"content":"Use the gated build, never redo it "+sys.argv[1]}}))' "$SD" > "$HOME/.claude/projects/p/s.jsonl"
-check "state-reconcile lists each drift and exits 1" "1 5" "$(python3 "$R/bin/state-reconcile" "$SD" >"$T/sr.out"; echo $?) $(grep -cE 'feat build: worktree head is|old build: o/r#4 is still open|old build: evidence .* is missing|stray\) of .* is in no workstream|finality-report.md .* is newer than state.md' "$T/sr.out")"
-check "state-reconcile lists the user's messages since its last run, with their offset" 1 "$(grep -cE '^- [0-9-]+T[0-9:]+[+-][0-9:]+: Use the gated build' "$T/sr.out")"
-check "the next run lists only newer messages" 0 "$(python3 "$R/bin/state-reconcile" "$SD" | grep -c 'Use the gated build')"
+printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
+check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at ${OLD:0:10}") $(grep -c 'Cron jobs' "$T/err")"
+check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at ${NEW:0:10}, base ${OLD:0:10}")"
+check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at ${MAINOLD:0:10} once more")"
+echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
+check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
+check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
+check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
+check "research on a topic nothing covers passes" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
+# stop-lint: a Running list is read live from T3 and names no finished task
+rl_tr() { # final-text then status events: status:<s> (a task_status read) | user
+  python3 - "$T/tr.jsonl" "$@" <<'EOF'
+import json, sys
+f, text, *ev = sys.argv[1:]; out = open(f, 'w'); w = lambda o: out.write(json.dumps(o) + '\n'); n = [0]
+def res(name, st, title=''):
+    n[0] += 1; i = f'tu{n[0]}'
+    w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": i, "name": f"mcp__t3-code__{name}", "input": {"title": title, "taskId": "x"}}]}})
+    w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i, "content": json.dumps({"taskId": "node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "status": st})}]}})
+w({"type": "user", "message": {"content": "run loop A"}}); res('delegate_task', 'running', 'Loop A')
+for e in ev:
+    if e == 'user': w({"type": "user", "message": {"content": "status?"}})
+    else: res('task_status', e.split(':')[1])
+w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
+EOF
+}
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user; check "BLOCK: a Running list not read from T3 since the user's last message" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a Running list naming a completed task" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
+rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 check "agent-job lists jobs with the id file present" 0 "$(python3 "$R/bin/agent-job" list >/dev/null 2>&1; echo $?)"
 # a gate review starts only on a draft that passed post-lint in its current form
 mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"

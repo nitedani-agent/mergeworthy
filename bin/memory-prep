@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""memory-prep init <artifact root> <T3 thread id> | prep <artifact root> | digest <artifact root>: the memory file (core 1.2).
+init: run once from the orchestrator's checkout; records its cwd, thread and session-log dir in memory.source.
+prep: extracts the orchestrator's log lines after the position memory.md covered (the first time, the last 24 hours) into
+memory-new.txt, and writes the brief one Haiku follows to merge them in; prints the brief's path, or that nothing is new.
+digest: prints the Standing part session-start injects."""
+import datetime as dt, glob, json, os, re, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
+import memory_file as mf
+
+if len(sys.argv) < 3 or sys.argv[1] not in ('init', 'prep', 'digest') or (sys.argv[1] == 'init') != (len(sys.argv) == 4):
+    sys.exit('usage: memory-prep init <artifact root> <T3 thread id> | prep <artifact root> | digest <artifact root>')
+cmd, root = sys.argv[1], os.path.abspath(os.path.expanduser(sys.argv[2]))
+if cmd == 'init':
+    cwd, tid = os.getcwd(), sys.argv[3]
+    # Claude Code keeps a checkout's session logs in ~/.claude/projects/<its path, every other character a dash>
+    logdir = os.path.expanduser('~/.claude/projects/' + re.sub(r'[^A-Za-z0-9]', '-', cwd))
+    if not os.path.isdir(logdir):
+        sys.exit(f'memory-prep: no session-log dir {logdir}: run init from the orchestrator\'s own checkout')
+    os.makedirs(root, exist_ok=True)
+    json.dump({'cwd': cwd, 'thread': tid, 'logdir': logdir}, open(os.path.join(root, 'memory.source'), 'w'))
+    os.makedirs(os.path.dirname(mf.REG), exist_ok=True)
+    if root not in mf.roots():
+        open(mf.REG, 'a').write(root + '\n')
+    print(f'memory: {root} for {cwd}, thread {tid}, logs in {logdir}')
+    sys.exit(0)
+if not os.path.isfile(os.path.join(root, 'memory.source')):
+    sys.exit(f'memory-prep: {root} has no memory.source: run `memory-prep init {root} <T3 thread id>` from the orchestrator\'s checkout')
+if cmd == 'digest':
+    print(mf.digest(root)); sys.exit(0)
+
+KEEP = re.compile(r'\b(gh (pr|issue|api)|glab|git (push|commit)|agent-job|delegate_task)\b')
+cov = mf.covered(root)
+# the first run covers the last 24 hours, never more
+after = cov or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+entries, until = [], ''
+for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:00')).timestamp() - 60):
+    for l in open(p, errors='replace'):
+        m = re.search(r'"timestamp":"([0-9T:.\-]+Z)"', l)
+        if not m or m.group(1) <= after:
+            continue
+        try: o = json.loads(l)
+        except ValueError: continue
+        t = m.group(1); until = max(until, t); c = (o.get('message') or {}).get('content'); role = o.get('type')
+        at = t[:10] + ' ' + t[11:16] + 'Z'
+        if o.get('isCompactSummary'):
+            continue  # the built-in summary's own text: the lines it summarized are read instead
+        if isinstance(c, str):
+            if role == 'user' and not c.startswith('<'): entries.append((t, f'[{at} USER] {c}'))
+            continue
+        for b in c or []:
+            k = b.get('type')
+            if k == 'text' and role == 'assistant': entries.append((t, f'[{at} ASSISTANT] {b["text"]}'))
+            elif k == 'text' and role == 'user' and not b['text'].startswith('<'): entries.append((t, f'[{at} USER] {b["text"]}'))
+            elif k == 'tool_use':
+                inp = json.dumps(b.get('input'))
+                if KEEP.search(inp) or b.get('name', '').endswith(('delegate_task', 'task_cancel')):
+                    entries.append((t, f'[{at} TOOL {b.get("name")}] {inp[:600]}'))
+if not entries:
+    print(f'memory: nothing new after {after}'); sys.exit(0)
+new = os.path.join(root, 'memory-new.txt')
+open(new, 'w').write('\n\n'.join(x for _, x in sorted(entries)))
+brief = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks', 'memory-brief.md')).read()
+for k, v in {'MEMORY': mf.path(root), 'NEW': new, 'UNTIL': until, 'NOW': until[:10] + ' ' + until[11:16] + 'Z'}.items():
+    brief = brief.replace(f'<{k}>', v)
+out = os.path.join(root, f"memory-brief-{re.sub(r'[^0-9]', '', until)[:14]}.md")
+for old in glob.glob(os.path.join(root, 'memory-brief-*.md')):
+    os.remove(old)
+open(out, 'w').write(brief)
+print(f'memory: {len(entries)} new log entries after {after}; brief: {out}')
