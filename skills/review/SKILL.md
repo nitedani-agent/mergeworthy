@@ -9,7 +9,7 @@ description: "Any independent review: who reviews (Codex, else a fresh Claude), 
 
 1. **A model from another company than the session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude subagent for a Codex session, on the highest provider model `core`’s model authorization limits allow. Start it through the orchestrator, so it is tracked, notifies you and can be cancelled; in T3 Code, one `delegate_task` per round, the model from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>"}, "clientRequestId": "<review>-<round>"}
+   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>", "options": {"reasoningEffort": "high"}}, "clientRequestId": "<review>-<round>"}
    ```
    Without orchestrator tools:
    ```bash

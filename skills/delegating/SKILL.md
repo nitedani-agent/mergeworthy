@@ -32,7 +32,7 @@ These rules hold when you edit a skill, prompt, rules file or AGENTS.md. Rules f
 
 The main session runs on the strongest tier: it plans, briefs, makes every decision, spot-checks results, and approves every word to a maintainer. Independent reviews follow `review`.
 - **Finding a bug's root cause and choosing among approaches (`pull-request` step 3) run at high effort:** lower effort makes fewer tool calls, and the approach that read one more dependency file was half the code (vikejs/vike#3611 vs #3610).
-- **The main session's tier, at medium effort, for everything else that writes or judges:** code of any size, docs, PR bodies, replies, design answers, fan-out (exploration, designs, finality branches), root causes, verification, every `converge` loop agent and audits. Cleaning up a weaker model's output costs more than writing it well once.
+- **The main session's tier for everything else that writes or judges:** authors (code, docs, PR bodies, replies, designs) at high effort; judges (verification, every `converge` loop agent, audits, exploration) at medium. Cleaning up a weaker model's output costs more than writing it well once.
 - **The smallest tier with an effort setting, at high effort, only for work where nothing it writes ships:** running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping. If its result fails your spot-check, or it is blocked, redo the work on your tier with what failed.
 
 ### Briefing an agent
