@@ -608,6 +608,12 @@ reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Ex
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
 mkdir -p "$T/wj2"; rm "$WJ/session"; echo "tail -F $T/wj2/events.log" > "$T/tr.jsonl"
 check "a watch dir with no session file gets the event when the launcher tails its events.log; another doesn't" "0 1" "$(done_events | wc -l) $(WJ="$T/wj2" done_events | grep -c routed-ticket)"
+for t in old listed; do python3 -c 'import json,os,sys,time,hashlib; json.dump({"key":sys.argv[1],"started":time.time()-3600},open(os.path.expanduser("~/.claude/agent-jobs/")+hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16],"w"))' "$T/jobs/$t-ticket.md"
+  child_log "$JD/$t.jsonl" "Execute $T/jobs/$t-ticket.md exactly" 5 text; done  # registered by an older hook: key and start only
+python3 -c 'import json,sys; t,wj=sys.argv[1],sys.argv[2]; w=lambda f,o: open(f,"a").write(json.dumps(o)+"\n")
+w(t+"/home/.claude/projects/-jobs/launcher.jsonl",{"type":"assistant","message":{"content":[{"type":"tool_use","id":"l","name":"mcp__t3-code__delegate_task","input":{"task":f"Execute {t}/jobs/old-ticket.md exactly"}}]}})
+for f in ("launcher","lister"): w(f"{t}/home/.claude/projects/-jobs/{f}.jsonl",{"type":"user","message":{"content":f"tail -F {wj}/events.log; cat {t}/jobs/listed-ticket.md"}})' "$T" "$T/wj2"
+check "an older hook's job (key and start only) is reported to the watch dir its launch call's session tails; a session that only names it isn't a launcher" "1 0" "$(WJ="$T/wj2" done_events > "$T/ev4"; grep -c old-ticket "$T/ev4") $(grep -c listed-ticket "$T/ev4")"
 # stop-lint: a Running list is read live from T3 and names no finished task
 rl_tr() { # final-text then status events: status:<s> (a task_status read) | user
   python3 - "$T/tr.jsonl" "$@" <<'EOF'
