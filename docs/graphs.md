@@ -7,7 +7,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `converge` | nothing |
-| `core` | `writing`, `open-issue`, `evidence`, `delegating`, `github-threads`, `design-loop`, `converge`, `pull-request`, `merging` |
+| `core` | `writing`, `open-issue`, `evidence`, `mechanisms`, `delegating`, `github-threads`, `design-loop`, `converge`, `pull-request`, `merging` |
 | `delegating` | nothing |
 | `design-loop` | `pull-request`, `core`, `review`, `writing`, `converge`, `delegating` |
 | `docs` | `review`, `converge` |
@@ -39,12 +39,13 @@ flowchart TB
   s0 -.-> r1[["writing"]]
   s0 -.-> r2[["open-issue"]]
   s0 -.-> r3[["evidence"]]
-  s0 -.-> r4[["delegating"]]
-  s0 -.-> r5[["design-loop"]]
-  s0 -.-> r6[["converge"]]
-  s0 -.-> r7[["pull-request"]]
-  s0 -.-> r8[["github-threads"]]
-  s0 -.-> r9[["merging"]]
+  s0 -.-> r4[["mechanisms"]]
+  s0 -.-> r5[["delegating"]]
+  s0 -.-> r6[["design-loop"]]
+  s0 -.-> r7[["converge"]]
+  s0 -.-> r8[["pull-request"]]
+  s0 -.-> r9[["github-threads"]]
+  s0 -.-> r10[["merging"]]
   subgraph g1["1.12 Pre-flight"]
     s1["1. Write every task ask and<br/>link as checkboxes …"]
     s2["2. Write the ordered<br/>critical-path list"]
@@ -56,7 +57,7 @@ flowchart TB
     s5["5. Note the precedents and<br/>style"]
     s4 --> s5
   end
-  s3 -.-> r10[["github-threads"]]
+  s3 -.-> r11[["github-threads"]]
   start --> g0
   g0 ~~~ g1
 ```

@@ -56,6 +56,8 @@ for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:
                     said.add(x); entries.append((t, f'[{t} USER] {x}'))
         elif o.get('type') == 'assistant' and isinstance(c, list):
             last += [(t, f'[{t} ASSISTANT] {b["text"]}') for b in c if b.get('type') == 'text']
+            if o['message'].get('stop_reason') not in (None, 'tool_use'):  # the turn completed: its answer is kept
+                entries += last[-1:]; last = []
     entries += last[-1:]
 if not entries:
     print(f'memory: nothing new after {after}'); sys.exit(0)

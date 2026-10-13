@@ -533,7 +533,13 @@ def main_dir():
     return next((d for d in watch_dirs() if live(d)), None)
 
 
+ERRORS = {}  # WATCH ERROR line -> when it was last printed
+
+
 def emit(line):
+    if line.startswith('WATCH ERROR'):  # the same error, every pass, is printed once an hour
+        if time.time() - ERRORS.get(line, 0) < 3600: return
+        ERRORS[line] = time.time()
     print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:github-threads)
 
 
@@ -596,7 +602,7 @@ def emit_maintainer_commits(state, repo, key, old, new):
             note_active(state, {'login': c['login']}, c['date'])
     theirs = [c['sha'] for c in commits if c['login'] in EYES_FOR and c['login'] != ME and c['sha'] in on_pr]
     if theirs:
-        if (s := steward.read()) and os.path.isdir(s[0]) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
+        if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:github-threads)")
 
@@ -623,8 +629,13 @@ def emit_refactor_stale(repo, key, new):
 
 
 def read_threads():
-    threads = []
-    for l in open(THREADS):
+    """threads.txt, an `owner/repo#N` line rewritten there as `owner/repo N`, the form every reader of it expects."""
+    threads, text = [], open(THREADS).read()
+    fixed = re.sub(r'^(\s*[\w.-]+/[\w.-]+)#(\d+)\b', r'\1 \2', text, flags=re.M)
+    if fixed != text and not ONCE:
+        open(THREADS + '.tmp', 'w').write(fixed)
+        if open(THREADS).read() == text: os.replace(THREADS + '.tmp', THREADS)  # unless a line was added meanwhile
+    for l in fixed.splitlines(True):
         w = l.split('#', 1)[0].split() if not l.lstrip().startswith('#') else []
         if w[:1] and w[0].startswith(gl_watch.HOST):
             continue  # gl_watch reads it
@@ -1331,15 +1342,9 @@ def emit_to(d, line):
         f.write(line + '\n')
 
 
-def follow_dirs(dirs):
-    """A declared steward's watch dir gets the follow-ups instead of the dirs that list the PRs."""
-    s = steward.read()
-    return [s[0]] if s and os.path.isdir(s[0]) else dirs
-
-
 def follow_emit(sk, dirs, line):
     if claim(sk, record=not ONCE):  # once across restarts and daemons; a manual --once check records nothing
-        for d in follow_dirs(dirs):
+        for d in steward.recipient(dirs):
             emit_to(d, line)
 
 
@@ -1415,7 +1420,7 @@ def follow_ups():
                         files = commit_files(repo, sha)
                         hit = [k for k in wanted if touches(entries[k], files) and claim(f"followup:{k}:{sha}", record=not ONCE)]
                         if hit:  # one line per commit, naming every PR of yours it touches
-                            for d in follow_dirs(list(dict.fromkeys(d for k in hit for d in prs[k]))):
+                            for d in steward.recipient(list(dict.fromkeys(d for k in hit for d in prs[k]))):
                                 emit_to(d, f"### FOLLOW-UP {repo}#{', #'.join(sorted((k.rsplit('#', 1)[1] for k in hit), key=int))}: {sha[:10]} by {who} changes lines from your PR  {c['html_url']}  at {iso(time.time())}")
                 for e in entries.values():
                     e['scanned'] = max(e['scanned'], when)

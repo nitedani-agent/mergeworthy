@@ -95,7 +95,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - **UI and runtime fixes** are shown working in the real app, per `evidence`; unit scripts alone don't count. New UI ships after a fresh reviewer, never the orchestrator, passes its screenshot's hierarchy and noise. The screenshot must be the whole page at the user's real viewport, with real data. For a product that changes how pages load, judge the whole page as the user sees it: record a screencast from navigation to settled, then count every visible pop-in and shift, GitHub's own included. Never judge by how fast your own pieces are ready.
 12. **Fix the mistake and the rule that allowed it.** When the user names a failure ("why didn’t you…?" or "why are you not…?" about something already required), give one line of why, stop, re-read, and fix the whole class in the same turn:
     - the artifact (PR, comment, code);
-    - the rule that allowed it (a mergeworthy skill, the project file, or a mechanism), by editing the existing rule in the mergeworthy repo (1.9).
+    - the rule that allowed it (a mergeworthy skill, the project file, or a mechanism), by editing the existing rule in the mergeworthy repo (1.9), or, outside the steward session, as a line in its inbox (`mechanisms`).
 
     The fix counts only with all three parts: the instance, the running system (the installed copy where it failed, probed again there, not only the source), and a mechanism (a hook, a script, a lint) when the failure has a detectable trigger or came back after its rule existed. A sentence alone fixes nothing that recurred.
 
@@ -147,7 +147,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
 - **`memory.md` in the artifact root** holds what the built-in compaction summary loses: its Standing part (rulings in force, ruled out, superseded, still intended) is carried until replaced, its Recent part covers the last 24 hours. Run `memory-prep init <artifact root> <your T3 thread id>` once from your checkout when the work spans a compaction or a day (Tier L: before the first PR).
-    - At each start and compaction `session-memory` injects the Standing digest, and orders a refresh when the file is behind your session log (`stop-lint` repeats it): follow that order before resuming.
+    - At each start and compaction the `session-memory` hook injects the Standing digest, and orders a refresh when the file is behind your session log (`stop-lint` repeats the order hourly): follow it before resuming.
 - **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` (with the critical-path and feature list) and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
 - **Tier M:** keep these files:
     - `ledger.md`: one row per event (time | unit | event | head SHA | result). Events are each pass, round, fix with its commits, gate or lane run with its exit status, push, and CI result. Head it with the ordered work and passes still owed (1.1.1). Answer every status and convergence question from the ledger, skipped steps included.
@@ -185,9 +185,10 @@ Run every PR through bug verification, code review and a fresh read on the final
 ### Learning from follow-ups
 
 After one of your PRs merges, the commits others make to its lines (polish, a rename, a revert) and the PRs that reference it are a review you didn't get; the watcher reports each as `FOLLOW-UP` (`mechanisms`). Read the change against your own diff and sort it once:
-- **A miss your checks should have caught** (a bug, a sibling case, a gap a gate could find): fix the rule or mechanism in mergeworthy (`past-failures`), the same turn.
+- **A miss your checks should have caught** (a bug, a sibling case, a gap a gate could find): fix the rule or mechanism (`past-failures`, 1.1.12), the same turn.
 - **The project's taste** (naming, structure, comment density, what the maintainer cuts or adds): one line in `~/.mergeworthy/projects/<owner>/<repo>.md`, under Conventions, Maintainer preferences or Recurring misses, with the link to the commit or PR that shows it.
-- **A new direction** (the maintainer chose differently, no fault in yours): nothing to keep; its verdict line says why.
+- **What worked** (a maintainer praised or adopted something of yours): one line under `## What worked` in that file, with the link.
+- **A new direction** (the maintainer chose differently, no fault in yours): nothing to keep; its `DIRECTION` line in `followups-sorted.txt` says why.
 
 Keep that file short and true: update an entry instead of adding a near-duplicate, delete one a later change contradicts, and keep only what would change your next diff. The knowledge stays per project; only the method lives here.
 

@@ -37,7 +37,7 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
             sys.exit(2)
 # A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
 # commit) re-runs work on code that has moved on.
-paths = {p.rstrip('/.,:') for p in re.findall(r'(/[^\s`\'"()<>,;]+)', gate_text)}
+paths = {os.path.expanduser(p.rstrip('/.,:')) for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', gate_text)}
 if not register:
     shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
     git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
@@ -89,12 +89,13 @@ if not register:
         sys.stderr.write("BLOCKED: another agent is still working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
                          + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree.\n")
         sys.exit(2)
-# A brief for a repo whose maintainers' notes exist (core 1.3) names the notes file, so the agent reads them: by owner/repo, or by
-# a path in that repo's checkout. A memory-refresh brief reads only the session log.
-if not register and 'memory-refresh' not in gate_text:
+# A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
+# (core 1.3) names the notes file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
+# brief reads only the session log.
+if not register and ti.get('role') not in ('research', 'test') and 'memory-refresh' not in gate_text:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
              for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
-    named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?![\w.-]|\.md)', gate_text, re.I)}
+    named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?!\.md)(?:\.git)?(?![\w.-])', gate_text, re.I)}
     tops = set()
     for p in paths if notes else ():
         if p.startswith('//'): continue  # the //host/… of a URL, not a path

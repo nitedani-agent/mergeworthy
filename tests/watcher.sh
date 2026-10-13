@@ -63,6 +63,13 @@ with contextlib.redirect_stdout(buf): m.emit_dependents("o/r#391")
 print(threads + " " + ("DEPENDENT" if "DEPENDENT of merged o/r#391" in buf.getvalue() else "none"))
 ')
 check "waiting-on.txt key with trailing note: read as a thread, DEPENDENT emitted" "o/r 1 o/r 391 DEPENDENT" "$got"
+got=$(py '
+os.remove(os.path.join(m.HERE, "waiting-on.txt")); open(m.THREADS, "w").write("magne4000/universal-middleware#408\no/r 2\nbogus\n")
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): t = m.read_threads(); m.read_threads()
+print(" ".join(sorted(r + " " + n for r, n in t)) + "|" + open(m.THREADS).read().replace("\n", ";") + "|" + str(buf.getvalue().count("WATCH ERROR")))
+')
+check "threads.txt: owner/repo#N is read as owner/repo N and rewritten so; a bad line is reported once an hour, not every pass" "magne4000/universal-middleware 408 o/r 2|magne4000/universal-middleware 408;o/r 2;bogus;|1" "$got"
 
 # a ticked grouped tracker line is accepted; an unticked one still fires TRACKER STALE
 tracker() { py "
@@ -284,10 +291,14 @@ recorded=[('z.ts', [[11, 12]])]" "$got"
 got=$(follow '
 sd = os.path.join(os.path.dirname(m.HERE), "stew"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n")
+open(os.path.join(sd, "gh-watch.pid"), "w").write("999999999")
+out = scan(); print(len(out), end=" ")
+open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
+for p in ("shared-watch.json", "agent-commands.seen"): os.remove(os.path.expanduser("~/.mergeworthy/" + p)) if os.path.exists(os.path.expanduser("~/.mergeworthy/" + p)) else None
 out = scan(); os.remove(os.path.expanduser("~/.mergeworthy/steward"))
 print(len(out), sum(l.startswith("### FOLLOW-UP") for l in open(os.path.join(sd, "events.log"))))
 ')
-check "FOLLOW-UP: with a steward declared, the events go to its watch dir instead" "0 3" "$got"
+check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs; while it runs, they go to its watch dir instead" "3 0 3" "$got"
 got=$(follow '
 scan()
 n = len(calls); scan()

@@ -151,26 +151,26 @@ if watcher_on and not paused and not child:
                   file=sys.stderr)
             sys.exit(2)
 # Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:github-threads),
-# in the dir that receives them: a declared steward's, else the session's own
+# by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's
 if watcher_on and not paused and not child:
     import datetime, time
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import steward
     st = steward.read()
-    for wd in ([st[0]] if steward.is_steward(d.get('session_id'), cwd_d) else []) if st else sorted(own_dirs):
+    for wd in sorted(own_dirs | ({st[0]} if st and steward.is_steward(d.get('session_id'), cwd_d) else set())):
         try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: continue
         f = os.path.join(wd, 'followups-sorted.txt')
-        done = re.findall(r'^(\S+)\s+(?:MISS|TASTE|DIRECTION)\s+\S', open(f, errors='replace').read() if os.path.exists(f) else '', re.M)
+        done = re.findall(r'^(\S+)\s+(?:MISS|TASTE|DIRECTION|WORKED)\s+\S', open(f, errors='replace').read() if os.path.exists(f) else '', re.M)
         late = [k for k, at in re.findall(r'^### FOLLOW-UP [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M)
                 if time.time() - datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp() > 1800
                 and not any(v == k or (len(v) >= 7 and k[:7] == v[:7] and (v.startswith(k) or k.startswith(v))) for v in done)]
         if late:
             print(f"These FOLLOW-UP events in {wd}/events.log are unsorted after 30 minutes: {', '.join(dict.fromkeys(late))}. Brief the sort "
-                  f"(mergeworthy:github-threads) and record each as `<sha or PR URL> MISS|TASTE|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
+                  f"(mergeworthy:github-threads) and record each as `<sha or PR URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
             sys.exit(2)
 # The orchestrator's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
-if not child:
+if not child and not paused:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import datetime, time, memory_file as mf
     try: root = mf.for_cwd(cwd_d)

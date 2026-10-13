@@ -5,7 +5,7 @@ description: "When a rule failed or the user names a failure: the table of past 
 
 # Failures that already happened
 
-Each failure below happened, most more than once. When a rule fails or the user names a failure, find its row. A new failure goes in an existing row when one covers its rule; otherwise a new row of at most one line. Either way the rule is fixed (1.1.12).
+Each failure below happened, most more than once. When a rule fails or the user names a failure, find its row. A new failure goes in an existing row when one covers its rule; otherwise a new row of at most one line. Either way the rule is fixed (1.1.12; outside the steward session, as a line in its inbox).
 
 | What happened | Rule |
 |---|---|
@@ -98,4 +98,4 @@ Each failure below happened, most more than once. When a rule fails or the user 
 | PR bodies ignored `pull-request` step 7's template, written from a recalled skill instead of an opened one; the user: "a wall of cryptic text I can't simply scan". | always-on 1, `pre-skill-gate`, `post-lint --kind pr` |
 | After compactions the orchestrator forgot finished work: it rebuilt a finished, gated finality build through four stacked patches and a redo, relaunched research already written up, repeated a stale status for hours, and labeled local times UTC. | 1.2 `memory.md`, `memory-prep`, `session-start`, `pre-agent-dedupe`, `stop-lint` |
 | Claude Code cut a 14 KB session-start output to a 2 KB preview, dropping the memory digest and refresh order; `memory.md` fell 21 h behind. | `session-memory`, `stop-lint` |
-| 25 of 46 maintainer follow-ups went unsorted; the notes reached 0 of 96 universal-middleware briefs. | `github-threads` (`FOLLOW-UP`), `stop-lint`, `pre-agent-dedupe`, `review` |
+| 25 of 46 maintainer follow-ups went unsorted; the repo's notes file (`~/.mergeworthy/projects/<owner>/<repo>.md`) was in 0 of 96 subagent briefs for universal-middleware. | `github-threads` (`FOLLOW-UP`), `stop-lint`, `pre-agent-dedupe`, `review` |

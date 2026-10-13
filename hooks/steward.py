@@ -14,8 +14,8 @@ def threads(session_id):
     out = []
     try:
         c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
-        r = c.execute('select thread_id from orchestration_v2_projection_provider_threads where instr(payload_json, ?) > 0',
-                      (f'"nativeId":"{session_id}"',)).fetchone()
+        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
+                      (session_id,)).fetchone()
         while r and r[0] not in out and len(out) < 8:
             out.append(r[0])
             r = c.execute('select thread_id from orchestration_v2_projection_subagents where child_thread_id = ?', (r[0],)).fetchone()
@@ -23,7 +23,20 @@ def threads(session_id):
         pass
     return out
 
+def first(path):
+    try: return open(path).read().split()[0]
+    except (OSError, IndexError): return ''
+
 def is_steward(session_id, cwd):
-    """True for the steward's session and the agents it delegated: by its T3 thread, or a cwd in its watch dir."""
+    """True for the steward's session and the agents it delegated: by its T3 thread, a cwd in its watch dir, or, without
+    T3's database, the session gh-watch-start recorded in its watch dir."""
     s = read()
-    return bool(s) and (((cwd or '').rstrip('/') + '/').startswith(s[0] + '/') or bool(session_id) and s[1] in threads(session_id))
+    return bool(s) and (((cwd or '').rstrip('/') + '/').startswith(s[0] + '/') or bool(session_id) and
+                        (first(os.path.join(s[0], 'session')) == session_id or s[1] in threads(session_id)))
+
+def recipient(dirs):
+    """Where a follow-up goes: the steward's watch dir while its watcher runs (someone reads it), else dirs."""
+    s = read()
+    try: os.kill(int(first(os.path.join(s[0], 'gh-watch.pid'))), 0)
+    except (TypeError, ValueError, OSError): return dirs
+    return [s[0]]

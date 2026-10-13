@@ -538,9 +538,11 @@ echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
 mlog "$LD/a.jsonl" 0 "a new ruling"
 check "a new log line makes it behind; prep then extracts only what follows the covered position" "1 1 0" "$(ss_mem "$OC" | grep -c 'is behind'; python3 "$R/bin/memory-prep" prep "$MR" >/dev/null) $(grep -c 'a new ruling' "$MR/memory-new.txt") $(grep -c 'never use cron' "$MR/memory-new.txt")"
 alog() { python3 -c 'import json,sys,datetime as d; t=d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-open(sys.argv[1],"a").write(json.dumps({"type":"assistant","timestamp":t,"message":{"content":[{"type":"text","text":sys.argv[2]}]}},separators=(",",":"))+"\n")' "$@"; }
+open(sys.argv[1],"a").write(json.dumps({"type":"assistant","timestamp":t,"message":{"content":[{"type":"text","text":sys.argv[2]}],"stop_reason":(sys.argv[3:] or [None])[0]}},separators=(",",":"))+"\n")' "$@"; }
 alog "$LD/a.jsonl" "narration before a tool call"; alog "$LD/a.jsonl" "the turn's answer"; mlog "$LD/a.jsonl" 0 "next prompt"; alog "$LD/a.jsonl" "the last turn's answer"
 check "prep keeps only the last text of each assistant turn" "0 1 1" "$(python3 "$R/bin/memory-prep" prep "$MR" >/dev/null; grep -c 'narration before' "$MR/memory-new.txt") $(grep -c "ASSISTANT\] the turn's answer" "$MR/memory-new.txt") $(grep -c "the last turn's answer" "$MR/memory-new.txt")"
+alog "$LD/a.jsonl" "COMPLETED_ONE" end_turn; alog "$LD/a.jsonl" "COMPLETED_TWO" end_turn  # a background notification woke the second turn: no prompt between
+check "prep keeps each completed turn's answer, with no prompt between them" "1 1" "$(python3 "$R/bin/memory-prep" prep "$MR" >/dev/null; grep -c 'COMPLETED_ONE' "$MR/memory-new.txt") $(grep -c 'COMPLETED_TWO' "$MR/memory-new.txt")"
 python3 - "$MR/memory.md" <<'EOF'
 import sys
 items = lambda k: ''.join(f'- **{k} item {i}** (2026-10-12 10:00Z). ' + 'A long standing line about the work. ' * 12 + '\n' for i in range(300))
@@ -552,6 +554,8 @@ cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; touch -d '3 hours ago' "$MR/me
 ss_all=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" </dev/null 2>/dev/null | wc -c); ss_m=$(ss_mem "$OC" | tee "$T/ss.out" | wc -c)
 echo "measured with tests/fixtures/memory.md (a real memory.md, words hashed): session-start $ss_all bytes, session-memory $ss_m bytes"
 check "each SessionStart output with a real-sized memory.md stays under 9,000 bytes; the order comes first, the digest after" "yes yes 1 1" "$([ "$ss_all" -le 9000 ] && echo yes) $([ "$ss_m" -le 9000 ] && echo yes) $(head -1 "$T/ss.out" | grep -c 'is behind') $(grep -c '^### Still intended' "$T/ss.out")"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Please pause the work"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Paused."}]}}))' > "$T/tr.jsonl"
+check "the user's pause holds the refresh order too" "0 no" "$(stop "$OC") $([ -e "$MR/.memory-order-repeated" ] && echo yes || echo no)"
 tr_file "Done."
 check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, then not within the hour" "2 1 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR" "$T/err") $(stop "$OC")"
 rm "$MR/.memory-order-repeated"
@@ -590,6 +594,9 @@ git init -q "$T/oc"; git -C "$T/oc" remote add origin https://github.com/o/r.git
 check "BLOCK: a brief naming owner/repo without its notes file, printing the path" "2 1" "$(ag "$T" 'Fix o/r#5') $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
 check "BLOCK: a brief naming a path in that repo's checkout" 2 "$(ag "$T" "Fix the bug in $T/oc/src")"
 check "a brief with an https URL finishes (its //host is not a path), and the URL's owner/repo still counts" "2 0" "$(ag "$T" 'Fix https://github.com/o/r/pull/5') $(ag "$T" 'See https://example.com/a/b')"
+git init -q "$HOME/occ"; git -C "$HOME/occ" remote add origin git@github.com:o/r.git; mkdir -p "$HOME/occ/src"
+check "BLOCK: the repo as git@github.com:o/r.git, and a ~/ path in its checkout" "2 2" "$(ag "$T" 'Fix git@github.com:o/r.git') $(ag "$T" 'Fix the bug in ~/occ/src')"
+check "a brief that writes nothing to the repo (role research or test) needs no notes; a review does" "0 0 2" "$(ag "$T" 'Mine session logs for o/r' research) $(ag "$T" 'Run the tests of o/r' test) $(ag "$T" 'Review o/r#7' review)"
 check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Run mergeworthy:memory-refresh on o/r#5 lines')"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
@@ -943,10 +950,25 @@ check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "gi
 echo "$SW steward-thread" > "$HOME/.mergeworthy/steward"
 check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push origin HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
 check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push origin HEAD:main" child-session "$T") $(sg "git -C $T/mwc push origin HEAD:main" x "$SW") $(sg "git -C $T/gr push origin HEAD:main" other-session "$T")"
-printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" | tee "$SW/events.log" > "$WD/events.log"
+python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p3', 'thread:spaced', '{"nativeThreadRef": {"nativeId": "spaced-session"}}')""")
+c.execute("insert into orchestration_v2_projection_subagents values ('s2', 'steward-thread', 'thread:spaced')"); c.commit()
+EOF2
+echo steward-session > "$SW/session"
+check "the steward's agent is found in JSON written with spaces" 0 "$(sg "git -C $T/mwc push origin HEAD:main" spaced-session "$T")"
+mv "$HOME/.t3/userdata/statev2.sqlite" "$T/state.bak"
+check "without T3's database, the session its watch dir's session file names is the steward; another isn't" "0 2" "$(sg "git -C $T/mwc push origin HEAD:main" steward-session "$T") $(sg "git -C $T/mwc push origin HEAD:main" other-session "$T")"
+mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
+printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
-check "with a steward, an orchestrator's unsorted FOLLOW-UP doesn't block it; the steward's does" "0 2" "$(stop "$WD") $(stop "$SW")"
-rm -f "$HOME/.mergeworthy/steward" "$WD/events.log"
+check "with a steward, its unsorted FOLLOW-UP blocks it, not an orchestrator" "0 2" "$(stop "$WD") $(stop "$SW")"
+cp "$SW/events.log" "$WD/events.log"
+check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
+echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
+check "a WORKED verdict sorts it" 0 "$(stop "$SW")"
+rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt"
 # ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash

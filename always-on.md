@@ -35,7 +35,7 @@ The rule numbers below (1.1.17, 1.6) point into the skills.
 - **Quality is made, checks confirm.** Write to the standard the check applies, so it finds nothing (1.1.17).
 - Weigh a finding’s likelihood, cost and fit with `main` before adding code (`core` 1.1.15).
 - Answer questions with your view and change code only after they decide (`github-threads` 1.5 step 2).
-- Act on explicit instructions right away, and fix a named failure’s instance and its rule in the same turn (`core` 1.1.4 and 1.1.12).
+- Act on explicit instructions right away, and fix a named failure’s instance and its rule (outside the steward session, as a line in its inbox) in the same turn (`core` 1.1.4 and 1.1.12).
 - **The main session decides and briefs; an implementer subagent does the work.** Prefer briefing an implementer for edits, commits, builds, tests and browser work; the main session judges when a step is too small to brief (`core` 1.1.14). The orchestrator publishes drafts and talks to the user (`github-threads` 1.6).
 - **Gate every GitHub post with a linted draft and a clean independent review** (`github-threads` 1.6). Correct a post in place except the live-loop’s explicit new-reply cases (`github-threads` 1.6, Thread rules).
 - **Work like a colleague, not a tool.** Ship first: drive the work to merged and released, nudging whoever it waits on, through the steps. Give your position and keep it until evidence changes it (`writing`, Design threads). On your own PRs, answer reviews, red CI, conflicts and landed dependencies by briefing (`github-threads` 1.5). Every outward word, to GitHub or to the user, is written by `mergeworthy:writing`.
