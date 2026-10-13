@@ -969,6 +969,21 @@ check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher 
 echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
 check "a WORKED verdict sorts it" 0 "$(stop "$SW")"
 rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt"
+# ---------- hooks/run: hook scripts run from ~/.mergeworthy/current; a changed hook list asks once for a restart ----------
+PO="$T/plugins/cache/mw/old"; PN="$T/plugins/cache/mw/new"; mkdir -p "$PO/hooks" "$PN/hooks" "$T/co/hooks"; cp "$R/hooks/run" "$PO/hooks/"; cp "$R/hooks/run" "$T/co/hooks/"; CUR=$(readlink "$HOME/.mergeworthy/current")
+printf 'print("old")\n' > "$PO/hooks/x.py"; printf 'print("new")\n' > "$PN/hooks/x.py"; printf 'print("checkout")\n' > "$T/co/hooks/x.py"
+rm -f "$HOME/.mergeworthy/current"; a=$("$PO/hooks/run" x.py); ln -sfn "$PN" "$HOME/.mergeworthy/current"; b=$("$PO/hooks/run" x.py); c=$("$T/co/hooks/run" x.py)
+check "hooks/run: an installed copy runs its own script without ~/.mergeworthy/current, the current version's with it; a checkout its own; every hook but session-start goes through it" "old new checkout ok" "$a $b $c $(python3 - "$R" <<'EOF2'
+import json, sys
+cmds = [h['command'] for es in json.load(open(sys.argv[1] + '/hooks/hooks.json'))['hooks'].values() for e in es for h in e['hooks']]
+print('ok' if all(c.startswith('"${CLAUDE_PLUGIN_ROOT}"/hooks/run ') or c.endswith('/hooks/session-start') for c in cmds) else cmds)
+EOF2
+)"
+echo '{"hooks": 1}' > "$PO/hooks/hooks.json"; echo '{"hooks": 2}' > "$PN/hooks/hooks.json"; touch -d '1 hour ago' "$PO"; tr_file "Done."
+rs() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
+    | CLAUDE_PLUGIN_ROOT="$PO" MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
+check "BLOCK once per session: a newer version changed hooks.json, so a restart loads it; the same hook list says nothing" "2 1 0 0" "$(rs rs-1) $(grep -c 'restart of this session' "$T/err") $(rs rs-1) $(cp "$PN/hooks/hooks.json" "$PO/hooks/"; rs rs-2)"
+if [ -n "$CUR" ]; then ln -sfn "$CUR" "$HOME/.mergeworthy/current"; else rm -f "$HOME/.mergeworthy/current"; fi
 # ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash

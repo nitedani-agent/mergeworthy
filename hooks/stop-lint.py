@@ -192,6 +192,19 @@ if not child and d.get('session_id'):
             print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
                   f"result (task_status / its report), act on it, then `agent-job done '{j['key'][:200]}'` (mergeworthy:delegating 1.10).", file=sys.stderr)
             sys.exit(2)
+# Hook scripts run from ~/.mergeworthy/current (hooks/run), but the hook list is the one this session started with: when a newer
+# version changed hooks.json, say so once per session
+own_root, cur = os.environ.get('CLAUDE_PLUGIN_ROOT') or '', os.path.realpath(os.path.expanduser('~/.mergeworthy/current'))
+def hook_list(r):
+    try: return open(os.path.join(r, 'hooks', 'hooks.json')).read()
+    except OSError: return None
+told = os.path.expanduser(f"~/.claude/mergeworthy-restart-told/{d.get('session_id')}")
+if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.path.isdir(own_root) and os.path.isdir(cur) and os.path.realpath(own_root) != cur
+        and os.path.getmtime(own_root) < os.path.getmtime(cur) and hook_list(own_root) != hook_list(cur) and not os.path.exists(told)):
+    os.makedirs(os.path.dirname(told), exist_ok=True); open(told, 'w').close()
+    print(f"mergeworthy's hook list changed after this session started ({own_root} -> {cur}): tell the user that a restart of this "
+          "session (exit, then `claude --resume`) loads it.", file=sys.stderr)
+    sys.exit(2)
 # Before a turn ends, one check-in (the hook doesn't ask twice in a row: stop_hook_active lets the next stop through)
 # At most once per MERGEWORTHY_STOP_CHECKIN_SECONDS (default 30 min): every extra turn re-reads the whole context from cache
 def checkin_due():

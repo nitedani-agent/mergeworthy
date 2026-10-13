@@ -7,7 +7,7 @@ description: "Using or fixing the mechanisms that enforce the rules: the watcher
 
 These scripts enforce the rules that failed as text alone.
 
-- **Where they live.** The scripts ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, and its `hooks/hooks.json` is active while the plugin is enabled. They update with the plugin.
+- **Where they live.** The scripts ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, and its `hooks/hooks.json` is active while the plugin is enabled. Hooks run their scripts from `~/.mergeworthy/current` (`hooks/run`); only a changed `hooks.json` needs a restart, which `stop-lint` says once.
 - **Changing them.** Edit and propagate from the source repo, leaving installed copies untouched (`delegating` 1.9).
 - **The steward.** `~/.mergeworthy/steward` (the user writes it) holds `<watch dir> <T3 thread id>`. You are the steward if that is your T3 thread or your delegator's, or `<watch dir>/session` names your session; only the steward and its agents commit or push to mergeworthy and sort `FOLLOW-UP`s. Any other session writes a mergeworthy fix it owes as one line in `<watch dir>/inbox.md`, read by the steward at every wakeup.
 - **Options.** The plugin's options are `badge`, `merge` and `watcher` (`/plugin` → mergeworthy → Configure options). They reach the scripts through `~/.mergeworthy/settings.env`, rewritten at every session start. An environment variable `MERGEWORTHY_<KEY>` wins over the option.
@@ -81,7 +81,7 @@ These scripts enforce the rules that failed as text alone.
 - `verify`: trailing `NO BUGS`.
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge`, step 3).
 - `loopb`: captured final message `CLEAN` (`review`).
-- `fresh`: `MERGE AS IS: yes` and trailing `CLEAN`; keep the posting verdict in a separate file (`converge`, step 4).
+- `fresh`: `MERGE AS IS: yes` and trailing `CLEAN` (`converge`, step 4).
 - `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.
 - `gates`: `<command> -> exit 0` lines.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all six and the branch has its `approach` record.
@@ -128,7 +128,7 @@ It blocks:
 
 ### `post-bash-register.py` (enforces 1.5)
 
-It adds a thread you just opened or posted in (its `gh` or `glab` URL) to your session's watch dir, else one covering its repo. A read that only prints URLs adds nothing.
+It adds a thread you just opened or posted in (its `gh` or `glab` URL) to your session's watch dir, else one covering its repo.
 
 ### `stop-lint.py` (enforces 1.1.3, 1.5)
 

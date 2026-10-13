@@ -1,0 +1,7 @@
+#!/bin/bash
+# Runs hook script $1. An installed copy runs it from ~/.mergeworthy/current, the installed version, so an update reaches
+# sessions already running (only a change to hooks.json needs a restart); a checkout (claude --plugin-dir) runs its own.
+d=$(dirname "$0")
+case "$d" in */plugins/cache/*) [ -f "$HOME/.mergeworthy/current/hooks/$1" ] && d=$HOME/.mergeworthy/current/hooks;; esac
+s=$1; shift
+exec python3 "$d/$s" "$@"

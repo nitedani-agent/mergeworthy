@@ -9,7 +9,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-memory.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run session-memory.py"
           }
         ]
       }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-skill-gate.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-skill-gate.py"
           }
         ]
       },
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-bash-guard.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-bash-guard.py"
           }
         ]
       },
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-agent-dedupe.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-agent-dedupe.py"
           }
         ]
       },
@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-design-gate.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-design-gate.py"
           }
         ]
       }
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-agent-dedupe.py register"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run pre-agent-dedupe.py register"
           }
         ]
       },
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-bash-register.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run post-bash-register.py"
           }
         ]
       }
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/stop-lint.py"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run stop-lint.py"
           }
         ]
       }
