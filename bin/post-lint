@@ -309,7 +309,8 @@ if not record:
             (__import__('os').path.exists(_parent) and re.search(r'\breview\b', open(_parent).read(), re.I)):
         PROCESS = [b for b in PROCESS if '/10' not in b]
     # A maintainer who asks how the work was made (models, agents, orchestration, the harness) gets that answer: allowed then
-    if __import__('os').path.exists(_parent) and re.search(r'\b(AI models?|agents?|sub-?agents?|orchestrat\w*|harness)\b', open(_parent).read(), re.I):
+    # ...and so does the methodology's own repo, where the process is the subject
+    if (repo or '').lower() == 'nitedani/mergeworthy' or (__import__('os').path.exists(_parent) and re.search(r'\b(AI models?|models?|agents?|sub-?agents?|orchestrat\w*|harness|effort|Codex|Opus|Haiku|Claude)\b', open(_parent).read(), re.I)):
         PROCESS = []
     for b in PROCESS:
         for m in re.finditer(b, prose, flags=re.I):

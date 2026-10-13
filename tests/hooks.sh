@@ -374,6 +374,8 @@ printf 'What AI model did you use? Explain the agent orchestration.\n' > "$T/pm.
 check "a maintainer who asks about models and agents gets them named" 0 "$(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --parent "$T/pm.parent.md" 2>&1 | grep -c 'process in the thread')"
 printf 'Can you fix the typo?\n' > "$T/pm2.parent.md"
 check "the same reply to an unrelated comment is flagged" 3 "$(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --parent "$T/pm2.parent.md" 2>&1 | grep -c 'process in the thread')"
+printf 'Why is the review effort different every time?\n' > "$T/pm3.parent.md"
+check "a question about effort gets models named; the methodology's own repo always does" "0 0" "$(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --parent "$T/pm3.parent.md" 2>&1 | grep -c 'process in the thread') $(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --repo nitedani/mergeworthy --parent "$T/pm2.parent.md" 2>&1 | grep -c 'process in the thread')"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"
