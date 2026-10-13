@@ -574,7 +574,7 @@ git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-em
 git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
 ag() { # cwd task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3]}}))' "$1" "$2" "${3:-implementation}" \
-    | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+    | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
@@ -589,6 +589,7 @@ mkdir -p "$HOME/.mergeworthy/projects/o" "$T/oc"; echo '- a convention' > "$HOME
 git init -q "$T/oc"; git -C "$T/oc" remote add origin https://github.com/o/r.git; mkdir -p "$T/oc/src"
 check "BLOCK: a brief naming owner/repo without its notes file, printing the path" "2 1" "$(ag "$T" 'Fix o/r#5') $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
 check "BLOCK: a brief naming a path in that repo's checkout" 2 "$(ag "$T" "Fix the bug in $T/oc/src")"
+check "a brief with an https URL finishes (its //host is not a path), and the URL's owner/repo still counts" "2 0" "$(ag "$T" 'Fix https://github.com/o/r/pull/5') $(ag "$T" 'See https://example.com/a/b')"
 check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Run mergeworthy:memory-refresh on o/r#5 lines')"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"

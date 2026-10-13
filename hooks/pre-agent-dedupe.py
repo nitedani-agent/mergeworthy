@@ -97,6 +97,7 @@ if not register and 'memory-refresh' not in gate_text:
     named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?![\w.-]|\.md)', gate_text, re.I)}
     tops = set()
     for p in paths if notes else ():
+        if p.startswith('//'): continue  # the //host/… of a URL, not a path
         while p != '/' and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
         tops.add(p)
     for top in tops - {'/'}:
