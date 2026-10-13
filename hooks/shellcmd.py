@@ -75,7 +75,7 @@ def api_call(rest):
            ('-X', '--method', '-f', '--raw-field', '-F', '--field', '--input', '-H', '--header', '-q', '--jq', '-t', '--template', '--hostname', '--cache', '-p', '--preview'))]
     ep = pos[0] if pos else ''
     if ep == 'graphql':
-        posts = any(re.search(r'\bmutation\b', v) for v in fields)
+        posts = any(re.search(r'\bmutation\b', v) and re.search(r'\b(?!(?:add|remove)Reaction\b)[a-z]\w*\s*\(input:', v) for v in fields)  # a reaction posts no text
     else:
         posts = method in ('POST', 'PATCH', 'PUT') and not re.search(r'/(reactions|rerun[\w-]*|dispatches|labels|assignees|requested_reviewers)(/|$|\?)', ep)
     return method, ep, fields, inputs, posts

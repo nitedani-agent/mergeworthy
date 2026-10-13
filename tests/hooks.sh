@@ -861,6 +861,11 @@ for c in 'git status' 'git push --dry-run' 'gh pr view 5 --comments' 'gh pr list
          'gh api repos/o/r/issues/comments/9/reactions -f content=eyes' 'gh pr create --help' 'ls skills/writing' 'gh pr ready 5 --undo'; do
   check "read-only passes: $c" 0 "$(sgb "$c")"
 done
+check "a GraphQL reaction posts no text; a comment mutation does" "False True" "$(python3 - "$R/hooks" <<'PY2'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print(*[s.api_call(['graphql', '-f', 'query=mutation{%s(input:{subjectId:"x"}){x}}' % m])[4] for m in ('addReaction', 'addComment')])
+PY2
+)"
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
 check "the post block names github-threads and writing" "mergeworthy:github-threads mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
