@@ -1356,8 +1356,8 @@ def followed_prs():
 def follow_ups():
     """After a PR of yours merges, later commits to its lines by others and PRs that reference it are a review you didn't get
     (mergeworthy:core, Learning from follow-ups). A shared job (shared_pass): each merged PR of yours in any live watch dir is
-    followed for FOLLOWUP_DAYS. `### FOLLOW-UP` goes once, to the dirs that list the PR, per commit (not yours, not a bot's,
-    not a merge) that touches its recorded lines, and once per other person's PR that references it.
+    followed for FOLLOWUP_DAYS. `### FOLLOW-UP` goes once per commit (not yours, not a bot's, not a merge) that touches the
+    recorded lines of PRs of yours, naming them all, to the dirs that list them, with its time (stop-lint's sort deadline), and once per other person's PR that references it.
     The commits of a repo are listed once per pass, newest first and with an ETag, and read oldest first, so a pass that
     runs out of calls (PASS_CALLS) resumes where it stopped, a list of more pages than a pass included (the backlog in the shared state);
     PRs not checked for longest go first."""
@@ -1405,9 +1405,10 @@ def follow_ups():
                     wanted = [k for k, e in entries.items() if when >= e['scanned'] and sha != e['merge_sha'] and claim(f"followup:{k}:{sha}", record=False)]
                     if wanted:
                         files = commit_files(repo, sha)
-                        for k in wanted:
-                            if touches(entries[k], files):
-                                follow_emit(f"followup:{k}:{sha}", prs[k], f"### FOLLOW-UP {k}: {sha[:10]} by {who} changes lines from your PR  {c['html_url']}")
+                        hit = [k for k in wanted if touches(entries[k], files) and claim(f"followup:{k}:{sha}", record=not ONCE)]
+                        if hit:  # one line per commit, naming every PR of yours it touches
+                            for d in dict.fromkeys(d for k in hit for d in prs[k]):
+                                emit_to(d, f"### FOLLOW-UP {repo}#{', #'.join(sorted((k.rsplit('#', 1)[1] for k in hit), key=int))}: {sha[:10]} by {who} changes lines from your PR  {c['html_url']}  at {iso(time.time())}")
                 for e in entries.values():
                     e['scanned'] = max(e['scanned'], when)
                 bk['queue'].pop()
@@ -1416,7 +1417,7 @@ def follow_ups():
                 for t in paged(f"repos/{repo}/issues/{k.rsplit('#', 1)[1]}/timeline?per_page=100", shared_read()['etags'], tpending, fresh=bk['fresh']):
                     i = (t.get('source') or {}).get('issue') or {}
                     if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')) and (i.get('user') or {}).get('login') != ME:
-                        follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"### FOLLOW-UP {k}: {i['html_url']} by {i['user']['login']} references your PR")
+                        follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"### FOLLOW-UP {k}: {i['html_url']} by {i['user']['login']} references your PR  at {iso(time.time())}")
                 pending.update(tpending)
                 e['scanned'] = bk['started']
             done = True

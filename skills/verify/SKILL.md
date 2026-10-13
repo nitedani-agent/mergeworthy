@@ -52,7 +52,7 @@ What counts:
 
 How:
 - read each change end to end with every caller;
-- try the edges: <list the risky edges for this slice; for stream code always core 1.1.11's stream probes>.
+- try the edges: <the slice's risky edges, each `## Recurring misses` line of `~/.mergeworthy/projects/<owner>/<repo>.md`, and for stream code core 1.1.11's stream probes>.
 - when the change handles one case of a mechanism (one method, status, adapter or runtime), probe the same failure in its sibling cases: one the PR should have covered (`pull-request` step 3) is an incomplete fix; one that belongs in its own PR is listed under its own heading for that PR (1.1.7), never dropped.
 - Make your own worktrees under <artifacts dir> (worktree add --detach, install, build) and remove them when done.
 - Lanes you may run: <lanes>. Don't run <lanes owned by others>.

@@ -89,6 +89,25 @@ if not register:
         sys.stderr.write("BLOCKED: another agent is still working in a worktree this brief names (T3's interrupted or cancelled status doesn't mean it stopped):\n"
                          + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree.\n")
         sys.exit(2)
+# A brief for a repo whose maintainers' notes exist (core 1.3) names the notes file, so the agent reads them: by owner/repo, or by
+# a path in that repo's checkout. A memory-refresh brief reads only the session log.
+if not register and 'memory-refresh' not in gate_text:
+    notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
+             for f in glob.glob(os.path.expanduser('~/.mergeworthy/projects/*/*.md'))}
+    named = {r for r in notes if re.search(r'(?<![\w.-])' + re.escape(r) + r'(?![\w.-]|\.md)', gate_text, re.I)}
+    tops = set()
+    for p in paths if notes else ():
+        while p != '/' and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
+        tops.add(p)
+    for top in tops - {'/'}:
+        url = subprocess.run(['git', '-C', top, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+        m = re.search(r'[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', url)
+        named |= {m.group(1).lower()} & set(notes) if m else set()
+    missing = [notes[r] for r in sorted(named) if f'projects/{r}.md' not in gate_text.lower()]
+    if missing:
+        sys.stderr.write("BLOCKED: the brief works on a repo with maintainers' notes; name each notes file in it so the agent reads "
+                         "and applies them (mergeworthy:core 1.3):\n" + '\n'.join(missing) + '\n')
+        sys.exit(2)
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
 root = None if register else memory_file.for_cwd(d.get('cwd') or '')
 if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):

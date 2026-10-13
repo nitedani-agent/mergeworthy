@@ -457,8 +457,7 @@ def build_world(gh):
     short = lambda k: gh.planted[k][:10]
     return lambda: sorted([
         ('d1', f"### FOLLOW-UP vikejs/vike#50: {short('touch50')}"),
-        ('d1', f"### FOLLOW-UP vikejs/vike#50: {short('script')}"),
-        ('d1', f"### FOLLOW-UP vikejs/vike#51: {short('script')}"),
+        ('d1', "### FOLLOW-UP vikejs/vike#50, #51:"),  # one line for a commit touching two PRs
         ('d3', f"### FOLLOW-UP vikejs/vike-react#8: {short('rename8')}"),
         ('d4', f"### FOLLOW-UP vikejs/docpress#190: {short('late190')}"),
         ('d2', f"### FOLLOW-UP vikejs/vike#53: {short('late53')}"),

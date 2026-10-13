@@ -68,7 +68,7 @@ These scripts enforce the rules that failed as text alone.
 
 ### `memory-prep` (enforces 1.2)
 
-`memory-prep init <root> <T3 thread id>`, run from the orchestrator's checkout, records it, its thread, its session and its session-log dir (`~/.claude/projects/<checkout path, non-alphanumerics as dashes>`). `memory-prep prep <root>` extracts the user's prompts (no skill bodies, hook feedback, notifications or compaction summary) and the orchestrator's text logged after `memory.md`'s `covered-until` position (the first time, the last 24 hours), from the orchestrator's own logs (init ran there, or a prompt names the thread), into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. `covered-until` never counts past the last chunk noted in `memory-notes.txt`. `memory-prep digest <root>` prints the Standing part, one line per item, cut to about 2k tokens, hard cap 4k.
+`memory-prep init <root> <T3 thread id>`, run from the orchestrator's checkout, records it, its thread, its session and its session-log dir (`~/.claude/projects/<checkout path, non-alphanumerics as dashes>`). `memory-prep prep <root>` extracts the user's prompts (no skill bodies, hook feedback, notifications or compaction summary) and the last text of each orchestrator turn logged after `memory.md`'s `covered-until` position (the first time, the last 24 hours), from the orchestrator's own logs (init ran there, or a prompt names the thread), into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. `covered-until` never counts past the last chunk noted in `memory-notes.txt`. `memory-prep digest <root>` prints the Standing part, one line per item, capped at 7,500 characters.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
@@ -99,16 +99,11 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
     - `### REFACTOR STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps refactor`;
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
     - `### AGENT DONE <ticket>`: an agent the session launched finished (`agent_jobs.py`: its transcript went quiet), once per finish until `agent-job done`; the dir is the one whose `session` file names the launcher, or whose `events.log` the launcher's transcript tails;
-    - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits, and hunks that only change dependency versions in `package.json` or a lockfile, don't count. Read each as `core` 1.3 says (Learning from follow-ups).
+    - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files (one line naming every PR it touches), and another person's PR that references it, each once, with its time. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits, and hunks that only change dependency versions in `package.json` or a lockfile, don't count. Read each as `core` 1.3 says (Learning from follow-ups).
 - **`/agent` commands.** Your comment starting with `/agent` on a thread no live watch dir lists is found in the recent issue and review comments of every repo a live watch dir lists (a search of your comments backs it up, though the search index lags), since you and the agent post as one account. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: to the dir named by `/agent <folder name>`, else to the dir listing a thread this one links to or is linked from (most matches; a tie goes to the `--main` dir), else to the `--main` dir as `### UNROUTED /agent`.
 - **Retiring.** It retires itself, service, launchd agent and cron lines included, once every thread is merged or closed and `repos.txt` is empty.
-- **API budget.** All watchers share one account's 5,000 calls an hour and one budget in `~/.mergeworthy/shared-watch.json`; a 304 counts too.
-    - **Calls.** One helper makes every call: it records GitHub's rate-limit headers, sends the URL's last `ETag` and counts the request per minute. `gh-watch.py --stats` prints the counted requests a minute; once an hour the daemon adds them to `<dir>/gh-watch-stats.log`.
-    - **Reserve.** Below 1500 calls left, shared work and follow-ups wait for the reset. Below 500, only the notifications and the threads they report are read. After a rate-limit answer every daemon waits for the reset and prints one `WATCH ERROR API budget: paused until <time>`.
-    - **Cadence.** A thread is checked (its PR or issue, and an open PR's CI) every 5 minutes if open and changed in the last day, every 30 if open, every 6 hours if merged or closed. It is read in full when a check finds a change or a notification or issue list names it, and hourly (open and recent) or daily.
-    - **Polls.** Once per GitHub's `X-Poll-Interval` (60 s): the notifications and your events feed by the `--main` dir's daemon, and for every dir, by the lease holder, one issue list of your own threads and one per repo with a watched open thread of someone else's.
-    - **Shared work.** Discovery (every 5 minutes for a repo something moved in, else every 30) and follow-ups (every 30) run in one daemon at a time, the holder of the lease `~/.mergeworthy/shared-watch.lease`, for every live dir. A pass makes at most 40 requests and the next goes on. A commit's detail is read once, ever.
-- **State.** State lives in `gh-watch-state.json` and the shared file, so restarts and plugin updates lose nothing and cost no calls. A daemon's own ETags stay in its file: a validator shared between readers would hide one's change from the other.
+- **API budget.** All watchers share one account's 5,000 calls an hour (a 304 counts too) through `~/.mergeworthy/shared-watch.json`. Below 1500 calls left, shared work and follow-ups wait for the reset; below 500, only the notifications and the threads they report are read; after a rate-limit answer every daemon waits and prints one `WATCH ERROR API budget: paused until <time>`. `gh-watch.py --stats` prints the requests a minute.
+- **Cadence and state.** How often each thread, feed and repo is read, the shared lease and the state files are in `gh-watch.py`'s header and docstrings. Restarts and plugin updates lose nothing and cost no calls.
 
 ## Hooks
 
@@ -142,13 +137,15 @@ It blocks ending a turn when:
 - you posted on GitHub and no live Monitor watches a watcher's `events.log` (a `claude -p` run's caller watches);
 - a watch dir it worked in owes a reply;
 - in a session that started T3 tasks, its `Running:` list wasn't read with `task_status` since the user's last message, or names a terminal task.
-- an agent it launched finished and its job is still open (`agent_jobs.py`).
+- an agent it launched finished and its job is still open (`agent_jobs.py`);
+- a `FOLLOW-UP` has no verdict after 30 minutes (`github-threads`);
+- hourly at most, `memory.md` is behind and over 2 hours old: it repeats the refresh order.
 
 It skips its watcher checks while the user's last message says "pause". Each turn's first stop also gets a check-in: work to start, or anything waiting?
 
 ### `session-start` (enforces the always-on rules)
 
-It puts the always-on rules into context, then, in an orchestrator's checkout, `memory.md`'s Standing digest (never the Recent part), with the order to refresh it first when it is behind the session log. It writes `settings.env`. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
+It puts the always-on rules into context and writes `settings.env`. A second command, `session-memory.py`, prints in an orchestrator's checkout the order to refresh `memory.md` when it is behind, then its Standing digest: Claude Code previews only 2 KB of a hook output over 10,000 characters. It also points `~/.mergeworthy/current` at the installed version, the stable path watchers use.
 
 ### `pre-skill-gate.py` (enforces always-on rule 1)
 
@@ -161,7 +158,7 @@ It blocks an action until every skill its always-on row names was opened with th
 
 Read-only commands pass. A row added to `always-on.md` fails `tests/hooks.sh` until the hook's table gates it or lists it as ungated.
 
-**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It blocks a brief naming a linked worktree (not the launcher's own) that a process has as its cwd or an agent transcript written in the last five minutes names, and one pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list, and, in an orchestrator's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the artifact root not named in a `Checked:` line.
+**`pre-agent-dedupe`** registers launches that ran (its PostToolUse half) by ticket and blocks duplicate jobs (`delegating` 1.10). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It blocks a brief naming a repo (or its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`, and a brief naming a linked worktree (not the launcher's own) that a process has as its cwd or an agent transcript written in the last five minutes names, and one pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list, and, in an orchestrator's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the artifact root not named in a `Checked:` line.
 
 ### `netns-run`
 

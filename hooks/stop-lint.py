@@ -150,6 +150,34 @@ if watcher_on and not paused and not child:
                   "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
+# Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:github-threads)
+if watcher_on and not paused and not child:
+    import datetime, time
+    for wd in sorted(own_dirs):
+        try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
+        except OSError: continue
+        f = os.path.join(wd, 'followups-sorted.txt')
+        done = re.findall(r'^(\S+)\s+(?:MISS|TASTE|DIRECTION)\s+\S', open(f, errors='replace').read() if os.path.exists(f) else '', re.M)
+        late = [k for k, at in re.findall(r'^### FOLLOW-UP [^:\n]+: (\S+) by .*  at (\S+Z)$', log, re.M)
+                if time.time() - datetime.datetime.fromisoformat(at.replace('Z', '+00:00')).timestamp() > 1800
+                and not any(v == k or (len(v) >= 7 and k[:7] == v[:7] and (v.startswith(k) or k.startswith(v))) for v in done)]
+        if late:
+            print(f"These FOLLOW-UP events in {wd}/events.log are unsorted after 30 minutes: {', '.join(dict.fromkeys(late))}. Brief the sort "
+                  f"(mergeworthy:github-threads) and record each as `<sha or PR URL> MISS|TASTE|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
+            sys.exit(2)
+# The orchestrator's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
+if not child:
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import datetime, time, memory_file as mf
+    try: root = mf.for_cwd(cwd_d)
+    except (OSError, ValueError): root = None
+    stamp = root and os.path.join(root, '.memory-order-repeated')
+    if root and time.time() - (os.path.getmtime(stamp) if os.path.exists(stamp) else 0) > 3600:
+        cov = mf.covered(root)
+        if (not cov or time.time() - datetime.datetime.fromisoformat(cov.replace('Z', '+00:00')).timestamp() > 7200) and mf.behind(root):
+            open(stamp, 'w').close()
+            print(mf.order(root), file=sys.stderr)
+            sys.exit(2)
 # An agent this session launched has finished (its transcript went quiet) and its job is still open: its result is unread
 if not child and d.get('session_id'):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))

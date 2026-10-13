@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """memory-prep init <artifact root> <T3 thread id> | prep <artifact root> | digest <artifact root>: the memory file (core 1.2).
 init: run once from the orchestrator's checkout; records its cwd, thread, session and session-log dir in memory.source.
-prep: extracts the user's prompts and the orchestrator's text from its session logs, after
+prep: extracts the user's prompts and the last text of each orchestrator turn from its session logs, after
 the position memory.md covered (the first time, the last 24 hours), into memory-new.txt; writes the brief one Haiku follows
 to merge them in (the memory-refresh skill) and prints its path, or that nothing is new.
 digest: prints the Standing part session-start injects."""
@@ -41,6 +41,7 @@ cov = mf.covered(root)
 after = cov or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 entries, until, said = [], '', set()
 for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:00')).timestamp() - 60):
+    last = []  # an assistant turn's text: only its last block is kept, mid-turn narration is dropped
     for l in open(p, errors='replace'):
         m = re.search(r'"timestamp":"([0-9T:.\-]+Z)"', l)
         if not m or m.group(1) <= after:
@@ -49,11 +50,13 @@ for p in mf.thread_logs(root, dt.datetime.fromisoformat(after.replace('Z', '+00:
         except ValueError: continue
         t = m.group(1); until = max(until, t); c = (o.get('message') or {}).get('content')
         if mf.prompt(o):
+            entries += last[-1:]; last = []
             for x in mf.texts(o):
                 if x and not x.startswith(('<',) + T3) and x not in said:  # a scheduled prompt repeats verbatim
                     said.add(x); entries.append((t, f'[{t} USER] {x}'))
         elif o.get('type') == 'assistant' and isinstance(c, list):
-            entries += [(t, f'[{t} ASSISTANT] {b["text"]}') for b in c if b.get('type') == 'text']
+            last += [(t, f'[{t} ASSISTANT] {b["text"]}') for b in c if b.get('type') == 'text']
+    entries += last[-1:]
 if not entries:
     print(f'memory: nothing new after {after}'); sys.exit(0)
 new = os.path.join(root, 'memory-new.txt')

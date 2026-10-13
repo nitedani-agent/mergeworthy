@@ -49,6 +49,14 @@ python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"A
 check "a delegated child ends with its result, no check-in" 0 "$(checkin 0)"
 tr_file "The watcher runs and the Monitor is armed."
 check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
+F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
+printf '### FOLLOW-UP o/r#5, #6: abcdef1234 by carol changes lines from your PR  <c>  at %s\n### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
+check "BLOCK: a FOLLOW-UP unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
+echo "abcdef1234 nothing to act on" > "$WD/followups-sorted.txt"
+check "BLOCK: 'nothing to act on' is not a verdict" 2 "$(stop "$WD")"
+echo "abcdef1234567 TASTE https://example.invalid/notes" > "$WD/followups-sorted.txt"
+check "a verdict line in followups-sorted.txt sorts it" 0 "$(stop "$WD")"
+rm "$WD/events.log" "$WD/followups-sorted.txt"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
 check "control: open owed line, cwd=watch dir" 2 "$(stop "$WD")"
 check "control: open owed line, cwd=inside watch dir" 2 "$(stop "$WD/sub")"
@@ -496,7 +504,7 @@ printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
 check "agent-job done with the full key releases only that job" 1 "$(python3 "$R/bin/agent-job" done '/x/a.md /x/shared.md' >/dev/null; ls "$J"/aj*.json | wc -l)"
 rm -f "$J"/aj*.json
-# ---------- the memory file: session-start injects its Standing digest and says when it is behind; the guards read it ----------
+# ---------- the memory file: session-memory injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"
 check "memory-prep init refuses a checkout with no session logs" 1 "$(cd "$T" && python3 "$R/bin/memory-prep" init "$MR" thread-1 >/dev/null 2>&1; echo $?)"
@@ -513,8 +521,8 @@ for e in '{"isMeta":true,"message":{"content":[{"type":"text","text":"Base direc
 mlog "$LD/a.jsonl" 1.5 "Delegated task node:delegated-task:x reached a terminal state."
 mlog "$LD/a.jsonl" 1.4 "RSC check-in."; mlog "$LD/a.jsonl" 1.3 "RSC check-in."
 mlog "$LD/orch.jsonl" 1 "said in the session init ran in"; mlog "$LD/c.jsonl" 1 "a child's brief"; mlog "$LD/c.jsonl" 1 "tool output" "" '{"toolUseResult":{},"promptSource":null,"message":{"content":"thread-1"}}'
-ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":"compact"}))' "$1" | CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null; }
-check "session-start in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
+ss_mem() { python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"source":"compact"}))' "$1" | python3 "$R/hooks/session-memory.py" 2>/dev/null; }
+check "session-memory in the orchestrator's checkout, memory missing: the refresh order and an empty digest" "1 1" "$(ss_mem "$OC/sub" > "$T/ss.out"; grep -c "is behind your session log.*memory-prep prep $MR.*ONE Haiku" "$T/ss.out") $(grep -c '^### Ruled out' "$T/ss.out")"
 check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
@@ -529,12 +537,26 @@ check "memory.md never counts as covered past the chunks its run noted" "1 1" "$
 echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
 mlog "$LD/a.jsonl" 0 "a new ruling"
 check "a new log line makes it behind; prep then extracts only what follows the covered position" "1 1 0" "$(ss_mem "$OC" | grep -c 'is behind'; python3 "$R/bin/memory-prep" prep "$MR" >/dev/null) $(grep -c 'a new ruling' "$MR/memory-new.txt") $(grep -c 'never use cron' "$MR/memory-new.txt")"
+alog() { python3 -c 'import json,sys,datetime as d; t=d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+open(sys.argv[1],"a").write(json.dumps({"type":"assistant","timestamp":t,"message":{"content":[{"type":"text","text":sys.argv[2]}]}},separators=(",",":"))+"\n")' "$@"; }
+alog "$LD/a.jsonl" "narration before a tool call"; alog "$LD/a.jsonl" "the turn's answer"; mlog "$LD/a.jsonl" 0 "next prompt"; alog "$LD/a.jsonl" "the last turn's answer"
+check "prep keeps only the last text of each assistant turn" "0 1 1" "$(python3 "$R/bin/memory-prep" prep "$MR" >/dev/null; grep -c 'narration before' "$MR/memory-new.txt") $(grep -c "ASSISTANT\] the turn's answer" "$MR/memory-new.txt") $(grep -c "the last turn's answer" "$MR/memory-new.txt")"
 python3 - "$MR/memory.md" <<'EOF'
 import sys
 items = lambda k: ''.join(f'- **{k} item {i}** (2026-10-12 10:00Z). ' + 'A long standing line about the work. ' * 12 + '\n' for i in range(300))
 open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {h}\n' + items(h) for h in ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')) + '## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n')
 EOF
-check "the digest of a huge memory stays under the aim, one line per item" "yes 0" "$(n=$(python3 "$R/bin/memory-prep" digest "$MR" | wc -c); [ "$n" -le 8400 ] && echo yes || echo "no $n") $(python3 "$R/bin/memory-prep" digest "$MR" | awk 'length > 240' | wc -l)"
+check "the digest of a huge memory stays under the aim, one line per item" "yes 0" "$(n=$(python3 "$R/bin/memory-prep" digest "$MR" | wc -c); [ "$n" -le 6400 ] && echo yes || echo "no $n") $(python3 "$R/bin/memory-prep" digest "$MR" | awk 'length > 240' | wc -l)"
+# Claude Code shows the model a 2 KB preview of a hook command's output over 10,000 characters: each SessionStart output stays under 9,000 bytes
+cp "$R/tests/fixtures/memory.md" "$MR/memory.md"; touch -d '3 hours ago' "$MR/memory.md"; mlog "$LD/a.jsonl" 0 "after the fixture"
+ss_all=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" </dev/null 2>/dev/null | wc -c); ss_m=$(ss_mem "$OC" | tee "$T/ss.out" | wc -c)
+echo "measured with tests/fixtures/memory.md (a real memory.md, words hashed): session-start $ss_all bytes, session-memory $ss_m bytes"
+check "each SessionStart output with a real-sized memory.md stays under 9,000 bytes; the order comes first, the digest after" "yes yes 1 1" "$([ "$ss_all" -le 9000 ] && echo yes) $([ "$ss_m" -le 9000 ] && echo yes) $(head -1 "$T/ss.out" | grep -c 'is behind') $(grep -c '^### Still intended' "$T/ss.out")"
+tr_file "Done."
+check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, then not within the hour" "2 1 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR" "$T/err") $(stop "$OC")"
+rm "$MR/.memory-order-repeated"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task. Fix it."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' > "$T/tr.jsonl"
+check "a delegated sub-agent in the orchestrator's checkout never gets the order" 0 "$(stop "$OC")"
 if [ -d "${MW_REAL_DAYS:-/nonexistent}" ]; then  # local only: the real day files are private
   python3 - "$MR/memory.md" "$MW_REAL_DAYS"/2026-10-12.md "$MW_REAL_DAYS"/2026-10-11.md <<'EOF'
 import re, sys
@@ -544,7 +566,7 @@ days = [open(p).read() for p in sys.argv[2:]]
 parts = {'Rulings in force': 'How the user wants', 'Ruled out': 'Ruled out', 'Superseded': 'How the plan changed', 'Still intended': 'Still intended'}
 open(sys.argv[1], 'w').write('# Memory\n## Standing\n' + ''.join(f'### {k}\n' + ''.join(sec(d, v) for d in days) for k, v in parts.items()) + '## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n')
 EOF
-  check "the digest of the real 2026-10-11/12 files stays under the 4k-token cap" yes "$(n=$(ss_mem "$OC" | wc -c); [ "$n" -le 16000 ] && echo yes || echo "no $n")"
+  check "the digest of the real 2026-10-11/12 files stays under the hook output limit" yes "$(n=$(ss_mem "$OC" | wc -c); [ "$n" -le 9000 ] && echo yes || echo "no $n")"
 fi
 # pre-agent-dedupe: a brief pinned to an old commit of a linked worktree, and research the notes already cover
 git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=$(git -C "$T/gr" rev-parse HEAD)
@@ -562,6 +584,12 @@ check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS'
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research on a topic nothing covers passes" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
+# pre-agent-dedupe: a brief for a repo with maintainers' notes names the notes file
+mkdir -p "$HOME/.mergeworthy/projects/o" "$T/oc"; echo '- a convention' > "$HOME/.mergeworthy/projects/o/r.md"
+git init -q "$T/oc"; git -C "$T/oc" remote add origin https://github.com/o/r.git; mkdir -p "$T/oc/src"
+check "BLOCK: a brief naming owner/repo without its notes file, printing the path" "2 1" "$(ag "$T" 'Fix o/r#5') $(grep -c "$HOME/.mergeworthy/projects/o/r.md" "$T/err")"
+check "BLOCK: a brief naming a path in that repo's checkout" 2 "$(ag "$T" "Fix the bug in $T/oc/src")"
+check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Run mergeworthy:memory-refresh on o/r#5 lines')"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
 alive() { # task [transcript_path]

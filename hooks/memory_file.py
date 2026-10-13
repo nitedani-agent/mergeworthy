@@ -10,7 +10,7 @@ COVERED = re.compile(r'<!-- covered-until: (\S+) -->')
 READ = re.compile(r'read-through: (\S+)')
 TS = re.compile(rb'"timestamp":"([0-9T:.\-]+Z)"')
 STANDING = ('Rulings in force', 'Ruled out', 'Superseded', 'Still intended')
-AIM, CAP = 8000, 16000  # digest characters: about 2k tokens, hard cap about 4k
+AIM, CAP = 6000, 7500  # digest characters: with the refresh order, under Claude Code's 10,000-character hook output limit
 REG = os.path.expanduser('~/.mergeworthy/memory-roots.txt')
 
 def roots():
@@ -95,6 +95,13 @@ def behind(root):
     cov = covered(root)
     since = os.path.getmtime(path(root)) - 60 if cov else time.time() - 86400  # the first run covers the last 24 hours
     return any(last_ts(p) > cov for p in thread_logs(root, since))
+
+def order(root):
+    """The order to refresh memory.md, given at session start and repeated by stop-lint while it stays behind."""
+    return (f"IMPORTANT: {path(root)} is behind your session log. If you are a delegated sub-agent, ignore this. Before resuming: "
+            f"run `memory-prep prep {root}`; start ONE Haiku at high effort (T3 Code: delegate_task, mode async) on the brief file it names; "
+            f"wait for its completion without starting other work and without reading its report; then run `memory-prep digest {root}`, "
+            "read it, and resume.")
 
 def section(text, heading):
     m = re.search(r'^#+ *' + re.escape(heading) + r'[^\n]*\n(.*?)(?=^#+ |\Z)', text, re.M | re.S | re.I)

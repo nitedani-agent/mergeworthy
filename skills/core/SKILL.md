@@ -147,7 +147,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
 - **`memory.md` in the artifact root** holds what the built-in compaction summary loses: its Standing part (rulings in force, ruled out, superseded, still intended) is carried until replaced, its Recent part covers the last 24 hours. Run `memory-prep init <artifact root> <your T3 thread id>` once from your checkout when the work spans a compaction or a day (Tier L: before the first PR).
-    - At each start and compaction `session-start` injects the Standing digest, and orders a refresh when the file is behind your session log: follow that order before resuming.
+    - At each start and compaction `session-memory` injects the Standing digest, and orders a refresh when the file is behind your session log (`stop-lint` repeats it): follow that order before resuming.
 - **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` (with the critical-path and feature list) and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
 - **Tier M:** keep these files:
     - `ledger.md`: one row per event (time | unit | event | head SHA | result). Events are each pass, round, fix with its commits, gate or lane run with its exit status, push, and CI result. Head it with the ordered work and passes still owed (1.1.1). Answer every status and convergence question from the ledger, skipped steps included.
@@ -187,7 +187,7 @@ Run every PR through bug verification, code review and a fresh read on the final
 After one of your PRs merges, the commits others make to its lines (polish, a rename, a revert) and the PRs that reference it are a review you didn't get; the watcher reports each as `FOLLOW-UP` (`mechanisms`). Read the change against your own diff and sort it once:
 - **A miss your checks should have caught** (a bug, a sibling case, a gap a gate could find): fix the rule or mechanism in mergeworthy (`past-failures`), the same turn.
 - **The project's taste** (naming, structure, comment density, what the maintainer cuts or adds): one line in `~/.mergeworthy/projects/<owner>/<repo>.md`, under Conventions, Maintainer preferences or Recurring misses, with the link to the commit or PR that shows it.
-- **A new direction** (the maintainer chose differently, no fault in yours): nothing to keep; say why in one line in your report.
+- **A new direction** (the maintainer chose differently, no fault in yours): nothing to keep; its verdict line says why.
 
 Keep that file short and true: update an entry instead of adding a near-duplicate, delete one a later change contradicts, and keep only what would change your next diff. The knowledge stays per project; only the method lives here.
 

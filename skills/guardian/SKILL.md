@@ -110,7 +110,7 @@ Keep the settled decision packet’s picks intact (`core` 1.1.4 and 1.1.9): <dec
 - Flag human commits or commits without the environment’s agent trailer as OWNER-DECISION before removing or rewriting their code on your reading alone (`converge`, Authority).
 - Ask external maintainers about behavior or public-surface changes; decide changes authorized by the user’s task, and keep refactors behavior-preserving (`core`, The task and 1.1.9).
 - Keep comments to one literally true line about a constraint the code cannot show (`writing`).
-- Judge whether each finding earns its diff (`core` 1.1.15).
+- Judge whether each finding earns its diff (`core` 1.1.15); quote each line of `~/.mergeworthy/projects/<owner>/<repo>.md` the diff breaks.
 
 Evidence:
 - read with git at the pinned SHAs;

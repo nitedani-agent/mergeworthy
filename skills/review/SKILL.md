@@ -85,4 +85,4 @@ Output:
 - then findings as `path:line — what breaks — what to do instead`, most severe first,
 - then what you searched and did not find.
 
-No style preferences. Nothing a linter or the type checker catches, and no request to "check" or "confirm" something: check it yourself.
+No style preferences of your own: quote each line of `~/.mergeworthy/projects/<owner>/<repo>.md` the diff breaks. Nothing a linter or the type checker catches, and no request to "check" or "confirm" something: check it yourself.

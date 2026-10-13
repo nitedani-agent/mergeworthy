@@ -224,7 +224,7 @@ check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o
 # FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, to the dirs that list the PR
 rm -rf "$HOME/.mergeworthy/shared-watch.json"*
 follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen"; : > "$W/events.log"; py '
-import time, datetime
+import time, datetime, re
 m.ONCE = False
 open(m.THREADS, "w").write("o/r 5\n")
 iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -269,7 +269,7 @@ record = lambda: m.shared_read()["followups"]["o/r#5"]
 def scan():
     before = open(os.path.join(m.HERE, "events.log")).read()
     m.follow_ups()
-    return [l.replace("  <", " <") for l in open(os.path.join(m.HERE, "events.log")).read()[len(before):].splitlines() if l]
+    return [re.sub(r"  at \d{4}-\d\d-\d\dT[\d:]+Z$", "", l).replace("  <", " <") for l in open(os.path.join(m.HERE, "events.log")).read()[len(before):].splitlines() if l]
 '"$1"'
 '; }
 got=$(follow '
