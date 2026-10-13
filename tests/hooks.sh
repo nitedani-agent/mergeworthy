@@ -368,6 +368,8 @@ check "with the Codex icon it passes" 0 "$(python3 "$R/bin/post-lint" "$T/cx/rep
 printf 'Refactor this PR. Print the lists again with old rating => new rating.\n' > "$T/rp.parent.md"
 printf '%s Done, the lists are below.\n\n<details>\n<summary>Lists</summary>\n\nS1 and S2 were rated in the refactor pass. %s\n</details>\n' "$B" "$(printf 'word %.0s' $(seq 400))" > "$T/rp.md"
 check "lists a maintainer asked for, in <details>, are not linted or counted" 0 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent "$T/rp.parent.md" 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
+printf 'Please give 100 questions here with A/B/C choices.\n' > "$T/q.parent.md"; { echo "One plan line."; echo "<details><summary>Q</summary>"; echo; for n in $(seq 1 300); do echo "- [ ] A: option number $n of a long questionnaire"; done; echo; echo "</details>"; } > "$T/q.md"
+check "a questionnaire the reader asked for, in <details>, is not counted; unasked it is" "0 1" "$(python3 "$R/bin/post-lint" "$T/q.md" --kind proposal --parent "$T/q.parent.md" 2>&1 | grep -c 'words >') $(python3 "$R/bin/post-lint" "$T/q.md" --kind proposal --parent none 2>&1 | grep -c 'words >')"
 check "the same lists nobody asked for are" 4 "$(python3 "$R/bin/post-lint" "$T/rp.md" --kind pr --parent none 2>&1 | grep -c 'internal label\|words >\|process in the thread')"
 printf 'The code came from Sonnet subagents, and Codex (gpt-6.1-sol) reviewed every post.\n' > "$T/pm.md"
 printf 'What AI model did you use? Explain the agent orchestration.\n' > "$T/pm.parent.md"

@@ -41,9 +41,10 @@ if _m:
 # What GitHub renders as the author's prose. Code (fenced, inline), quotes of others and
 # HTML comments are neither linted nor counted; data tables, images and URLs are evidence: linted, not counted.
 prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
-# A maintainer who asked for the full lists (his refactor prompt: ratings old => new) gets them, collapsed in <details>: not linted or counted
+# A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>: not linted or counted
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
-if _rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b', open(_rp).read(), re.I | re.S):
+_asked_list = bool(_rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', open(_rp).read(), re.I | re.S))
+if _asked_list:
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
 # The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
 prose = re.sub(r'<details>\s*<summary>(?:Approach|Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
@@ -153,6 +154,7 @@ if kind == 'tracker':
 # as prose, so they count
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
+    if _asked_list: counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)  # the lists the reader asked for
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
     counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
     counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
