@@ -150,10 +150,14 @@ if watcher_on and not paused and not child:
                   "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
-# Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:github-threads)
+# Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:github-threads),
+# in the dir that receives them: a declared steward's, else the session's own
 if watcher_on and not paused and not child:
     import datetime, time
-    for wd in sorted(own_dirs):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import steward
+    st = steward.read()
+    for wd in ([st[0]] if steward.is_steward(d.get('session_id'), cwd_d) else []) if st else sorted(own_dirs):
         try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: continue
         f = os.path.join(wd, 'followups-sorted.txt')

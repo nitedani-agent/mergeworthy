@@ -576,9 +576,9 @@ ag() { # cwd task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3]}}))' "$1" "$2" "${3:-implementation}" \
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
-check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at ${OLD:0:10}") $(grep -c 'Cron jobs' "$T/err")"
-check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at ${NEW:0:10}, base ${OLD:0:10}")"
-check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at ${MAINOLD:0:10} once more")"
+check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
+check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
+check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
 echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
 check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
@@ -924,6 +924,28 @@ printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
 
+# ---------- the steward: ~/.mergeworthy/steward owns the mergeworthy repo and the follow-ups ----------
+SW="$T/steward"; mkdir -p "$SW" "$T/mwc"; git init -q "$T/mwc"; git -C "$T/mwc" remote add origin https://github.com/nitedani/mergeworthy.git
+mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)')
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'thread:child', '{"nativeThreadRef":{"nativeId":"child-session"}}')""")
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p2', 'other-thread', '{"nativeThreadRef":{"nativeId":"other-session"}}')""")
+c.execute("insert into orchestration_v2_projection_subagents values ('s1', 'steward-thread', 'thread:child')"); c.commit()
+EOF2
+sg() { # command session cwd
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"session_id":sys.argv[2],"cwd":sys.argv[3]}))' "$@" \
+    | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "git -C $T/mwc push origin HEAD:main" other-session "$T")"
+echo "$SW steward-thread" > "$HOME/.mergeworthy/steward"
+check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push origin HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
+check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push origin HEAD:main" child-session "$T") $(sg "git -C $T/mwc push origin HEAD:main" x "$SW") $(sg "git -C $T/gr push origin HEAD:main" other-session "$T")"
+printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" | tee "$SW/events.log" > "$WD/events.log"
+tr_file "Done."
+check "with a steward, an orchestrator's unsorted FOLLOW-UP doesn't block it; the steward's does" "0 2" "$(stop "$WD") $(stop "$SW")"
+rm -f "$HOME/.mergeworthy/steward" "$WD/events.log"
 # ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash

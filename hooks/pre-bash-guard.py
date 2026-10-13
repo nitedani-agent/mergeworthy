@@ -5,6 +5,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight
+import steward
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -219,6 +220,13 @@ def check_compose(env, t):
               "(`ports: !override [\"<container port>\"]` for Docker-assigned ports, found with `docker compose port <svc> <port>`; `ports: !reset []` where the host needs none; "
               "`container_name: !reset null`) (mergeworthy:core 1.8). Only when the user asked for the stack on its usual ports: prefix MERGEWORTHY_HOST_PORTS=user-asked")
 
+def check_steward(repo):
+    """A declared steward owns the mergeworthy repo: other sessions report a problem to it instead of committing."""
+    st = steward.read()
+    if st and re.search(r'github\.com[:/]nitedani/mergeworthy(\.git)?$', subprocess.run(['git', '-C', repo, 'remote', 'get-url', 'origin'],
+            capture_output=True, text=True).stdout.strip()) and not steward.is_steward(d.get('session_id'), d.get('cwd')):
+        block(f"mergeworthy is the steward's; describe the problem in one line in {st[0]}/inbox.md")
+
 def under_t3():
     """The session's claude process was started by T3 Code with T3's MCP server: its delegate_task runs other providers' agents."""
     pid = os.getppid()
@@ -264,6 +272,8 @@ def check(t, has_cd):
             a = a[2:] if a[0] in ('-C', '-c') else a[1:]
         if not a: return
         sub, rest = a[0], a[1:]
+        if sub in ('commit', 'push'):
+            check_steward(os.path.join(run_dir, os.path.expanduser(git_dir)))
         if sub == 'commit':
             repo = os.path.join(run_dir, os.path.expanduser(git_dir))
             if why := no_preflight(repo):

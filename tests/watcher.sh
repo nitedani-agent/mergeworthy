@@ -94,7 +94,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -281,6 +281,13 @@ print("recorded=" + str(sorted(record()["files"].items())))
 check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, own PR, bots nothing; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR
 second=
 recorded=[('z.ts', [[11, 12]])]" "$got"
+got=$(follow '
+sd = os.path.join(os.path.dirname(m.HERE), "stew"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n")
+out = scan(); os.remove(os.path.expanduser("~/.mergeworthy/steward"))
+print(len(out), sum(l.startswith("### FOLLOW-UP") for l in open(os.path.join(sd, "events.log"))))
+')
+check "FOLLOW-UP: with a steward declared, the events go to its watch dir instead" "0 3" "$got"
 got=$(follow '
 scan()
 n = len(calls); scan()
