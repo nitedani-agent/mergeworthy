@@ -95,7 +95,7 @@ if not register:
                          + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree.\n")
         sys.exit(2)
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
-# (core 1.3) names the notes file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
+# (delegate §Brief) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # brief reads only the session log.
 if not register and ti.get('role') not in ('research', 'test') and 'memory-refresh' not in gate_text:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f
@@ -112,15 +112,15 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         named |= {m.group(1).lower()} & set(notes) if m else set()
     missing = [notes[r] for r in sorted(named) if f'projects/{r}.md' not in gate_text.lower()]
     if missing:
-        sys.stderr.write("BLOCKED: the brief works on a repo with maintainers' notes; name each notes file in it so the agent reads "
-                         "and applies them (mergeworthy:core 1.3):\n" + '\n'.join(missing) + '\n')
+        sys.stderr.write("BLOCKED: the brief works on a repo with a project file; name each project file in it so the agent reads "
+                         "and applies them (mergeworthy:delegate §Brief):\n" + '\n'.join(missing) + '\n')
         sys.exit(2)
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
 root = None if register else memory_file.for_cwd(d.get('cwd') or '')
 if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):
     topic = re.search(r'^\s*Topic:\s*(.+?)\s*$', gate_text, re.M)
     if not topic:
-        sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the program's notes are searched first.\n")
+        sys.stderr.write("BLOCKED: a research brief names its topic in a `Topic: <key words>` line, so the hook can search the work folder's files for research already done (mergeworthy:delegate §Brief).\n")
         sys.exit(2)
     words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
     checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', gate_text, re.M))

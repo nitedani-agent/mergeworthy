@@ -10,7 +10,7 @@ def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
     # A maintainer's commits on top carry the last converged head's records, whatever their size: they get
-    # github-threads 1.5's review, and the pipeline runs again only once the maintainer says they're done.
+    # reply §Maintainer commits' review, and the pipeline runs again only once the maintainer says they're done.
     # Only non-merge commits without the agent's Co-Authored-By: Claude trailer are skipped back over.
     for c in subprocess.run(['git', '-C', d, 'rev-list', '--first-parent', '--max-count=100', 'HEAD'], capture_output=True, text=True).stdout.split():
         if os.path.exists(os.path.expanduser(f'~/.claude/pr-steps/{c}')):
@@ -81,17 +81,17 @@ def watch_dirs():
     return live
 
 def need_watch(repo):
-    """Opening an issue or PR starts the live loop (mergeworthy:github-threads): a running watcher must cover the repo (post-bash-register adds
+    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher must cover the repo (post-bash-register adds
     the new thread). A comment on an existing thread isn't blocked here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on' or not repo: return
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
     covering = [d for d in watch_dirs() if any(l.split()[:1] == [repo] for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {repo}: `gh-watch-start <your artifact root> {repo}`, arm the Monitor it prints, then open it")
+        block(f"no running watcher covers {repo}: `gh-watch-start <your work folder> {repo}`, arm the Monitor it prints, then open it")
 
 def check_turn(repo, num, args=()):
-    """1.6 at most two comments in a row: while your last two comments on a thread have no reply after them and the last
+    """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
     is under 3 hours old, a third stacks on them: edit the last one instead. After 3 hours, the third is the wait ping. The agent and the user may
     share one login, so a comment is the agent's only when its body was gated (gate-pass writes ~/.claude/gated-posts.txt)."""
     if '--help' in args or '-h' in args or not repo or not str(num).isdigit():
@@ -125,13 +125,13 @@ def check_turn(repo, num, args=()):
     if (datetime.datetime.now(datetime.timezone.utc) - when(last[-1]['created'])).total_seconds() >= 3 * 3600 or any(when(r) > when(last[-1]['created']) for r in reviews if r != 'null'):
         return
     block(f"your last two comments on {repo}#{num} have no reply yet ({last[-1]['url']}): edit the last one instead of posting a third; "
-          "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:github-threads 1.6)")
+          "at most two comments in a row; after 3 hours without a reply, the wait ping may follow (mergeworthy:post §Thread rules)")
 
 
 def check_finality(repo, num, files):
     """A design thread that has had two proposal rounds needs the finality pass's thread map before the third (mergeworthy:finality).
     post-bash-register counts posted `--kind proposal` drafts per thread in ~/.claude/proposal-rounds.txt; the map is
-    <artifact root>/maps/<owner>-<repo>-<number>.md (the root holds drafts/), and must be newer than the last proposal."""
+    <work folder>/maps/<owner>-<repo>-<number>.md (the root holds drafts/), and must be newer than the last proposal."""
     if not repo or not str(num).isdigit(): return
     log = os.path.expanduser('~/.claude/proposal-rounds.txt')
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
@@ -147,8 +147,8 @@ def check_finality(repo, num, files):
         root = os.path.dirname(root) if root != '/' else os.path.dirname(os.path.dirname(f))
         m = os.path.join(root, 'maps', f"{repo.replace('/', '-')}-{num}.md")
         if os.path.exists(m) and os.path.getmtime(m) > rounds[-1]: continue
-        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality, 'a design discussion has drifted') before this reply, "
-              f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's WIP comment (Agreed with permalinks, Open; mergeworthy:github-threads) from it, and let this reply say 'I updated the [todo list](link)' instead of restating the design")
+        block(f"{repo}#{num} has had {len(rounds)} proposal rounds: run the finality pass (mergeworthy:finality step 1, a drifted design thread) before this reply, "
+              f"write its thread map with the invariants list to {m} (newer than your last proposal), update the thread's WIP comment (Agreed with permalinks, Open; mergeworthy:design §WIP comment) from it, and let this reply say 'I updated the [WIP comment](link)' instead of restating the design")
 
 def thread_of_ref(repo, ref):
     """owner/repo#N from a gh issue/pr argument (number or URL) or None."""
@@ -157,7 +157,7 @@ def thread_of_ref(repo, ref):
     return f'{repo}#{ref}' if repo and str(ref).isdigit() else None
 
 def check_context(thread, files):
-    """1.6 a post on a thread is drafted from its whole record: <draft dir>/thread-context.md, made by `thread-context <repo#N> --out <dir>/thread-context.md`,
+    """post step 1: a post on a thread is drafted from its whole record: <draft dir>/thread-context.md, made by `thread-context <repo#N> --out <dir>/thread-context.md`,
     for this thread and recording its latest human comment (the tool's --verify). Tracker drafts are exempt; a thread gh can't read is not checked."""
     if not thread: return
     tc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
@@ -172,12 +172,12 @@ def check_context(thread, files):
         # the gate record names the thread context the draft was written and reviewed from (gate-pass); one made later is not it
         recorded = [l[3:].strip() for l in (open(f + '.gate').read().splitlines() if os.path.exists(f + '.gate') else []) if l.startswith('tc ')]
         if os.path.exists(tcf) and recorded != [hashlib.sha256(open(tcf, 'rb').read()).hexdigest()]:
-            block(f"{tcf} isn't the one {f} was gated with: draft from thread-context.md before the review, then gate-pass (mergeworthy:writing step 0)")
+            block(f"{tcf} isn't the one {f} was gated with: draft from thread-context.md before the review, then gate-pass (mergeworthy:post step 1)")
         cmd = [tc, '--verify', tcf, '--target', thread] + (['--parent', parent] if os.path.exists(parent) else [])
         try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except Exception: continue
         if r.returncode != 0 and r.stderr.strip():
-            block(f"{r.stderr.strip()} (mergeworthy:writing step 0: draft from thread-context.md, give the reviewer the same file)")
+            block(f"{r.stderr.strip()} (mergeworthy:post step 1: draft from thread-context.md, give the reviewer the same file)")
 
 def cwd_repo(run_dir):
     import subprocess
@@ -196,7 +196,7 @@ def gitlab_repo(a, run_dir):
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
 def check_compose(env, t):
-    """core 1.8 own ports: a compose stack you start publishes no fixed host port and pins no container name;
+    """delegate/agent.md §Machine, own ports: a compose stack you start publishes no fixed host port and pins no container name;
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read isn't checked."""
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
     if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
@@ -218,14 +218,14 @@ def check_compose(env, t):
         block(f"this stack takes what another session's stack needs ({', '.join(bad)}), and netns-run doesn't isolate ports Docker publishes. "
               "Start it with a unique project name (-p or COMPOSE_PROJECT_NAME) and the override the project file's Running the app → Start names "
               "(`ports: !override [\"<container port>\"]` for Docker-assigned ports, found with `docker compose port <svc> <port>`; `ports: !reset []` where the host needs none; "
-              "`container_name: !reset null`) (mergeworthy:core 1.8). Only when the user asked for the stack on its usual ports: prefix MERGEWORTHY_HOST_PORTS=user-asked")
+              "`container_name: !reset null`) (mergeworthy delegate/agent.md, Machine). Only when the user asked for the stack on its usual ports: prefix MERGEWORTHY_HOST_PORTS=user-asked")
 
 def check_steward(repo):
     """A declared steward owns the mergeworthy repo: other sessions report a problem to it instead of committing."""
     st = steward.read()
     if st and re.search(r'github\.com[:/]nitedani/mergeworthy(\.git)?$', subprocess.run(['git', '-C', repo, 'remote', 'get-url', 'origin'],
             capture_output=True, text=True).stdout.strip()) and not steward.is_steward(d.get('session_id'), d.get('cwd')):
-        block(f"mergeworthy is the steward's; describe the problem in one line in {st[0]}/inbox.md")
+        block(f"only the steward session (named in ~/.mergeworthy/steward; mergeworthy:rules step 2) commits to mergeworthy: write the fix you'd make as one line in {st[0]}/inbox.md")
 
 def under_t3():
     """The session's claude process was started by T3 Code with T3's MCP server: its delegate_task runs other providers' agents."""
@@ -251,7 +251,7 @@ def check(t, has_cd):
         for s in inner: check(s, has_cd)
     if p == 'codex' and ('exec' in a or a[:1] == ['e']) and under_t3():
         block("under T3 Code, start Codex through T3, where the user sees it: delegate_task with target {providerInstanceId: codex, "
-              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:review)")
+              "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
@@ -339,7 +339,7 @@ def check(t, has_cd):
                 block(NEED_DRAFT)
             if sub == 'create':
                 need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
-            if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (writing 1.11)
+            if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
                 for f in files:
                     f = os.path.join(cwd, os.path.expandvars(os.path.expanduser(f)))
@@ -387,7 +387,7 @@ try:
 except ValueError:
     segs = [cmd.split()]  # unbalanced quotes: check the raw words
 if re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) and not d.get('tool_input', {}).get('run_in_background'):
-    block('never wait in the foreground: the orchestrator keeps working while agents and builds run. Rely on the task-completion notification, '
+    block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
 has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command

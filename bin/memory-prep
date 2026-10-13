@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""memory-prep init <artifact root> <T3 thread id> | prep <artifact root> | digest <artifact root>: the memory file (core 1.2).
-init: run once from the orchestrator's checkout; records its cwd, thread, session and session-log dir in memory.source.
-prep: extracts the user's prompts and the last text of each orchestrator turn from its session logs, after
+"""memory-prep init <work folder> <T3 thread id> | prep <work folder> | digest <work folder>: the memory file (mergeworthy:task step 8).
+init: run once from the main session's checkout; records its cwd, thread, session and session-log dir in memory.source.
+prep: extracts the user's prompts and the last text of each main-session turn from its session logs, after
 the position memory.md covered (the first time, the last 24 hours), into memory-new.txt; writes the brief one Haiku follows
-to merge them in (the memory-refresh skill) and prints its path, or that nothing is new.
+to merge them in (skills/delegate/memory-refresh.md) and prints its path, or that nothing is new.
 digest: prints the Standing part session-start injects."""
 import datetime as dt, glob, json, os, re, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import memory_file as mf
 
 if len(sys.argv) < 3 or sys.argv[1] not in ('init', 'prep', 'digest') or (sys.argv[1] == 'init') != (len(sys.argv) == 4):
-    sys.exit('usage: memory-prep init <artifact root> <T3 thread id> | prep <artifact root> | digest <artifact root>')
+    sys.exit('usage: memory-prep init <work folder> <T3 thread id> | prep <work folder> | digest <work folder>')
 cmd, root = sys.argv[1], os.path.abspath(os.path.expanduser(sys.argv[2]))
 if cmd == 'init':
     cwd, tid = os.getcwd(), sys.argv[3]
     # Claude Code keeps a checkout's session logs in ~/.claude/projects/<its path, every other character a dash>
     logdir = os.path.expanduser('~/.claude/projects/' + re.sub(r'[^A-Za-z0-9]', '-', cwd))
     if not os.path.isdir(logdir):
-        sys.exit(f'memory-prep: no session-log dir {logdir}: run init from the orchestrator\'s own checkout')
+        sys.exit(f'memory-prep: no session-log dir {logdir}: run init from the main session\'s own checkout')
     os.makedirs(root, exist_ok=True)
     sessions = mf.source(root).get('sessions', []) if os.path.isfile(os.path.join(root, 'memory.source')) else []
     sid = os.environ.get('CLAUDE_CODE_SESSION_ID')
@@ -29,7 +29,7 @@ if cmd == 'init':
     print(f'memory: {root} for {cwd}, thread {tid}, logs in {logdir}')
     sys.exit(0)
 if not os.path.isfile(os.path.join(root, 'memory.source')):
-    sys.exit(f'memory-prep: {root} has no memory.source: run `memory-prep init {root} <T3 thread id>` from the orchestrator\'s checkout')
+    sys.exit(f'memory-prep: {root} has no memory.source: run `memory-prep init {root} <T3 thread id>` from the main session\'s checkout')
 if cmd == 'digest':
     print(mf.digest(root)); sys.exit(0)
 

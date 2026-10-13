@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The steward, declared in ~/.mergeworthy/steward as `<watch dir> <T3 thread id>`: the session that sorts follow-ups and owns
-the mergeworthy repo. Without the file there is none, and each orchestrator keeps both."""
+the mergeworthy repo. Without the file there is none, and each main session keeps both."""
 import os, sqlite3
 
 def read():

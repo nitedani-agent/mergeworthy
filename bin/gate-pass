@@ -8,7 +8,7 @@ d="$1"; r="$2"
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
 shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
-# a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (mechanisms) next to the draft, newer than the comment it answers
+# a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 case "$kind" in reply|comment|inline|proposal)
   parent="${d%.md}.parent.md"; [ -f "$parent" ] || parent=""
@@ -16,7 +16,7 @@ case "$kind" in reply|comment|inline|proposal)
 esac
 out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
-# a posted promise is a task opened (mergeworthy:github-threads): it needs a PROMISED line naming this draft in proposals-open.md
+# a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d' "$d")  # quoted text is someone else's words, not a promise
 if printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; then
   # the list lives in the session's watch dir (github-threads), or beside a drafts folder kept in it
@@ -40,7 +40,7 @@ sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
 # its hash goes into the gate record, so the posting hook can tell it from one made after the review
 tcf="$(dirname "$(readlink -f "$d")")/thread-context.md"
 if [ -f "$tcf" ]; then
-  [ "$tcf" -nt "$d" ] && { rm -f "$d.gate"; echo "thread-context.md is newer than the draft: it was made after drafting. Re-read it, revise the draft if it changes anything, and review again (mergeworthy:writing step 0)"; exit 1; }
+  [ "$tcf" -nt "$d" ] && { rm -f "$d.gate"; echo "thread-context.md is newer than the draft: it was made after drafting. Re-read it, revise the draft if it changes anything, and review again (mergeworthy:post step 1)"; exit 1; }
   echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
 fi
 echo "gate passed: $d"

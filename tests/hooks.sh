@@ -544,7 +544,7 @@ check "session-memory in the orchestrator's checkout, memory missing: the refres
 check "a session elsewhere gets no memory" 0 "$(ss_mem "$T" | grep -c 'standing memory\|is behind')"
 python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"
 MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
-check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'mergeworthy:memory-refresh' "$MB")"
+check "the first prep takes the thread's last 24 hours only, from the init session and the handed-off one" "1 1 0 0 0 1" "$(grep -c 'USER\] said in the session init ran in' "$MR/memory-new.txt") $(grep -c 'USER\] never use cron' "$MR/memory-new.txt") $(grep -c 'an old ruling' "$MR/memory-new.txt") $(grep -c "another thread" "$MR/memory-new.txt") $(grep -c "a child's brief" "$MR/memory-new.txt") $(grep -c 'skills/delegate/memory-refresh.md' "$MB")"
 check "prep drops the harness's entries (skill bodies, hook feedback, summaries, notifications, T3's own) and repeats" "0 0 0 1 1" "$(grep -c 'harness entry\|Base directory' "$MR/memory-new.txt") $(grep -c 'Delegated task' "$MR/memory-new.txt") $(grep -c 'Context handoff' "$MR/memory-new.txt") $(grep -c 'RSC check-in' "$MR/memory-new.txt") $(grep -c '^\[20[0-9T:.-]*Z END\]' "$MR/memory-new.txt")"
 UNTIL=$(sed -n 's/^\[\(.*\) END\].*/\1/p' "$MR/memory-new.txt")
 echo "read-through: $UNTIL" >> "$MR/memory-notes.txt"
@@ -621,7 +621,7 @@ check "a brief with an https URL finishes (its //host is not a path), and the UR
 git init -q "$HOME/occ"; git -C "$HOME/occ" remote add origin git@github.com:o/r.git; mkdir -p "$HOME/occ/src"
 check "BLOCK: the repo as git@github.com:o/r.git, and a ~/ path in its checkout" "2 2" "$(ag "$T" 'Fix git@github.com:o/r.git') $(ag "$T" 'Fix the bug in ~/occ/src')"
 check "a brief that writes nothing to the repo (role research or test) needs no notes; a review does" "0 0 2" "$(ag "$T" 'Mine session logs for o/r' research) $(ag "$T" 'Run the tests of o/r' test) $(ag "$T" 'Review o/r#7' review)"
-check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Run mergeworthy:memory-refresh on o/r#5 lines')"
+check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow skills/delegate/memory-refresh.md on o/r#5 lines')"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
 alive() { # task [transcript_path]
@@ -889,14 +889,14 @@ sg() { sg_in "$@" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?;
 sgb() { sg Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$1")"; }
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh pr create without its skills opened" 2 "$(sgb "gh pr create --draft --body-file $T/b.md")"
-check "the block names exactly pull-request and writing" "mergeworthy:pull-request mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
-check "the block gives the reason from the always-on row" 1 "$(grep -c '^- mergeworthy:writing, for gh pr create: Writing anything a person reads' "$T/sg.err")"
-sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request text skill:writing
-check "gh pr create passes once both were opened (plugin-qualified or bare)" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
-sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request skill:mergeworthy:writing compact text
+check "the block names exactly post, pull-request and writing" "mergeworthy:post mergeworthy:pull-request mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the block gives the reason from the always-on row" 1 "$(grep -c '^- mergeworthy:writing, for gh pr create: Before writing any words a person reads' "$T/sg.err")"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request text skill:writing skill:post
+check "gh pr create passes once its skills were opened (plugin-qualified or bare)" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request skill:mergeworthy:writing skill:mergeworthy:post compact text
 check "BLOCK: skills opened before the last compaction don't count" 2 "$(sgb "gh pr create --draft --body-file $T/b.md")"
 check "the compact summary's text doesn't open merging either" 2 "$(sgb 'git push')"
-sg_tr "$T/sg.jsonl" skill:mergeworthy:writing compact skill:mergeworthy:pull-request skill:mergeworthy:writing
+sg_tr "$T/sg.jsonl" skill:mergeworthy:writing compact skill:mergeworthy:pull-request skill:mergeworthy:writing skill:mergeworthy:post
 check "opened again after the compaction: passes" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
 check "BLOCK: gh pr ready also needs merging" 2 "$(sgb 'gh pr ready 5')"
 check "the ready block names only merging" "mergeworthy:merging" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
@@ -918,27 +918,42 @@ PY2
 )"
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh api comment POST" 2 "$(sgb "gh api repos/o/r/issues/5/comments -F body=@$T/d.md")"
-check "the post block names github-threads and writing" "mergeworthy:github-threads mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the post block names post and writing" "mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: a review comment edit (PATCH)" 2 "$(sgb "gh api -X PATCH repos/o/r/pulls/comments/9 -F body=@$T/d.md")"
 check "BLOCK: gh pr review" 2 "$(sgb "gh pr review 5 --comment --body-file $T/d.md")"
+check "the review block names review, post and writing" "mergeworthy:post mergeworthy:review mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: gh issue edit of the body" 2 "$(sgb "gh issue edit 5 --body-file $T/d.md")"
 check "a label-only issue edit posts nothing" 0 "$(sgb 'gh issue edit 5 --add-label bug')"
 check "BLOCK: gh issue create" 2 "$(sgb "gh issue create --title x --body-file $T/d.md")"
-check "the issue block names open-issue and writing" "mergeworthy:open-issue mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the issue block names open-issue, post and writing" "mergeworthy:open-issue mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: post-lint without writing" 2 "$(sgb "post-lint $T/d.md --kind reply")"
+check "a reply's lint names reply, post and writing" "mergeworthy:post mergeworthy:reply mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+sgb "post-lint $T/d.md --kind=proposal" >/dev/null
+check "a proposal's lint names design" 1 "$(grep -c '^- mergeworthy:design, for post-lint proposal' "$T/sg.err")"
+sgb "post-lint $T/d.md --kind tracker" >/dev/null
+check "a tracker's lint names task" 1 "$(grep -c '^- mergeworthy:task, for post-lint tracker' "$T/sg.err")"
+sgb "post-lint $T/d.md --kind inline" >/dev/null
+check "an inline comment's lint counts as a reply's" 1 "$(grep -c '^- mergeworthy:reply, for post-lint reply' "$T/sg.err")"
+check "BLOCK: gh-watch-start without task" 2 "$(sgb "gh-watch-start $T o/r")"
+check "BLOCK: building a thread record without post" 2 "$(sgb "thread-context o/r#5 --out $T/drafts/x/thread-context.md")"
+check "thread-context --latest and --verify only read" "0 0" "$(sgb 'thread-context --latest o/r#5') $(sgb "thread-context --verify $T/x.md")"
+check "BLOCK: an upload without evidence" 2 "$(sgb "gh pr edit 5 --body-file $T/b.md --attach /a/01.png")"
+check "the upload block names evidence" 1 "$(grep -c '^- mergeworthy:evidence, for an upload' "$T/sg.err")"
 check "BLOCK: gate-pass by its path" 2 "$(sgb "python3 ~/.mergeworthy/current/bin/gate-pass $T/d.md $T/r.out")"
 check "BLOCK: pr-steps loopb" 2 "$(sgb "pr-steps loopb $T/o.md")"
-check "the loopb block names converge, guardian and review" "mergeworthy:converge mergeworthy:guardian mergeworthy:review" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the loopb block names converge" "mergeworthy:converge" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: codex exec starts an agent" 2 "$(sgb 'codex exec "review the diff"')"
-check "BLOCK: the Agent tool without delegating" 2 "$(sg Agent '{"prompt":"x"}')"
-check "BLOCK: delegate_task without delegating" 2 "$(sg mcp__t3-code__delegate_task '{"task":"x"}')"
+check "BLOCK: the Agent tool without delegate" 2 "$(sg Agent '{"prompt":"x"}')"
+check "BLOCK: delegate_task without delegate" 2 "$(sg mcp__t3-code__delegate_task '{"task":"x"}')"
 check "BLOCK: editing a skill" 2 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
+check "the skill-edit block names rules" "mergeworthy:rules" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "BLOCK: writing a brief" 2 "$(sg Write '{"file_path":"/w/drafts/impl-brief.md"}')"
+check "the brief block names delegate" "mergeworthy:delegate" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "BLOCK: editing AGENTS.md" 2 "$(sg Edit '{"file_path":"/r/AGENTS.md"}')"
 check "an ordinary edit passes" 0 "$(sg Edit '{"file_path":"/r/src/debrief.ts"}')"
-sg_tr "$T/sg.jsonl" skill:mergeworthy:delegating
-check "the Agent tool passes once delegating was opened" 0 "$(sg Agent '{"prompt":"x"}')"
-check "editing a skill passes once delegating was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:delegate skill:mergeworthy:rules
+check "the Agent tool passes once delegate was opened" 0 "$(sg Agent '{"prompt":"x"}')"
+check "editing a skill passes once rules was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
 mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging
 check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging

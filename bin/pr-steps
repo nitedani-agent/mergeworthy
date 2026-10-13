@@ -74,12 +74,12 @@ case "$step" in
   refactor)
     if ! is_pass "$out"; then
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}')
-      [ -n "$carried" ] || { echo "$out is not a refactor pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy refactor), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
+      [ -n "$carried" ] || { echo "$out is not a refactor pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy delegate/refactor.md), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
       full=$(git rev-parse "$carried")
       prev=$(awk '$1=="refactor"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
       [ -n "$prev" ] || { echo "$carried has no recorded refactor pass with ratings to carry" >&2; exit 1; }
       changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
-      [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy refactor), run it again" >&2; exit 1; }
+      [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates)
     grep -Eq '^.+ -> exit [0-9]+$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }

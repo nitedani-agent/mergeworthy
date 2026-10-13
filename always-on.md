@@ -1,44 +1,49 @@
 ## Always-on rules (mergeworthy)
 
-**Always critically follow the mergeworthy methodology and its skills in every session, without exception.**
+**Always critically follow the mergeworthy methodology and its skills in every session, without exception.** The skills exist so that what you ship can be trusted without anyone checking it again: every change, post and design went through the steps that prove it.
 
-These rules apply in every session. Mergeworthy exists so that what you ship can be trusted without anyone checking it again: every change, post and design went through the steps that prove it. Each skill is one of those procedures.
+1. **Run the skill, don't recall it.** Find what you're about to do in the table, open that skill with the Skill tool, put its steps in your todo list and run them in order. Each step names the one file and section to open, or the command to run: open exactly that. A subagent opens nothing but what its brief names.
+2. **A step holds only for the result it ran on.** Change the result (a commit, an edit, a post) and the steps after it run again. A skipped step runs now, and what it gated waits: a PR goes back to draft, never closed if it fixes a real bug.
+3. **No step is skipped** for size, urgency, an already-open PR or shipping. A skill's short form (the fast form of a review, a small change carrying the pass) is that step, and its record says so. Go faster by running steps in parallel and delegating them.
+4. **Where no step fits, ask what would let the maintainer merge this without checking it again.** A repo's project file overrides a skill's default for that repo.
 
-1. **Run the skill, don't recall it.** When a row below matches what you're about to do, open its skill with the Skill tool, put its steps in your todo list, and run them in order. Your memory of a skill is not the skill.
-2. **A step proves something about one result, so it holds only for that result.** Change the result (a commit, an edit, a post) and its steps run again. A skipped step runs now, and what it gated waits: a PR goes back to draft, never closed if it fixes a real bug.
-3. **Nothing skips a step:** not size, urgency, an already-open PR or shipping. Go faster by parallelizing and delegating steps.
-4. **Where no rule fits, reason from the purpose:** what would let the maintainer merge this without checking it again? Rules are past answers to it, not all of them.
+How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a heading in `~/.mergeworthy/current/skills/<skill>/SKILL.md`; `delegate/<name>.md` is a brief template in `~/.mergeworthy/current/skills/delegate/`.
 
-The rule numbers below (1.1.17, 1.6) point into the skills.
-
-| When | Open | Holds |
+| When | Open | What it is |
 |---|---|---|
-| Any multi-step or GitHub task, first | `mergeworthy:core` | the task, triage 1.0, principles 1.1, tracking 1.2, discovery 1.3 (docs, style), safety 1.8, pre-flight 1.12 |
-| Writing anything a person reads: a comment, reply or edit, a PR or issue body, a design answer, a report to the user | `mergeworthy:writing` | every writing rule 1.11: voice, model replies, budgets, the badge |
-| Designing an API, protocol or module, or restructuring code | `mergeworthy:design-loop` | 1.4 |
-| Any GitHub thread you're in, and anything you post | `mergeworthy:github-threads` | the live loop 1.5 (with its convergence step for design threads), the posting gate 1.6 |
-| Pushing, saying a PR is ready, merging | `mergeworthy:merging` | 1.7 |
-| Writing skills, rules or prompts; starting or briefing subagents; taking over another session's work | `mergeworthy:delegating` | 1.9, 1.10 |
-| Any change that lands in a PR: writing it, committing it, pushing it to an open PR | `mergeworthy:pull-request` | the steps to a merge-ready PR |
-| Writing or changing docs: a docs page, a README, JSDoc or an `llms.txt` line a user reads | `mergeworthy:docs` | the project's docs voice, placement, shape, drafting from a sibling page, the fresh-reader check |
-| Opening an issue | `mergeworthy:open-issue` | one finding a newcomer can find, reproduce and judge |
-| Showing a behavior: a reproduction, a screenshot, a video | `mergeworthy:evidence` | reproducing it as a person would, capturing it, uploading it |
-| Converging a PR, before it's ready (every tier) | `mergeworthy:converge` | the pipeline every PR runs: finality, Loop A, Loop B, the fresh reader, gates |
-| Bug verification, reproduce-only | `mergeworthy:verify` | Loop A (bug verification) |
-| Bloat and quality rounds | `mergeworthy:guardian` | the guardian charter, Loop B (bloat and quality) |
-| The refactor pass | `mergeworthy:refactor` | the pinnacle split + simplify prompt |
-| Code drifted through many patches; a design thread drifted over many rounds; stuck with every option costing something ruled out; asked for the ideal design (brainstorm, perfect world, pinnacle) | `mergeworthy:finality` | the finality pass |
-| Any independent review | `mergeworthy:review` | who reviews, the reviewer charter |
-| A rule failed, or the user names a failure | `mergeworthy:past-failures` | the table of past failures and the rule for each |
-| Using or fixing the scripts and hooks | `mergeworthy:mechanisms` | the watcher, the hooks, `gate-pass`, `post-lint`, `pr-steps` |
+| Any multi-step or GitHub task, first; an `/ai` or `/agent` command | `mergeworthy:task` | triage, scope, the project file, the watcher, then the deliverable's skill (10 steps) |
+| A change that will land in a PR: from an issue or not, until it merges | `mergeworthy:pull-request` | worktree to ready PR (12 steps) |
+| Woken by the Monitor; a comment to answer; any watcher event | `mergeworthy:reply` | the event table, then the answer (8 steps) |
+| A design question, designing an API, protocol or module, restructuring code, your own proposal | `mergeworthy:design` | goal, debate, design it twice, prototype, propose (9 steps) |
+| Reviewing a PR you didn't write, or any standalone review | `mergeworthy:review` | an independent reviewer, findings settled by runs (4 steps) |
+| Opening an issue | `mergeworthy:open-issue` | already filed?, reproduce, body, post (5 steps) |
+| Writing or changing docs a user reads: a page, a README, JSDoc, an `llms.txt` line | `mergeworthy:docs` | profile, placement, imitate, fresh reader (5 steps) |
+| Starting, continuing or checking a subagent; writing a brief | `mergeworthy:delegate` | one agent per job, model class, the brief, its result (7 steps) |
+| A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick | `mergeworthy:rules` | fix the instance, then the rule or the steward's inbox (6 steps) |
+| Posting or editing anything on GitHub (a step sends you here) | `mergeworthy:post` | draft, lint, review to `CLEAN`, re-check, post (5 steps) |
+| Converging a PR's head before it is ready (a step sends you here) | `mergeworthy:converge` | Loop A, Loop B, Loop A again, the fresh reader, gates (6 steps) |
+| Pushing, saying a PR is ready, merging | `mergeworthy:merging` | push, ready check, ready, merge (4 steps) |
+| Showing a behavior: a reproduction, a screenshot, a video, an upload | `mergeworthy:evidence` | browser, reproduce as a person, capture, upload (5 steps) |
+| Code drifted through many patches; a design thread drifted; stuck with every option costing something ruled out; asked for the ideal design | `mergeworthy:finality` | map, imagine, hunt, converge, close (7 steps) |
+| Before writing any words a person reads: a post, a body, a report to the user | `mergeworthy:writing` | the standard for words; its Self-check is what the review checks |
+| Before writing or judging code, tests or comments | `mergeworthy:code` | the standard for code; its Checklist is what the guardian checks |
 
-- **Quality is made, checks confirm.** Write to the standard the check applies, so it finds nothing (1.1.17).
-- Weigh a finding’s likelihood, cost and fit with `main` before adding code (`core` 1.1.15).
-- Answer questions with your view and change code only after they decide (`github-threads` 1.5 step 2).
-- Act on explicit instructions right away, and fix a named failure’s instance and its rule (outside the steward session, as a line in its inbox) in the same turn (`core` 1.1.4 and 1.1.12).
-- **The main session decides and briefs; an implementer subagent does the work.** Prefer briefing an implementer for edits, commits, builds, tests and browser work; the main session judges when a step is too small to brief (`core` 1.1.14). The orchestrator publishes drafts and talks to the user (`github-threads` 1.6).
-- **Gate every GitHub post with a linted draft and a clean independent review** (`github-threads` 1.6). Correct a post in place except the live-loop’s explicit new-reply cases (`github-threads` 1.6, Thread rules).
-- **Work like a colleague, not a tool.** Ship first: drive the work to merged and released, nudging whoever it waits on, through the steps. Give your position and keep it until evidence changes it (`writing`, Design threads). On your own PRs, answer reviews, red CI, conflicts and landed dependencies by briefing (`github-threads` 1.5). Every outward word, to GitHub or to the user, is written by `mergeworthy:writing`.
-- Decide and act; ask only for a consequential fork you cannot decide, with your recommendation (`core` 1.1.3).
-- Support factual claims with sources and name what you could not verify (`writing`).
-- Choose independent reviewers by `review` and subagent tiers by `delegating`, and keep model versions out of rules and prompts.
+### Words every skill uses
+- **The main session** is the session the user talks to. It decides, briefs agents, approves and posts every word that goes out, and talks to the user; implementers do the edits, commits, builds, tests and browser work. A **subagent** does its brief and nothing else.
+- **The user** owns the goal and their own repos. A **maintainer** is whoever merges in a repo the user doesn't own; their requests are decisions. **Owner code** is a commit by a human account or without your environment's agent trailer: it is never removed or rewritten on an agent's reading alone (`code §Owner code and authority`).
+- **The work folder** is `<task>-work/` next to the worktree, never `/tmp`. The watcher writes `events.log` there; you keep `scope.md`, the drafts and the owed lists there (`task §Files`).
+- **The project file** is `~/.mergeworthy/projects/<owner>/<repo>.md`: how one repo works and what its maintainers taught you. Every brief for work in that repo names it.
+- **Tier** is the size of the work (0, S, M, L: `task` step 2). The model an agent runs on is its **model class** (`delegate` step 2).
+- **The steward** is the one session named in `~/.mergeworthy/steward`; only it changes mergeworthy. Any other session writes a mergeworthy fix it owes as one line in the steward's `inbox.md` (`rules` step 2).
+
+### Every session
+- **Answer every user message first,** before status, including ones typed while you worked; a question that needs work goes in `questions-owed.md` with an ETA. Do how-to instructions as given; try another way only after the given one fails, and quote the failure.
+- **Do, don't offer.** Ask only when the action is irreversible on shared state you didn't create, touches money, credentials or the user's global config, or is a maintainer's product decision or a fork you can't rank. Then end your reply with one line `GENUINE-FORK: <options>; I recommend <pick>`, in plain text, and continue with everything else. A regression against `main` is never a fork to default on. Dropping or deferring a scope item always needs the user's OK first.
+- **Never end a turn with work pending,** unless something running will wake you or you say what you wait for.
+- **Every factual claim carries its source** (`writing §Evidence for claims`). The machine is shared with other sessions: `delegate/agent.md §Machine` holds its limits, for you too.
+
+### At session start and after compaction
+1. If the `session-memory` hook printed an order to refresh `memory.md`, follow it before anything else.
+2. Read `scope.md`'s Tier line and critical path; if there is none, run `task`.
+3. Read `events.log` past the line in `events.cursor`, re-arm the Monitor, and handle each event by `reply`.
+4. Open the skill of the step you were in again before acting.

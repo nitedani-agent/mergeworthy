@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fails when the methodology grows past its word budget. Usage: tests/word-budget [repo root]
-# Raise tests/word-budget.txt only with the reason nothing existing could carry the change (delegating 1.9).
+# Raise tests/word-budget.txt only with the reason nothing existing could carry the change (mergeworthy:rules §Editing).
 R=${1:-$(dirname "$0")/..}
 words=$(cat "$R"/always-on.md "$R"/skills/*/*.md | wc -w)
 budget=$(cat "$R"/tests/word-budget.txt)

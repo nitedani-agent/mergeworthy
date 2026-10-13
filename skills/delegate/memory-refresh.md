@@ -1,17 +1,13 @@
----
-name: memory-refresh
-description: "Merging new session-log lines into memory.md (core 1.2), from the brief `memory-prep prep` writes: reading the input in chunks into notes, classifying each item, merging, and an honest covered-until."
----
+# Memory-refresh brief (merging new session-log lines into memory.md)
 
-# Refreshing memory.md
+`memory-prep prep <work folder>` writes the brief that names this file, the input, the read-through notes and `memory.md`; one smallest-class agent at high effort follows it.
 
-`memory.md` holds what the built-in compaction summary loses: the user's rulings in force, what is ruled out and why, what was superseded, what is still intended, and the last 24 hours of what happened and why. Your brief names the input, the notes file and `memory.md`.
-
+`memory.md` holds what the built-in compaction summary loses: the user's rulings in force, what is ruled out and why, what was superseded, what is still intended, and the last 24 hours of what happened and why. *The read-through notes* are your own scratch file (`memory-notes.txt`), named in the brief.
 ## 1. Read the input in chunks
 
-The input is entries `[<log timestamp> ROLE] text`, oldest first: USER is the user (the project owner), ASSISTANT the orchestrator. Its last line is `[<log timestamp> END]`.
+The input is entries `[<log timestamp> ROLE] text`, oldest first: USER is the user (the project owner), ASSISTANT the main session. Its last line is `[<log timestamp> END]`.
 
-Read it with the Read tool, 200 lines at a time (`offset`, `limit`; halve `limit` if Read says the chunk is too large). After each chunk, before reading the next, append to the notes file:
+Read it with the Read tool, 200 lines at a time (`offset`, `limit`; halve `limit` if Read says the chunk is too large). After each chunk, before reading the next, append to the read-through notes:
 
 ```
 read-through: <the timestamp of the last entry header in this chunk>

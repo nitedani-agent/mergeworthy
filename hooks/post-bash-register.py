@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code PostToolUse hook (matcher: Bash). A thread you just posted in (a new issue or PR, a comment, a review)
 joins the threads.txt of the posting session's watcher, else of the one that covers its repo, else of the first live
-watcher, so maintainer comments on it are answered (mergeworthy:github-threads). A gated draft it posted as new gets its
+watcher, so maintainer comments on it are answered (mergeworthy:reply). A gated draft it posted as new gets its
 .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

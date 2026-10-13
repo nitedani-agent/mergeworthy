@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Write, Edit, MultiEdit, NotebookEdit, delegate_task). Exit 2 blocks; stderr goes to the agent.
 An edit inside a git work tree waits for its repo and branch's `pr-steps preflight` record.
-At Tier M or L (first line of <repo>-work/scope.md), code waits for prior art (1.3) and the design loop (1.4):
+At Tier M or L (first line of <repo>-work/scope.md), code waits for prior art (task step 6) and the design (design step 4):
 <repo>-work/prior-art.md and a <repo>-work/decisions/*.md must exist before an edit inside the repo or an implementation agent."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -39,8 +39,8 @@ else:
 missing = [n for n, ok in (('prior-art.md', os.path.isfile(os.path.join(work, 'prior-art.md'))),
                           ('decisions/*.md', bool(glob.glob(os.path.join(work, 'decisions', '*.md'))))) if not ok]
 if missing:
-    sys.stderr.write(f"BLOCKED: {tier.strip()} and {work} has no {' or '.join(missing)}. Before code: prior art (core 1.3: the web, "
-                     "every project the user names, peers) into prior-art.md, then the design loop (open mergeworthy:design-loop) "
+    sys.stderr.write(f"BLOCKED: {tier.strip()} and {work} has no {' or '.join(missing)}. Before code: prior art (mergeworthy:task step 6: the web, "
+                     "every project the user names, peers) into prior-art.md, then design it twice (mergeworthy:design step 4) "
                      "into decisions/<name>.md.\n")
     sys.exit(2)
 sys.exit(0)

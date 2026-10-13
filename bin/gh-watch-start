@@ -1,7 +1,7 @@
 #!/bin/bash
-# gh-watch-start [--main] <dir> [owner/repo [N|all]]...: the one way to start watching (mergeworthy:github-threads). Idempotent.
+# gh-watch-start [--main] <dir> [owner/repo [N|all]]...: the one way to start watching (mergeworthy:task step 5). Idempotent.
 # - --main: this dir gets your /ai calls, and /agent calls no dir claims, on threads no watcher watches (default: the first live dir).
-# - <dir> is the session's artifact root; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
+# - <dir> is the session's work folder; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`);
 #   "owner/repo all" too: the whole repo is watched (gh-watch.py's moved_thread).
 #   GitLab: "gitlab.com/<namespace>/<project>" with N for an issue, !N for a merge request.
@@ -9,7 +9,7 @@
 # - A thread line drops its repo's bare line (not an `all` line) from repos.txt; <dir>/session records the Claude session that ran it.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
 # - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
-#   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:github-threads).
+#   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply).
 set -e
 main=; [ "${1:-}" = --main ] && { main=1; shift; }
 [ -n "$1" ] || { sed -n '2,10p' "$0"; exit 1; }
@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
       [ "$other" != "$dir" ] && [ -f "$other/threads.txt" ] && grep -qxF "$line" "$other/threads.txt" || continue
       opid=$(cat "$other/gh-watch.pid" 2>/dev/null || true)
       if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then
-        echo "$line is already watched by $other: use that watch dir, or remove the line there first" >&2; exit 1
+        echo "$line is already watched by $other: use that work folder, or remove the line there first" >&2; exit 1
       fi
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
   fi

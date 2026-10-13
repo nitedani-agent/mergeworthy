@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Builds docs/graphs.md from the skills themselves, so the graphs can't drift from them.
 
-- Entry points: the index table in always-on.md (When | Open | Holds).
+- Entry points: the index table in always-on.md (When | Open | What it is).
 - Steps: each skill's numbered steps (`### 3. Title` headings, or `3. ...` items in a section); a skill without
   numbered steps shows its sections.
-- Arrows to other skills: a step that names one (`mergeworthy:review`, `review`) or one of its rule numbers (1.6),
-  mapped through the index's Holds column.
+- Arrows to other skills: a step that names one (`mergeworthy:post`, `post`, `post step 3`, `post §Kinds`), or a brief
+  template (`delegate/verifier.md`, an arrow to `delegate`).
 
     python3 docs/build-graphs.py           write docs/graphs.md
     python3 docs/build-graphs.py --check   exit 1 if docs/graphs.md is out of date (CI runs this)
@@ -85,7 +85,7 @@ def steps(skill):
 
 def refs(text, me, skills, owners):
     found = []
-    for s in re.findall(r'`(?:mergeworthy:)?([\w-]+)`', text) + re.findall(r'mergeworthy:([\w-]+)', text):
+    for s in re.findall(r'`(?:mergeworthy:)?([\w-]+)(?: steps? [\d–-]+| §[^`]+|/[\w-]+\.md[^`]*)?`', text) + re.findall(r'mergeworthy:([\w-]+)', text):
         if s in skills and s != me and s not in found:
             found.append(s)
     for n in re.findall(r'(?<![\w.])(\d+\.\d+)(?:\.\d+)?(?![\w.]*\d)', text):

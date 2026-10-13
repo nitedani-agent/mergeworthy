@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The memory file (core 1.2): <artifact root>/memory.md fills what the built-in compaction summary loses. Its Standing part
+"""The memory file (mergeworthy:task step 8): <work folder>/memory.md fills what the built-in compaction summary loses. Its Standing part
 (rulings in force, ruled out, superseded, still intended) is carried forward until replaced; its Recent part covers the
 last 24 hours. One Haiku merges new log lines into it (`memory-prep`), and it records the last log line it covered in
 `<!-- covered-until: <log timestamp> -->`. A root is listed in ~/.mergeworthy/memory-roots.txt and has memory.source
-(`memory-prep init`): the orchestrator's cwd, T3 thread id, session id and session-log dir."""
+(`memory-prep init`): the main session's cwd, T3 thread id, session id and session-log dir."""
 import json, os, re, time
 
 COVERED = re.compile(r'<!-- covered-until: (\S+) -->')
@@ -21,7 +21,7 @@ def source(root):
     return json.load(open(os.path.join(root, 'memory.source')))
 
 def for_cwd(cwd):
-    """The root whose orchestrator works in cwd."""
+    """The work folder whose main session works in cwd."""
     return next((r for r in roots() if cwd and (cwd == source(r)['cwd'] or cwd.startswith(source(r)['cwd'].rstrip('/') + '/'))), None)
 
 def path(root):
@@ -31,7 +31,7 @@ def notes_path(root):
     return os.path.join(root, 'memory-notes.txt')
 
 def covered(root):
-    """What memory.md covers: its covered-until, never past the last chunk its run noted as read (memory-refresh)."""
+    """What memory.md covers: its covered-until, never past the last chunk its run noted as read (delegate/memory-refresh.md)."""
     m = COVERED.findall(open(path(root), errors='replace').read()) if os.path.isfile(path(root)) else []
     n = READ.findall(open(notes_path(root), errors='replace').read()) if os.path.isfile(notes_path(root)) else []
     return min(m[-1], n[-1]) if m and n else (m[-1] if m else '')

@@ -8,31 +8,40 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import segments, prog, opt, api_call
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WRITE = ('writing',)
+WRITE = ('post', 'writing')
 # The one table of actions and the skills they need. Every skill named here is a row of always-on.md, and every row
 # no action can be told by is in UNGATED; tests/hooks.sh fails when the two disagree.
 ACTIONS = {
-    'gh pr create':          ('pull-request',) + WRITE,
-    'gh pr edit':            ('pull-request',) + WRITE,
-    'gh pr ready':           ('pull-request', 'merging') + WRITE,
-    'gh pr merge':           ('merging',),
-    'git push':              ('merging',),
-    'gh issue create':       ('open-issue',) + WRITE,
-    'a post in a thread':    ('github-threads',) + WRITE,  # comments, replies, reviews, body edits, gh api writes
-    'post-lint':             WRITE,
+    'gh-watch-start':        ('task',),                     # task step 5, the first command of a GitHub task
+    'gh pr create':          ('pull-request',) + WRITE,     # pull-request step 7
+    'gh pr edit':            ('pull-request',) + WRITE,     # pull-request step 10
+    'gh pr ready':           ('pull-request', 'merging'),   # merging step 3
+    'gh pr merge':           ('merging',),                  # merging step 4
+    'git push':              ('merging',),                  # merging step 1
+    'gh issue create':       ('open-issue',) + WRITE,       # open-issue step 4
+    'gh pr review':          ('review',) + WRITE,           # review step 4
+    'a post in a thread':    WRITE,                         # comments, replies, body edits, gh api writes
+    'thread-context':        ('post',),                     # post step 1
+    'post-lint reply':       ('reply',) + WRITE,            # --kind reply or inline
+    'post-lint proposal':    ('design',) + WRITE,           # design step 8
+    'post-lint pr':          ('pull-request',) + WRITE,
+    'post-lint issue':       ('open-issue',) + WRITE,
+    'post-lint tracker':     ('task',) + WRITE,             # task step 7
     'gate-pass':             WRITE,
+    'an upload':             ('evidence',),                 # a gh command with --attach, evidence step 5
     'pr-steps approach':     ('pull-request',),
-    'pr-steps verify':       ('converge', 'verify'),
-    'pr-steps reverify':     ('converge', 'verify'),
-    'pr-steps loopb':        ('converge', 'review', 'guardian'),
-    'pr-steps refactor':     ('converge', 'refactor'),
-    'pr-steps fresh':        ('converge', 'review', 'verify'),
+    'pr-steps verify':       ('converge',),
+    'pr-steps reverify':     ('converge',),
+    'pr-steps loopb':        ('converge',),
+    'pr-steps refactor':     ('converge',),
+    'pr-steps fresh':        ('converge',),
     'pr-steps gates':        ('converge',),
-    'starting an agent':     ('delegating',),
-    'editing a skill, prompt or rules file': ('delegating',),
+    'starting an agent':     ('delegate',),
+    'editing a brief or prompt file': ('delegate',),
+    'editing a skill or rules file':  ('rules',),
 }
 TEXT = ('--body', '-b', '--body-file', '-F', '--title', '-t')  # an issue edit that changes what a person reads
-UNGATED = {'core', 'design-loop', 'docs', 'evidence', 'finality', 'past-failures', 'mechanisms'}  # no tool call tells them apart
+UNGATED = {'code', 'finality', 'docs'}  # code reaches agents by path in briefs; finality has pre-bash-guard's third-proposal block; no tool call tells docs apart
 
 
 def rows():
@@ -66,6 +75,8 @@ def bash_actions(cmd):
         a = t[1:]
         if '--help' in a or '-h' in a:
             continue
+        if name == 'gh' and opt(a, ['--attach']):
+            out.append('an upload')
         if name == 'git':
             sub = git_sub(t)
             if sub[:1] == ['push'] and not {'--dry-run', '-n'} & set(sub):
@@ -79,7 +90,9 @@ def bash_actions(cmd):
                 out.append('gh pr ready')
             elif a[0] == 'issue' and sub == 'create':
                 out.append('gh issue create')
-            elif sub in ('comment', 'review') or (sub == 'edit' and text) or (sub == 'close' and opt(rest, ['--comment', '-c'])):
+            elif a[0] == 'pr' and sub == 'review':
+                out.append('gh pr review')
+            elif sub == 'comment' or (sub == 'edit' and text) or (sub == 'close' and opt(rest, ['--comment', '-c'])):
                 out.append('a post in a thread')
         elif name == 'gh' and a[:1] == ['api']:
             method, ep, fields, inputs, posts = api_call(a[1:])
@@ -93,7 +106,12 @@ def bash_actions(cmd):
                 out.append('gh pr create')
             elif re.fullmatch(r'/?repos/[\w.-]+/[\w.-]+/(issues|pulls)(/.*)?', ep):
                 out.append('a post in a thread')
-        elif name in ('post-lint', 'gate-pass'):
+        elif name == 'post-lint':
+            kind = (opt(a, ['--kind']) or ['reply'])[-1]
+            out.append(f'post-lint {kind}' if f'post-lint {kind}' in ACTIONS else 'post-lint reply')  # inline and a missing --kind: reply
+        elif name in ('gate-pass', 'gh-watch-start'):
+            out.append(name)
+        elif name == 'thread-context' and not {'--latest', '--verify'} & set(a):
             out.append(name)
         elif name == 'pr-steps' and a and f'pr-steps {a[0]}' in ACTIONS:
             out.append(f'pr-steps {a[0]}')
@@ -110,9 +128,10 @@ def actions(d):
         return ['starting an agent']
     path = str(ti.get('file_path') or ti.get('notebook_path') or '')
     parts = os.path.normpath(path).split(os.sep) if path else []
-    if parts and ('skills' in parts[:-1] or parts[-1] in ('AGENTS.md', 'CLAUDE.md', 'always-on.md')
-                  or re.search(r'(^|[-_.])(prompt|brief)s?([-_.]|$)', parts[-1], re.I)):
-        return ['editing a skill, prompt or rules file']
+    if parts and ('skills' in parts[:-1] or parts[-1] in ('AGENTS.md', 'CLAUDE.md', 'always-on.md')):
+        return ['editing a skill or rules file']
+    if parts and re.search(r'(^|[-_.])(prompt|brief)s?([-_.]|$)', parts[-1], re.I):
+        return ['editing a brief or prompt file']
     return []
 
 

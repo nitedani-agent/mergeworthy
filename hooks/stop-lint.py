@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers
-the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:github-threads)."""
+the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:reply)."""
 import json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
@@ -102,7 +102,7 @@ if running and not child:
     if launched and (done or not fresh):
         print(f"Your Running list names {', '.join(done)}, whose task status is terminal." if done else
               "Your Running list wasn't read from T3 since the user's last message.", "Read task_status for each agent you list "
-              "and list only the ones still working (mergeworthy:writing).", file=sys.stderr)
+              "and list only the ones still working (mergeworthy:writing §Reports to the user).", file=sys.stderr)
         sys.exit(2)
 own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
@@ -124,8 +124,8 @@ headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
 if posted and watcher_on and not headless and not paused and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
-          "nothing else answers them. Run `gh-watch-start <your artifact root> <owner/repo> <N>` and arm the Monitor it "
-          "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:github-threads).", file=sys.stderr)
+          "nothing else answers them. Run `gh-watch-start <your work folder> <owner/repo> <N>` and arm the Monitor it "
+          "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:reply step 1).", file=sys.stderr)
     sys.exit(2)
 # The owed-reply list: the daemon records each human comment in the live watcher's replies-owed.md; a turn
 # cannot end with a line still owed.
@@ -147,10 +147,10 @@ if watcher_on and not paused and not child:
         open_owed = [l for l in owed if not l.lower().startswith('done:') and not holding(l)]
         if open_owed:
             print(f"replies-owed.md in {wd} still has an owed reply ({open_owed[0][:120]}). Answer it through the gate and clear the "
-                  "line with 'done: <reply url> <what changed>' (mergeworthy:github-threads), or clear it with the reason no reply is owed.",
+                  "line with 'done: <reply url> <what changed>' (mergeworthy:post step 5), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
-# Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:github-threads),
+# Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:rules step 6),
 # by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's
 if watcher_on and not paused and not child:
     import datetime, time
@@ -167,9 +167,9 @@ if watcher_on and not paused and not child:
                 and not any(v == k or (len(v) >= 7 and k[:7] == v[:7] and (v.startswith(k) or k.startswith(v))) for v in done)]
         if late:
             print(f"These FOLLOW-UP events in {wd}/events.log are unsorted after 30 minutes: {', '.join(dict.fromkeys(late))}. Brief the sort "
-                  f"(mergeworthy:github-threads) and record each as `<sha or PR URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
+                  f"(mergeworthy:rules step 6) and record each as `<sha or PR URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
             sys.exit(2)
-# The orchestrator's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
+# The main session's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
 if not child and not paused:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import datetime, time, memory_file as mf
@@ -190,7 +190,7 @@ if not child and d.get('session_id'):
         done = j.get('session') == d['session_id'] and agent_jobs.finished(j)
         if done:
             print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
-                  f"result (task_status / its report), act on it, then `agent-job done '{j['key'][:200]}'` (mergeworthy:delegating 1.10).", file=sys.stderr)
+                  f"result (task_status / its report), act on it, then `agent-job done '{j['key'][:200]}'` (mergeworthy:delegate step 6).", file=sys.stderr)
             sys.exit(2)
 # Hook scripts run from ~/.mergeworthy/current (hooks/run), but the hook list is the one this session started with: when a newer
 # version changed hooks.json, say so once per session
