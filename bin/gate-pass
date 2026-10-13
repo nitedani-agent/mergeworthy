@@ -21,6 +21,17 @@ if grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" "$d" && 
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
   grep -q "^PROMISED .*$(basename "$d")" "$po" 2>/dev/null || { echo "the draft promises work: add 'PROMISED <thread>: <what> ($(basename "$d"))' to $po first, or do it now and write 'Done in <link>'"; exit 1; }
 fi
+# A maintainer who asked to see how this methodology changes (~/.mergeworthy/harness-shown/<owner>, the last mergeworthy
+# commit shown there) gets one line linking every commit since: added here, after the review, so the reviewer never sees it
+repo=""; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --repo ] && repo="${flags[$((i+1))]}"; done
+hs="${MERGEWORTHY_HOME:-$HOME/.mergeworthy}/harness-shown/${repo%%/*}"
+installed=$(git -C "${MERGEWORTHY_SRC:-$HOME/.claude/plugins/marketplaces/mergeworthy}" rev-parse --short=7 HEAD 2>/dev/null || true)
+shown=$(cat "$hs" 2>/dev/null | head -c 40 | tr -d '[:space:]' || true)
+case "$kind" in reply|comment|proposal)
+  if [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && [ "$shown" != "$installed" ]; then
+    printf '\nHarness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/%s...%s>\n' "$shown" "$installed" >> "$d"
+  fi;;
+esac
 sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
 # the draft was written from the thread's record, and the reviewer had the same file: it predates the draft's last edit;
 # its hash goes into the gate record, so the posting hook can tell it from one made after the review
@@ -30,10 +41,8 @@ if [ -f "$tcf" ]; then
   echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
 fi
 echo "gate passed: $d"
-# post-lint checked that the draft shows every mergeworthy commit this repo's maintainers asked to see: record them as shown
-repo=""; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --repo ] && repo="${flags[$((i+1))]}"; done
-hs="${MERGEWORTHY_HOME:-$HOME/.mergeworthy}/harness-shown/${repo%%/*}"
-case "$kind" in reply|comment|proposal) [ -n "$repo" ] && [ -f "$hs" ] && git -C "${MERGEWORTHY_SRC:-$HOME/.claude/plugins/marketplaces/mergeworthy}" rev-parse --short=7 HEAD > "$hs";; esac
+# the draft now links every mergeworthy commit up to the installed one: record it as shown
+case "$kind" in reply|comment|proposal) [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && echo "$installed" > "$hs";; esac
 # Register the post, so the watcher can tell the agent's posts from the user's when both use one account
 REG="${GATED_POSTS:-$HOME/.claude/gated-posts.txt}"
 python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1]).read().replace("\r\n","\n").strip().encode()).hexdigest())' "$d" >> "$REG"

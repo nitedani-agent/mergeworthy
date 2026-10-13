@@ -110,7 +110,7 @@ The watcher runs independently of any session and only records events (and adds 
 
 **How a post reads** (voice, budgets, the badge, the notes table, model replies) is `mergeworthy:writing`: open it before drafting. The rules below are about the thread.
 
-- **A maintainer who asks to see how you change this methodology** gets every mergeworthy commit in your next reply in their repos: each in plain words with its link, in a `<details>` block. Write the installed commit to `~/.mergeworthy/harness-shown/<owner>` when they ask; `post-lint` holds each reply there until it shows what came after.
+- **A maintainer who asks to see how you change this methodology** gets a link to the mergeworthy commits since your last reply in their repos: write the installed commit to `~/.mergeworthy/harness-shown/<owner>` when they ask, and `gate-pass` appends the link.
 - **At most two comments in a row.** The second is only the 1.5 result after its holding reply, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment; anything else edits your last comment. `pre-bash-guard` blocks a third while your last two have no reply from anyone else and the last is under 3 hours old; after that, the third may be the wait ping.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` in place of every token, cookie, auth header and key. Quote only the lines that show the point (`post-lint` fails on common token shapes).
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Correct your earlier post in place through the gate, except the explicit new-reply cases in 1.5 and the second-comment exceptions above.

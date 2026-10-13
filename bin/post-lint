@@ -29,6 +29,7 @@ text = open(path).read()
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 title = (re.match(r'\ATitle:\s*([^\n]*)\n', text) or [None, None])[1]
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
+text = re.sub(r'\n*^Harness changes since my last note: <\S+>\n*\Z', '\n', text, flags=re.M)  # gate-pass's own line, after the review
 # Posts by the agent share the user's account: each starts with the icons of the agents that worked on it,
 # optionally followed on the same line by one italic line saying which model did what, then a line break,
 # so readers see who wrote it. The other checks run on the text after the badge.
@@ -66,23 +67,6 @@ counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
 findings = []
-# A maintainer who asked to see every change to this methodology: ~/.mergeworthy/harness-shown/<owner> holds the last
-# mergeworthy commit shown in that owner's repos, and each reply there carries every commit since (gate-pass advances it)
-def harness_pending(owner):
-    f = os.path.join(os.environ.get('MERGEWORTHY_HOME', os.path.expanduser('~/.mergeworthy')), 'harness-shown', owner)
-    if not os.path.exists(f): return None, []
-    src = os.environ.get('MERGEWORTHY_SRC', os.path.expanduser('~/.claude/plugins/marketplaces/mergeworthy'))
-    log = ['git', '-C', src, 'log', '--format=%h', f"{open(f).read().split()[0]}..HEAD"]
-    r = subprocess.run(log, capture_output=True, text=True)
-    if r.returncode:  # the plugin's marketplace clone is shallow: fetch its history once
-        subprocess.run(['git', '-C', src, 'fetch', '-q', '--unshallow'], capture_output=True)
-        r = subprocess.run(log, capture_output=True, text=True)
-    return (r.stderr.strip() or 'git log failed') if r.returncode else None, [h[:7] for h in r.stdout.split()]
-if repo and kind in ('reply', 'proposal'):
-    err, pending = harness_pending(repo.split('/')[0])
-    missing = [h for h in pending if h not in text]
-    if err: findings.append(f"can't list the mergeworthy commits {repo.split('/')[0]}'s maintainers haven't seen: {err[:100]}")
-    elif missing: findings.append(f"{len(missing)} mergeworthy commits {repo.split('/')[0]}'s maintainers asked to see and haven't: {' '.join(missing)}. Show each in plain words with its link, in a <details> block")
 if _label:
     findings.append("badge label: drop the '**Name:**' label; the icons, then a line break, then the text")
 BANNED = [r'\bin this run\b', r"\bdoesn't establish\b", r'\bworth noting\b', r'\bhappy to\b', r'\blet me know\b',

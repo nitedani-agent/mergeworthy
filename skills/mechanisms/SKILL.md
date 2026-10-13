@@ -35,7 +35,6 @@ These scripts enforce the rules that failed as text alone.
   - **References:** "stacked on"; bare `#N`.
   - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table; a ready PR body without `pull-request` step 7's `### What you should see`, its numbered items showing the evidence outside `<details>`.
   - **Safety and form:** secrets; a missing badge, unless the `badge` option says otherwise (not for `tracker`).
-  - **Methodology changes asked for** (`reply`, `proposal`): when `~/.mergeworthy/harness-shown/<owner>` exists, every mergeworthy commit since the one it names must appear in the draft. `gate-pass` then records the installed commit there.
 
 ### `thread-context` (enforces 1.6 and writing step 0)
 
@@ -50,6 +49,7 @@ These scripts enforce the rules that failed as text alone.
 - It re-runs `post-lint` with the draft's last flags, checks that the review's final message is exactly `CLEAN`, and records the draft's sha256 in `<draft>.gate`.
 - A `reply`, `inline` or `proposal` draft needs `thread-context.md` in its folder, newer than its `.parent.md`, recording a latest human comment (`thread-context --verify`).
 - A `thread-context.md` beside the draft must be older than its last edit; posting refuses one regenerated after the gate.
+- When `~/.mergeworthy/harness-shown/<owner>` exists, it appends to a `reply` or `proposal`, after the review, a link comparing the mergeworthy commit it names with the installed one, and records the installed one there.
 - A draft that promises work ("I'll", "follow-up PR") first needs a `PROMISED … (<draft name>)` line in `proposals-open.md`.
 
 ### `review-context`

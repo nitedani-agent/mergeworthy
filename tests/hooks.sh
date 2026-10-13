@@ -315,19 +315,16 @@ check "BLOCK: I'll do the fix after it" 1 "$(qlint $'Neither blocks Vike. So I\'
 check "BLOCK: I'll send it later" 1 "$(qlint $'I\'ll send the PR later.\n')"
 check "naming what it waits on passes" 0 "$(qlint $'I\'ll switch the adapters once vikejs/vike#3594 is released.\n')"
 
-# ---------- post-lint + gate-pass: a reply shows the mergeworthy commits the repo's maintainers asked to see ----------
+# ---------- gate-pass: a reply in a repo whose maintainers asked to see mergeworthy's changes links them ----------
 S="$T/mwsrc"; git init -q "$S"; for m in one two three; do git -C "$S" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$m"; done
-mkdir -p "$HOME/.mergeworthy/harness-shown"; git -C "$S" rev-parse --short=7 HEAD~2 > "$HOME/.mergeworthy/harness-shown/acme"
-h2=$(git -C "$S" rev-parse --short=7 HEAD~1); h3=$(git -C "$S" rev-parse --short=7 HEAD)
-hl() { printf '%s\n' "$1" > "$T/hs.md"; MERGEWORTHY_SRC="$S" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo "$2" --parent none 2>&1 | grep -c 'asked to see'; }
-check "BLOCK: a reply in acme/x that leaves out unseen mergeworthy commits" 1 "$(hl 'Fixed the bug.' acme/x)"
-check "a reply that shows both unseen commits passes" 0 "$(hl "Fixed. Mergeworthy: $h2 and $h3." acme/x)"
-check "another owner's repo asked for nothing" 0 "$(hl 'Fixed the bug.' other/x)"
-git clone -q --depth 1 "file://$S" "$T/mwshallow"
-check "a shallow clone fetches the history it needs" 1 "$(printf 'Fixed the bug.\n' > "$T/hs.md"; MERGEWORTHY_SRC="$T/mwshallow" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo acme/x --parent none 2>&1 | grep -c 'asked to see')"
-printf 'Fixed. Mergeworthy: %s and %s.\n' "$h2" "$h3" > "$T/hs.md"; printf 'CLEAN\n' > "$T/hs.review"
-MERGEWORTHY_SRC="$S" bash "$R/bin/gate-pass" "$T/hs.md" "$T/hs.review" --kind tracker --repo acme/x >/dev/null 2>&1 || true
-check "gate-pass of a tracker post doesn't mark them shown" "$(git -C "$S" rev-parse --short=7 HEAD~2)" "$(cat "$HOME/.mergeworthy/harness-shown/acme")"
+mkdir -p "$HOME/.mergeworthy/harness-shown"; h1=$(git -C "$S" rev-parse --short=7 HEAD~2); h3=$(git -C "$S" rev-parse --short=7 HEAD); echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"
+printf 'Fixed the bug.\n' > "$T/hs.md"
+check "post-lint doesn't ask a reply to list the commits" 0 "$(MERGEWORTHY_BADGE=off MERGEWORTHY_SRC="$S" python3 "$R/bin/post-lint" "$T/hs.md" --kind reply --repo acme/x --parent none >/dev/null 2>&1; echo $?)"
+hg() { printf 'Agreed, option A it is.\n' > "$GD/r.md"; touch -d '+1 minute' "$GD/r.md"; MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind "${2:-reply}" --repo "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
+check "gate-pass of an inline comment adds no line and records nothing" "0 0 $h1" "$(hg acme/x inline) $(grep -c 'Harness changes' "$GD/r.md") $(cat "$HOME/.mergeworthy/harness-shown/acme")"
+check "gate-pass appends the compare link after the review, gates the draft with it, and records the installed commit" "0 1 yes $h3" "$(hg acme/x) $(grep -cxF "Harness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/$h1...$h3>" "$GD/r.md") $([ "$(sha256sum "$GD/r.md" | cut -d' ' -f1)" = "$(head -1 "$GD/r.md.gate")" ] && echo yes) $(cat "$HOME/.mergeworthy/harness-shown/acme")"
+check "gating that draft again passes post-lint with the line, and adds none" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'Harness changes' "$GD/r.md")"
+check "the next reply, nothing new since, gets no line; another owner's repo none" "0 0 0 0" "$(hg acme/x) $(grep -c 'Harness changes' "$GD/r.md") $(hg other/x) $(grep -c 'Harness changes' "$GD/r.md")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
 # ---------- post-lint: a limitation names what imposes it (core 1.1.11) ----------
