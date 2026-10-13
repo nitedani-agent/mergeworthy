@@ -1,0 +1,9 @@
+{
+  "name": "mergeworthy",
+  "version": "3.0.0-prototype",
+  "private": true,
+  "type": "module",
+  "bin": { "mw": "bin/mw" },
+  "scripts": { "test": "node --test" },
+  "engines": { "node": ">=22" }
+}

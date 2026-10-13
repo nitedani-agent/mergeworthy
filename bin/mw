@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { parseArgs } from 'node:util'
+import { openLedger } from '../lib/ledger.mjs'
+import { render } from '../lib/next.mjs'
+import { plan } from '../lib/planner.mjs'
+
+const USAGE = `usage:
+  mw take <url | "text"> [--critical]   adopt a task as a work item
+  mw next [item]                        print the one action due now, with its brief and memory
+  mw done <action id> [result path] [--no "<reason>"] [--class <class>]
+                                        report an action finished (or rejected, with the reason)`
+
+const config = {
+  root: process.env.MW_ROOT || process.cwd(),
+  projects: process.env.MW_PROJECTS || join(homedir(), '.mergeworthy', 'projects'),
+  voice: process.env.MW_VOICE || join(homedir(), '.mergeworthy', 'current', 'voice.md'),
+}
+const now = process.env.MW_NOW ? Date.parse(process.env.MW_NOW) : Date.now()
+const ledger = openLedger(config.root)
+const at = new Date(now).toISOString()
+const [cmd, ...argv] = process.argv.slice(2)
+const { positionals, values } = parseArgs({ args: argv, allowPositionals: true, options: { no: { type: 'string' }, class: { type: 'string' }, critical: { type: 'boolean' } } })
+
+if (cmd === 'take' && positionals[0]) {
+  const id = String(ledger.records().filter((r) => r.kind === 'take').length + 1)
+  ledger.append({ kind: 'take', at, id, text: positionals.join(' '), lane: values.critical ? 'critical' : 'side' })
+  console.log(`taken as take/${id}`)
+  console.log(render(plan(ledger, now, config)))
+} else if (cmd === 'next') {
+  const result = plan(ledger, now, config)
+  const action = positionals[0] ? result.actions.find((a) => a.item === positionals[0]) : result.actions[0]
+  for (const [path, text] of Object.entries(action?.files ?? {})) {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, text)
+  }
+  console.log(render(result, positionals[0]))
+} else if (cmd === 'done' && positionals[0]) {
+  const id = positionals[0]
+  const action = plan(ledger, now, config).actions.find((a) => a.id === id)
+  if (!action) {
+    console.error(`mw done: ${id} is not due now; mw next lists what is`)
+    process.exit(1)
+  }
+  const result = positionals[1]
+  if (!values.no && action.brief && !(result && existsSync(result))) {
+    console.error(`mw done: ${id} needs the result file its brief names; ${result ?? 'none given'} does not exist`)
+    process.exit(1)
+  }
+  if (values.class) ledger.append({ kind: 'class', at, item: action.item, cls: values.class })
+  ledger.append({ kind: 'done', at, action: id, item: action.item, result, no: values.no })
+  console.log(values.no ? `recorded the rejection of ${id}; it is due again with your reason in its memory` : `done: ${id}`)
+  console.log(render(plan(ledger, now, config)))
+} else {
+  console.log(USAGE)
+  process.exit(cmd === undefined || cmd === '--help' ? 0 : 2)
+}
