@@ -5,7 +5,7 @@ description: "Load first for any multi-step or GitHub task: the task, triage and
 
 # mergeworthy
 
-How an AI agent works so that what it posts and the PRs it opens are worth merging. Size the work first (1.0), then apply only what that size requires. The always-on index says which skill to open when. Where a mechanism enforces a rule, use it: open `mechanisms` for the scripts and hooks that exist and how to run them.
+Size the work first (1.0), then apply only what that size requires.
 
 **Precedence.** The environment's instructions and the user's scope come first. Where these skills conflict, `core`, `github-threads` and `merging` override `pull-request` and `converge`. When two rules seem to collide, check their scope (who owns the code, which tier, whether an umbrella issue exists) before choosing.
 

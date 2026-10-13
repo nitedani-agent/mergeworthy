@@ -48,7 +48,7 @@ For a feature, capture the current state as the before shot and settle what "don
 List the distinct problems the change must solve. Then rate each candidate approach 0–10 on how confident you are that it is the obviously right approach (not on implementation quality):
 - **Generate two or three before rating any**, peers read first (1.1.5), including *not building it*, from a neutral brief (`delegating` 1.10); for someone else's library or API, use finality's Phase B branches.
 - **Rate as the code's owner, for all its users:** fixing a bug they all share is not a cost.
-- **Leave the frame:** invert it, or delete what everyone treats as immovable.
+- **Leave the frame:** invert it, or delete what everyone treats as immovable. When a dependency causes the bug, one candidate stops it at its source, citing the line in that dependency's code that allows it; stopping a behavior ranks above undoing it after the fact (vikejs/vike#3611 over #3610).
 - **Shared assumptions count once.** Candidates resting on the same unspoken assumption count as one.
 - **Siblings decide the scope.** Before choosing, check the same failure in the mechanism's other cases (the other methods, statuses, adapters, runtimes). One that fails the same way, in the same mechanism and files, with the title still true, is part of this fix: a follow-up PR would only make the maintainer review the same code twice. One that spreads to other modules or needs its own decision gets its own PR, opened now (`core` 1.1.7).
 
