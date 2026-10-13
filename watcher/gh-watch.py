@@ -1622,8 +1622,9 @@ _jobs_at, _routed = [0], {}
 
 def agent_jobs_pass():
     """Once a minute: `### AGENT DONE` for each job whose agent finished, once per finish, in the watch dir of the session that
-    launched it: the one its `session` file names, else one whose events.log the launcher's transcript tails (for a job an
-    older hook registered without them, the session transcript that names the job, agent_jobs.launchers)."""
+    launched it: the one its `session` file names, else the one whose events.log the launcher's transcript names most (a
+    transcript also names other watchers, in a `ps` listing say). A job an older hook registered without them has its
+    launcher found by agent_jobs.launchers."""
     if time.time() - _jobs_at[0] < 60:
         return
     _jobs_at[0] = time.time()
@@ -1640,8 +1641,8 @@ def agent_jobs_pass():
                 log = open(tr or '', 'rb').read() if not (mine and j.get('session') == mine) else b''
             except OSError:
                 log = b''
-            _routed[f] = bool(mine and j.get('session') == mine) or any(
-                f'{w}/events.log'.encode() in log for w in (HERE, HERE.replace(os.path.expanduser('~'), '~', 1)))
+            named = [os.path.expanduser(w.decode()) for w in re.findall(rb'(?<![\w.-])([~/][\w./-]*)/events\.log', log)]
+            _routed[f] = bool(mine and j.get('session') == mine) or bool(named) and max(set(named), key=named.count) == HERE
         if _routed[f] and agent_jobs.claim(f, done[1]):
             k = shlex.quote(j['key'])
             emit(f"### AGENT DONE {j['key']}: read its result (task_status / its report), then agent-job done {k}")

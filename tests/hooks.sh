@@ -606,8 +606,8 @@ python3 "$R/bin/agent-job" done "$T/jobs/tool-ticket.md" >/dev/null; python3 "$R
 check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
 reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
-mkdir -p "$T/wj2"; rm "$WJ/session"; echo "tail -F $T/wj2/events.log" > "$T/tr.jsonl"
-check "a watch dir with no session file gets the event when the launcher tails its events.log; another doesn't" "0 1" "$(done_events | wc -l) $(WJ="$T/wj2" done_events | grep -c routed-ticket)"
+mkdir -p "$T/wj2"; rm "$WJ/session"; printf 'tail -F %s/events.log\nps: watcher for %s/events.log\ntail -F %s/events.log\n' "$T/wj2" "$WJ" "$T/wj2" > "$T/tr.jsonl"
+check "a watch dir with no session file gets the event when the launcher's transcript names its events.log most; another it names once doesn't" "0 1" "$(done_events | wc -l) $(WJ="$T/wj2" done_events | grep -c routed-ticket)"
 for t in old listed; do python3 -c 'import json,os,sys,time,hashlib; json.dump({"key":sys.argv[1],"started":time.time()-3600},open(os.path.expanduser("~/.claude/agent-jobs/")+hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16],"w"))' "$T/jobs/$t-ticket.md"
   child_log "$JD/$t.jsonl" "Execute $T/jobs/$t-ticket.md exactly" 5 text; done  # registered by an older hook: key and start only
 python3 -c 'import json,sys; t,wj=sys.argv[1],sys.argv[2]; w=lambda f,o: open(f,"a").write(json.dumps(o)+"\n")
