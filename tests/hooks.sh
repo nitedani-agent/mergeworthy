@@ -230,6 +230,10 @@ check "BLOCK: gate-pass with a thread-context.md newer than the draft" 1 "$(gp)"
 touch -d '+1 minute' "$GD/r.md"
 check "gate-pass passes with thread-context.md beside the draft, written before it" 0 "$(gp)"
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
+printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
+check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
+printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
+check "BLOCK: the draft's own \"I'll\" needs a PROMISED line" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!

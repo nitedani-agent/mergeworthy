@@ -17,7 +17,8 @@ esac
 out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
 # a posted promise is a task opened (mergeworthy:github-threads): it needs a PROMISED line naming this draft in proposals-open.md
-if grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" "$d" && ! grep -qiE "\b(and|then) I'll (squash-)?merge" "$d"; then
+own=$(sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d' "$d")  # quoted text is someone else's words, not a promise
+if printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; then
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
   grep -q "^PROMISED .*$(basename "$d")" "$po" 2>/dev/null || { echo "the draft promises work: add 'PROMISED <thread>: <what> ($(basename "$d"))' to $po first, or do it now and write 'Done in <link>'"; exit 1; }
 fi
