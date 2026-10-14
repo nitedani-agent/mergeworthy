@@ -63,7 +63,7 @@ Answer these, and nothing else (the watcher reports exactly these and records ea
 
 ### Maintainer commits
 
-Fetch, fast-forward, and run the gates on the head. Then one table through `post`, `| Commit | What it does, and the idea behind it | Rating |`, rated N/10: the middle column one short sentence; a rating below 10 carries its reason (`8/10 (invalid keys untested now)`); 10/10 only when nothing could be better; findings with the exact fix. A big change goes to the PR's Loop B agent (`converge` step 2) for its review and re-rating. Never just "looks good", and don't push onto the branch while they're committing unless asked.
+Fetch, fast-forward your local PR branch to the PR's head, and run the gates (the project file's Gates, `task §Files`) on it. Then one table through `post`, `| Commit | What it does, and the idea behind it | Rating |`, rated N/10: the middle column one short sentence, written from that commit's `git show <sha>` (its files, renames and wording); under the table, one line with the CI state from `gh pr checks <N>`, run after their last commit (and again at `post` step 4); a rating below 10 carries its reason (`8/10 (invalid keys untested now)`); 10/10 only when nothing could be better; findings with the exact fix. A change past `converge §Batching`'s size goes to the PR's Loop B agent (`converge` step 2) for its review and re-rating. Never just "looks good", and don't push onto the branch while they're committing unless asked.
 
 ### Reactions
 
