@@ -19,7 +19,8 @@ if [ "$step" = preflight ]; then
       shift; chrome=${CHROME:-$(command -v google-chrome chromium chromium-browser | head -n1)}
       [ -n "$chrome" ] || { echo "no Chrome on PATH: screenshot the app with the session's browser MCP, then pr-steps preflight <that PNG>" >&2; exit 1; }
       profile=$(mktemp -d); trap 'rm -rf "$profile"' EXIT
-      flags=(--headless=new --user-data-dir="$profile" --ignore-certificate-errors --window-size=1440,900 --virtual-time-budget=15000 "$@")
+      unset PULSE_SERVER  # WSLg hands its audio server to Chrome: the page would play on the user's speakers
+      flags=(--headless=new --mute-audio --user-data-dir="$profile" --ignore-certificate-errors --window-size=1440,900 --virtual-time-budget=15000 "$@")
       timeout 120 "$chrome" "${flags[@]}" --dump-dom "$out" 2>/dev/null | python3 -c 'import re, sys; d = sys.stdin.read()
 sys.exit("main-frame-error" in d or not re.sub(r"<[^>]*>|\s", "", re.sub(r"(?is)<(script|style)\b.*?</\1>", "", d)))' ||
         { echo "$out showed Chrome's error page or a blank page: start the app (and pass the Chrome flags its host needs), then retry" >&2; exit 1; }

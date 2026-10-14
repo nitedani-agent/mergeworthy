@@ -805,6 +805,7 @@ pfedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","to
 pfcommit() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"git commit -m x"},"cwd":sys.argv[1]}))' "$P" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 >/dev/null; }
 cat > "$T/bin/fakechrome" <<'EOF'
 #!/bin/bash
+[ -n "$FAKE_LOG" ] && echo "pulse=${PULSE_SERVER:-unset} $*" >> "$FAKE_LOG"
 for x in "$@"; do case "$x" in --dump-dom) printf '%s' "$FAKE_DOM";; --screenshot=*) printf '\x89PNG\r\n\x1a\n' > "${x#--screenshot=}";; esac; done
 EOF
 chmod +x "$T/bin/fakechrome"
@@ -827,6 +828,7 @@ touch "$T/pf.png"; check "a PNG the browser MCP just took records" 0 "$(pf "$T/p
 git -C "$P" checkout -q -b docs
 check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"
 check "an edit passes after it" 0 "$(pfedit "$P/a.ts")"
+check "preflight's Chrome runs muted and without the WSLg audio server" "2 2" "$( (cd "$P" && PULSE_SERVER=unix:/mnt/wslg/PulseServer FAKE_LOG="$T/chrome.log" CHROME="$T/bin/fakechrome" FAKE_DOM='<html><body>app</body></html>' bash "$R/bin/pr-steps" preflight https://app.test >/dev/null 2>&1); grep -c -- '--mute-audio' "$T/chrome.log") $(grep -c '^pulse=unset ' "$T/chrome.log")"
 # ---------- under T3 Code, Codex starts through delegate_task, not a shell ----------
 # the hook's nearest `claude` ancestor is the session; T3 starts it with its MCP server in --mcp-config
 cx() { # <mcp config> <command>: the guard run under a claude process given that config
