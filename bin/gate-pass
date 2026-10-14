@@ -19,8 +19,10 @@ out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '
 # a posted promise is a task opened (mergeworthy:github-threads): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d' "$d")  # quoted text is someone else's words, not a promise
 if printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; then
+  # the list lives in the session's watch dir (github-threads), or beside a drafts folder kept in it
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
-  grep -q "^PROMISED .*$(basename "$d")" "$po" 2>/dev/null || { echo "the draft promises work: add 'PROMISED <thread>: <what> ($(basename "$d"))' to $po first, or do it now and write 'Done in <link>'"; exit 1; }
+  while read -r w; do [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$(cat "$w/session" 2>/dev/null)" = "$CLAUDE_CODE_SESSION_ID" ] && po="$w/proposals-open.md"; done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
+  grep -q "^PROMISED .*$(basename "$d")" "$po" "$(dirname "$(readlink -f "$d")")/../proposals-open.md" 2>/dev/null || { echo "the draft promises work: add 'PROMISED <thread>: <what> ($(basename "$d"))' to $po first, or do it now and write 'Done in <link>'"; exit 1; }
 fi
 # A maintainer who asked to see how this methodology changes (~/.mergeworthy/harness-shown/<owner>, the last mergeworthy
 # commit shown there) gets one line linking every commit since: added here, after the review, so the reviewer never sees it

@@ -240,6 +240,8 @@ printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' 
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
 printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
 check "BLOCK: the draft's own \"I'll\" needs a PROMISED line" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+WP="$T/wp"; mkdir -p "$WP"; echo sess1 > "$WP/session"; echo "$WP" >> "$HOME/.claude/gh-watch-dirs.txt"; echo "PROMISED o/r#1: a PR (r.md)" > "$WP/proposals-open.md"
+check "a PROMISED line in the session's watch dir counts, wherever the draft lives" 0 "$(CLAUDE_CODE_SESSION_ID=sess1 gp)"
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
