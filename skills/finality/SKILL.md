@@ -20,5 +20,5 @@ Converges code or a design to the final state that will need no rewrite. The pro
    Open: `delegate/implementer.md` · Record: commits
 6. **The deliverable is the short design doc** (the graph is working material), posted through `post` (a gist counts) unless the repo keeps design docs. In a design thread, update the WIP comment from the map (`design §WIP comment`).
    Open: `post` · Record: the doc's link
-7. **Owner-Safe closure,** last in `converge` step 5: it needs the reviewer's and the guardian's evidence.
+7. **Owner-Safe closure,** last in `converge` step 5: it needs the reviewer's and the shape pass's evidence.
    Open: `delegate/finality.md` (the closure paragraph and its header's glossary) · Record: the closure report

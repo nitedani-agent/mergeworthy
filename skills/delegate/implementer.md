@@ -26,4 +26,4 @@ Before handing back, run code §Checklist on your own diff and fix what it catch
 Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`.
 ```
 
-A guardian's findings: the IDs come from the guardian report; the Loop B agent re-rates your result independently.
+A shape pass's findings: the IDs come from its report; the Loop B agent re-rates your result independently.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Robust GitHub watch for the tracked threads. One line on stdout per event.
 
-- The comments the agent answers (mergeworthy:github-threads), new or edited, each with an :eyes: reaction: a maintainer's
+- The comments the agent answers (mergeworthy:reply), new or edited, each with an :eyes: reaction: a maintainer's
   (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - `owner/repo all` in repos.txt: the repo's new issues and PRs (`### NEW ISSUE`, `### NEW PR`), and every thread that moves joins threads.txt (moved_thread).
@@ -11,7 +11,7 @@
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
-- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last refactor pass (REFACTOR STALE).
+- PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
@@ -31,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
 THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
-WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:github-threads: a wait ping may follow after this long
+WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
 
@@ -455,7 +455,7 @@ AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
 
 
 def answerable(u, body, agent_hashes, kind='comment', own=False):
-    """mergeworthy:github-threads. On a thread the agent opened (own), what a person would answer on their own PR:
+    """mergeworthy:reply §Which comments. On a thread the agent opened (own), what a person would answer on their own PR:
     every human's comment, and a review bot's inline finding (its summaries ask nothing). On a thread it only posted
     in: a maintainer's comment or the user's. The user's /ai calls elsewhere go through ai_call_elsewhere."""
     if own and kind == 'review-comment' and is_bot(u):
@@ -478,7 +478,7 @@ def agent_post(u, body, agent_hashes):
 
 
 def append_owed(entry, d=None):
-    """replies-owed.md (mergeworthy:github-threads): the daemon records each human comment as an owed reply; the session
+    """replies-owed.md (mergeworthy:reply): the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
     path = os.path.join(d or HERE, 'replies-owed.md')
@@ -487,12 +487,12 @@ def append_owed(entry, d=None):
         return  # already recorded
     with open(path, 'a') as f:
         if not owed:
-            f.write('# replies owed (mergeworthy:github-threads): clear each line with "done: <reply url> <what changed>"\n')
+            f.write('# replies owed (mergeworthy:reply): clear each line with "done: <reply url> <what changed>"\n')
         f.write(entry + '\n')
 
 
 def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='', react=None):
-    """An answerable comment (mergeworthy:github-threads): an event, an owed reply and an :eyes: reaction, each once."""
+    """An answerable comment (mergeworthy:reply): an event, an owed reply and an :eyes: reaction, each once."""
     sk = f"{kind}:{cid}"
     if state['seen'].get(sk) == upd:
         return
@@ -504,7 +504,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='',
         return
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
-        emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:github-threads)")
+        emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:reply §Kinds of comment)")
     if not ONCE and kind != 'review':  # GitHub has no reactions on a review
         (react or react_eyes)(repo, kind, cid)
 
@@ -541,7 +541,7 @@ def emit(line):
     if line.startswith('WATCH ERROR'):  # the same error, every pass, is printed once an hour
         if time.time() - ERRORS.get(line, 0) < 3600: return
         ERRORS[line] = time.time()
-    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:github-threads)
+    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:reply)
 
 
 def waiting_keys(d=None):
@@ -561,11 +561,11 @@ def waiting_keys(d=None):
 def emit_dependents(key):
     for l, k in waiting_keys():
         if k == key:
-            emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (mergeworthy:github-threads)")
+            emit(f"### DEPENDENT of merged {key}: {l.split(' -> ', 1)[1]}: do it now and post the progress on that PR (mergeworthy:reply §Events)")
 
 
 def emit_tracker_stale(key, ended):
-    """umbrella.txt ("owner/repo N"): the program's umbrella issue (methodology 1.2). When a PR merges or closes, its
+    """umbrella.txt ("owner/repo N"): the program's umbrella issue (mergeworthy:task §Umbrella). When a PR merges or closes, its
     checkbox there must be ticked and say how it ended."""
     path = os.path.join(HERE, 'umbrella.txt')
     w = open(path).read().split() if os.path.exists(path) else []
@@ -580,9 +580,9 @@ def emit_tracker_stale(key, ended):
     ref = re.compile(rf'(?<![\w/.-])(?:{re.escape(repo)}#|{"#" if repo == w[0] else "(?!)"}){num}(?!\d)')
     items = [l for l in body.splitlines() if re.match(r'\s*- \[[ x]\] ', l) and ref.search(l)]
     if not items:
-        emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended} and has no checkbox there: add it with its state, through the gate (mergeworthy:core 1.2)")
+        emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended} and has no checkbox there: add it with its state, through mergeworthy:post (mergeworthy:task §Umbrella)")
     elif not any(l.lstrip().startswith('- [x]') and re.search(r'\((merged|closed|released)', l) for l in items):
-        emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through the gate (mergeworthy:core 1.2)")
+        emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through mergeworthy:post (mergeworthy:task §Umbrella)")
 
 
 def emit_maintainer_commits(state, repo, key, old, new):
@@ -605,11 +605,11 @@ def emit_maintainer_commits(state, repo, key, old, new):
     if theirs:
         if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
-        emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:github-threads)")
+        emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:reply §Maintainer commits)")
 
 
 def emit_refactor_stale(repo, key, new):
-    """Your PR's own commits changed more than ~80 lines since its last refactor pass (`pr-steps refactor`): the ratings
+    """Your PR's own commits changed more than ~80 lines since its last shape pass (`pr-steps shape`): the ratings
     describe old code. Merges of the base branch, tests and lockfiles don't count: they aren't the PR's code to rate."""
     num = key.split('#')[1]
     try:
@@ -617,16 +617,16 @@ def emit_refactor_stale(repo, key, new):
         if pr['user']['login'] != ME: return
         commits = [{'sha': c['sha'], 'merge': len(c['parents']) > 1} for c in request(f"repos/{repo}/compare/{pr['base']['ref']}...{new}").json()['commits']]
         rec = os.path.expanduser('~/.claude/pr-steps')
-        idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith('refactor ') for l in open(f"{rec}/{c['sha']}"))), default=-1)
+        idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
         skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$')
         lines = sum(f['additions'] + f['deletions'] for sha in since for f in (request(f"repos/{repo}/commits/{sha}").json().get('files') or []) if not skip.search(f['filename']))
     except Exception as e:
-        fail(f"refactor check {key}", e)
+        fail(f"shape check {key}", e)
         return
     if lines > 80:
         last = commits[idx]['sha'][:10] if idx >= 0 else 'never'
-        emit(f"### REFACTOR STALE {key}: {lines} changed lines since the last refactor pass ({last}): re-run it on the whole PR diff (mergeworthy:refactor), then `pr-steps refactor`")
+        emit(f"### SHAPE STALE {key}: {lines} changed lines since the last shape pass ({last}): re-run it on the whole PR diff (mergeworthy:converge step 2), then `pr-steps shape`")
 
 
 def read_threads():
@@ -652,7 +652,7 @@ def read_threads():
 
 
 def scan_reactions(state, threads):
-    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (mergeworthy:github-threads)."""
+    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (mergeworthy:reply)."""
     agent_hashes = agent_post_hashes()
     seen, etags = state.setdefault('reactions', {}), state['etag']  # seen: "<kind>:<id>" -> ["<login>:<content>", ...]
     for repo, num in threads:
@@ -688,9 +688,9 @@ def scan_reactions(state, threads):
                         continue
                     seen.setdefault(sk, []).append(f"{who}:{content}")
                     if content == '-1':
-                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:github-threads)")
+                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")
                     else:
-                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:github-threads)")
+                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:reply §Reactions)")
         if clean:
             etags.update(pending)
 
@@ -772,7 +772,7 @@ def note_active(state, user, when):
 
 
 def emit_wait_ping(state, key, last, events):
-    """mergeworthy:github-threads, the wait ping: your account's comment is the thread's last, and nobody has replied since
+    """mergeworthy:reply §Wait ping: your account's comment is the thread's last, and nobody has replied since
     WAIT_PING_HOURS. Once per comment id; a newer comment by anyone makes a different comment the last, so it starts over.
     Once per wait: when the comment before yours is also yours, yours already nudged them. And never while they're mid-review:
     the hours count from the last time anyone else in the thread acted in any watched thread, if that is later than your comment."""
@@ -790,7 +790,7 @@ def emit_wait_ping(state, key, last, events):
     if since(quiet) < WAIT_PING_HOURS or c['databaseId'] in done:
         return
     done[:] = [c['databaseId']]  # only the latest comment matters
-    emit(f"### WAIT PING DUE {key}: no reply for {int(hours)} h since {c['url']}; nudge whoever it waits on with the open question (mergeworthy:github-threads)")
+    emit(f"### WAIT PING DUE {key}: no reply for {int(hours)} h since {c['url']}; nudge whoever it waits on with the open question, only when it blocks your next step now (mergeworthy:reply §Wait ping)")
     append_owed(f"{key} wait-ping {c['databaseId']} since {c['url']}: no reply for {int(hours)} h; nudge whoever it waits on")  # the Stop hook holds the turn until it's done
 
 
@@ -879,7 +879,7 @@ def scan(state, jobs):
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []):
-                    emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:github-threads)" if red else f"### CI {key}: no longer red")
+                    emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:reply §Events)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
@@ -1402,7 +1402,7 @@ def followed_prs():
 
 def follow_ups():
     """After a PR of yours merges, later commits to its lines by others and PRs that reference it are a review you didn't get
-    (mergeworthy:core, Learning from follow-ups). A shared job (shared_pass): each merged PR of yours in any live watch dir is
+    (mergeworthy:rules step 6). A shared job (shared_pass): each merged PR of yours in any live watch dir is
     followed for FOLLOWUP_DAYS. `### FOLLOW-UP` goes once per commit (not yours, not a bot's, not a merge) that touches the
     recorded lines of PRs of yours, naming them all, to the dirs that list them, with its time (stop-lint's sort deadline), and once per other person's PR that references it.
     The commits of a repo are listed once per pass, newest first and with an ETag, and read oldest first, so a pass that

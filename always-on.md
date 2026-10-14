@@ -26,7 +26,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 | Showing a behavior: a reproduction, a screenshot, a video, an upload | `mergeworthy:evidence` | browser, reproduce as a person, capture, upload (5 steps) |
 | Code drifted through many patches; a design thread drifted; stuck with every option costing something ruled out; asked for the ideal design | `mergeworthy:finality` | map, imagine, hunt, converge, close (7 steps) |
 | Before writing any words a person reads: a post, a body, a report to the user | `mergeworthy:writing` | the standard for words; its Self-check is what the review checks |
-| Before writing or judging code, tests or comments | `mergeworthy:code` | the standard for code; its Checklist is what the guardian checks |
+| Before writing or judging code, tests or comments | `mergeworthy:code` | the standard for code; its Checklist is what the shape pass checks |
 
 ### Words every skill uses
 - **The main session** is the session the user talks to. It decides, briefs agents, approves and posts every word that goes out, and talks to the user; implementers do the edits, commits, builds, tests and browser work. A **subagent** does its brief and nothing else.

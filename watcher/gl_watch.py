@@ -74,7 +74,7 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post):
             p = th.get('head_pipeline') or {}
             red = [f"pipeline {p['id']}"] if p.get('status') == 'failed' else []
             if red != t.get('red', []):
-                emit(f"### CI {key}: red={red}: fix it, or if it is not this MR's doing, say why on the MR now with the evidence (mergeworthy:github-threads)" if red else f"### CI {key}: no longer red")
+                emit(f"### CI {key}: red={red}: fix it, or if it is not this MR's doing, say why on the MR now with the evidence (mergeworthy:reply §Events)" if red else f"### CI {key}: no longer red")
             t['red'] = red
     elif t.get('state') and t['state'] != now_state:
         emit(f"### ISSUE CHANGED {key}: {t['state']} -> {now_state}")

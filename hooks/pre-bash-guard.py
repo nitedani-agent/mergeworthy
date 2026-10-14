@@ -19,7 +19,8 @@ def missing_steps(d):
         if len(parents.split()) != 1 or re.search(r'^Co-Authored-By: Claude', body, re.M | re.I): break
     kinds = {l.split()[0] for l in open(rec)} if head and os.path.exists(rec) else set()
     kinds |= {'fresh'} if 'review' in kinds else set()  # records made before the six steps
-    missing = [k for k in ('verify', 'loopb', 'refactor', 'reverify', 'fresh', 'gates') if k not in kinds]
+    kinds |= {'shape'} if {'loopb', 'refactor'} <= kinds else set()  # records made before the shape pass
+    missing = [k for k in ('verify', 'shape', 'reverify', 'fresh', 'gates') if k not in kinds]
     # the approach is chosen once per PR: recorded per repo and branch
     if head and not os.path.exists(branch_record(d, 'approach')):
         missing.insert(0, 'approach')
@@ -297,7 +298,7 @@ def check(t, has_cd):
                 pr = subprocess.run(['gh', 'pr', 'view', '--json', 'isDraft,state', '--jq', 'select(.state=="OPEN" and (.isDraft|not)) | "ready"'], cwd=d, capture_output=True, text=True, timeout=20).stdout.strip()
                 head, missing = missing_steps(d)
                 if pr == 'ready' and missing:
-                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 3, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
+                    block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)

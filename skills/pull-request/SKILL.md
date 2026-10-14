@@ -26,7 +26,7 @@ From an issue or a problem to one merge-ready PR. Run `task` first. A Tier M or 
 8. **See it in the app.** Capture before by reverting only your own files, then restore them; never amend or force-push to fake it. Use it as a user for five minutes around the change, not only the path you fixed, as each role it renders for; fix what your change caused, and give anything else you trip over a disposition (`task §Dispositions`). UI: each touched page at a phone, a tablet and a desktop width, light and dark, with its hover, focus and open states; any console error fails. Stop what you started.
    Open: `evidence` steps 2–4 · Run: `git checkout origin/<base> -- <files>`, then `git checkout HEAD -- <files>` · Record: screenshots in the work folder
 9. **Converge the head.**
-   Open: `converge` steps 0–5 · Record: the six records · Hook: pre-bash-guard
+   Open: `converge` steps 0–5 · Record: the five records · Hook: pre-bash-guard
 10. **The body.** `drafts/<pr>/pr-body.md` from §Body; feature code (tests, docs and lockfiles excluded) over ~300 changed lines adds the `loc-breakdown` table: write a map file by reading the hunks, one line per feature and range, the features named in the maintainer's words, and fix it until the tool passes. Upload images and video. Inline comments only per §Inline comments, each its own draft through `post`.
    Open: §Body; `writing §Forms`; `evidence` step 5; `post` with `--kind pr` and `--kind inline` · Run: `loc-breakdown <base>..<head> <map file>` · Record: the body's gate file · Hook: gate-pass, post-lint
 11. **Ready.**

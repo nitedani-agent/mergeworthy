@@ -38,16 +38,18 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
 | `WAIT PING DUE` | §Wait ping |
 | `### DEPENDENT of merged …`, or a release you wait on | In the same step, apply what waited on it and post the progress on the dependent PR. Check releases and unwatched PRs in `waiting-on.txt` yourself at every wakeup. |
 | `### TRACKER STALE` | `task §Umbrella`, through `post --kind tracker` |
-| `### REFACTOR STALE` | `converge` step 2 on the batch, before the next "Done" reply |
+| `### SHAPE STALE` | `converge` step 2 on the whole diff, before the next "Done" reply |
 | `### AGENT DONE <ticket>` | `delegate` step 6 |
 | `### FOLLOW-UP` | the steward's: `rules` step 6 |
 | `### AGENT COMMAND`, `### UNROUTED /agent` | the user typing: `task` |
+| `### NEW ISSUE`, `### NEW PR` (a repo watched whole: `owner/repo all`) | answer it like a comment you owe (steps 3–7) |
 
 ### Which comments
 
 Answer these, and nothing else (the watcher reports exactly these and records each in `replies-owed.md`):
 - **On a thread you opened:** every human's comment (maintainer, contributor, the user) and every inline finding of a review bot (a bot's summary comments ask nothing). A bot's finding is a reviewer's finding: run its case first (`review` step 3), then reply with the fix's commit or the output that declines it.
 - **On a thread you only posted in:** a maintainer's comment (write access to the repo) or the user's.
+- **On a repo watched whole** (`owner/repo all` in `repos.txt`): every issue, PR and comment without the agent's badge.
 - **On any other thread:** the user's comment containing `/ai` or `/agent`.
 
 ### Kinds of comment

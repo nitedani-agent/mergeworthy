@@ -74,11 +74,10 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `approach`, per repo and branch: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request` step 5).
 - `verify`: trailing `NO BUGS`.
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge` step 3).
-- `loopb`: captured final message `CLEAN` (`review`).
-- `fresh`: `MERGE AS IS: yes` and trailing `CLEAN` (`converge` step 4).
-- `refactor`: ✅ list and ratings, or `carries the pass of <sha>` with ≤ 80 changed lines.
+- `fresh`: a `Maintainer: <login>` line, `MERGE AS IS: yes` and trailing `CLEAN` (`converge` step 4).
+- `shape`: Loop B's shape report: the ✅ list and old ⇒ new ratings ending `CLEAN`, or `carries the pass of <sha>` with ≤ 80 changed lines. Old heads' `loopb` and `refactor` records together count as one.
 - `gates`: `<command> -> exit 0` lines.
-- `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all six and the branch has its `approach` record.
+- `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
 
 ## The watcher daemon: `watcher/gh-watch.py` (`reply`, `task` step 5)
 
@@ -89,7 +88,7 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
     - `### ACK`: an acknowledgement that answers your last open proposal;
     - `### MAINTAINER COMMITS`: commits a maintainer pushed to your PR;
     - `### TRACKER STALE`: a PR merged or closed, and the umbrella issue named in `<dir>/umbrella.txt` doesn't show it ticked with that state;
-    - `### REFACTOR STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps refactor`;
+    - `### SHAPE STALE`: a PR's code changed by more than ~80 lines since its last `pr-steps shape`;
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
     - `### AGENT DONE <ticket>`: an agent the session launched finished (`agent_jobs.py`: its transcript went quiet), once per finish until `agent-job done`; the dir is the one whose `session` file names the launcher, or whose `events.log` the launcher's transcript tails;
     - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once, with its time. A commit touching several of your PRs is one line naming them all. While the steward's watcher runs, its dir gets these instead, plus a copy of each `MAINTAINER COMMITS`, which the PR's session still handles. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits and hunks that only bump dependency versions don't count. The steward sorts each (`rules` step 6).

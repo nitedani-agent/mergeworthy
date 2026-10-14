@@ -741,18 +741,21 @@ check "the live copy of an edited post is not a draft" 0 "$(launch "Execute $T/d
 printf 'Findings.\n' > "$T/drafts/lf/fresh.report.md"
 printf 'Review %s and write your report to %s, the verdict to %s/drafts/lf/r4.out; the last message is exactly CLEAN.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/fresh.report.md" "$T" > "$T/drafts/lf/review4-ticket.md"
 check "a reviewer's report in drafts/ is not a draft" 0 "$(launch "Execute $T/drafts/lf/review4-ticket.md")"
-# ---------- pr-steps: a refactor record is a real pass ----------
+# ---------- pr-steps: a shape record is a real pass ----------
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
-check "BLOCK: a fix log recorded as the refactor pass" 1 "$(prs refactor "$T/fixlog.md")"
-printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\n' > "$T/pass.md"
-printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n✅ express vike()\n' > "$T/copied.md"
-check "BLOCK: a re-rating that copies earlier ratings is not a pass" 1 "$(prs refactor "$T/copied.md")"
-check "a pass with ratings and the ✅ list records" 0 "$(prs refactor "$T/pass.md")"
+check "BLOCK: a fix log recorded as the shape pass" 1 "$(prs shape "$T/fixlog.md")"
+printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"
+printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nFIX src/a.ts:3 dead branch\n' > "$T/open.md"
+printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n✅ express vike()\nCLEAN\n' > "$T/copied.md"
+check "BLOCK: a re-rating that copies earlier ratings is not a pass" 1 "$(prs shape "$T/copied.md")"
+check "BLOCK: a pass with findings left, not ending CLEAN" 1 "$(prs shape "$T/open.md")"
+check "a pass with ratings and the ✅ list, ending CLEAN, records" 0 "$(prs shape "$T/pass.md")"
+check "pr-steps loopb and refactor are gone, pointing at shape" "1 1" "$(prs loopb "$T/pass.md") $(prs refactor "$T/pass.md")"
 A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
-check "a small follow-up carries the earlier pass" 0 "$(prs refactor "$T/carry.md")"
+check "a small follow-up carries the earlier pass" 0 "$(prs shape "$T/carry.md")"
 printf 'NO BUGS\n' > "$T/vA.md"; G_A=$A; (cd "$G" && git checkout -q "$G_A" && bash "$R/bin/pr-steps" verify "$T/vA.md" >/dev/null 2>&1; git checkout -q -); 
 cp "$T/carry.md" "$T/carry-v.md"
 check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
@@ -760,8 +763,8 @@ cp "$T/carry.md" "$T/carry-f.md"
 check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
-check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs loopb "$T/carry2.md")"
-# ---------- pr-steps: every converge step leaves its proof; the guard needs all six ----------
+check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
+# ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 ready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
@@ -769,16 +772,16 @@ check "BLOCK: gh pr ready with no step recorded" 2 "$(ready)"
 printf 'slice 1: no bug that counts\n' > "$T/v0.md"
 check "BLOCK: a Loop A output without NO BUGS" 1 "$(prs2 verify "$T/v0.md")"
 printf 'slice 1: no bug that counts\nNO BUGS\n' > "$T/v.md"; check "Loop A ending NO BUGS records" 0 "$(prs2 verify "$T/v.md")"
-printf 'nothing worth changing\nCLEAN\n' > "$T/lb.md"; check "Loop B's review ending CLEAN records" 0 "$(prs2 loopb "$T/lb.md")"
-printf '| vike() | 5 ⇒ 8 | abc | why |\n✅ vike()\n' > "$T/rf.md"; check "Loop B's ratings record" 0 "$(prs2 refactor "$T/rf.md")"
+printf '| vike() | 5 ⇒ 8 | abc | why |\n✅ vike()\nnothing worth changing\nCLEAN\n' > "$T/rf.md"; check "Loop B's shape report records" 0 "$(prs2 shape "$T/rf.md")"
 printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; check "Loop A again, with no Loop B commits, records" 0 "$(prs2 reverify "$T/rv.md")"
-printf 'CLEAN\n' > "$T/fr0.md"; check "BLOCK: a fresh read without MERGE AS IS: yes" 1 "$(prs2 fresh "$T/fr0.md")"
-printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/fr.md"; check "the fresh reader's merge-as-is and CLEAN record" 0 "$(prs2 fresh "$T/fr.md")"
+printf 'Maintainer: hi-ogawa\nCLEAN\n' > "$T/fr0.md"; check "BLOCK: a fresh read without MERGE AS IS: yes" 1 "$(prs2 fresh "$T/fr0.md")"
+printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/fr1.md"; check "BLOCK: a fresh read that names no maintainer" 1 "$(prs2 fresh "$T/fr1.md")"
+printf 'Maintainer: hi-ogawa\nMERGE AS IS: yes\nCLEAN\n' > "$T/fr.md"; check "the fresh reader's maintainer, merge-as-is and CLEAN record" 0 "$(prs2 fresh "$T/fr.md")"
 printf 'pnpm test -> exit 0\npnpm lint -> exit 1\n' > "$T/g1.md"
 check "BLOCK: a gates log with a red gate" 1 "$(prs2 gates "$T/g1.md")"
-check "BLOCK: gh pr ready with five of six steps" 2 "$(ready)"
+check "BLOCK: gh pr ready with four of five steps" 2 "$(ready)"
 printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
-check "BLOCK: gh pr ready with the six steps but no approach record" 2 "$(ready)"
+check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\n\nChosen: Fix in place\n' > "$T/ap6.md"
@@ -793,7 +796,7 @@ check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab '
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
 check "glab mr create --draft passes" 0 "$(glab 'glab mr create --draft --title x')"
 check "glab mr create --wip passes" 0 "$(glab 'glab mr create --wip --title x')"
-check "gh pr ready passes once all six steps and the approach hold" 0 "$(ready)"
+check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)"
 check "glab mr update --ready passes there too" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
 check "a maintainer's commit on a converged head carries its steps" 0 "$(ready)"
@@ -803,6 +806,8 @@ git -C "$G2" reset -q --hard HEAD~1
 printf 'y\n' > "$G2/g"; git -C "$G2" add g; git -c user.name=t -c user.email=t@t -C "$G2" commit -q -m c -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'
 check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 "$(ready)"
 check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
+H=$(git -C "$G2" rev-parse HEAD); for k in verify loopb refactor reverify fresh gates; do echo "$k /x/$k.md 2026-10-13T00:00:00Z" >> "$HOME/.claude/pr-steps/$H"; done
+check "a head recorded before the shape pass (loopb and refactor) counts as shaped" 0 "$(ready)"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
@@ -943,8 +948,8 @@ check "thread-context --latest and --verify only read" "0 0" "$(sgb 'thread-cont
 check "BLOCK: an upload without evidence" 2 "$(sgb "gh pr edit 5 --body-file $T/b.md --attach /a/01.png")"
 check "the upload block names evidence" 1 "$(grep -c '^- mergeworthy:evidence, for an upload' "$T/sg.err")"
 check "BLOCK: gate-pass by its path" 2 "$(sgb "python3 ~/.mergeworthy/current/bin/gate-pass $T/d.md $T/r.out")"
-check "BLOCK: pr-steps loopb" 2 "$(sgb "pr-steps loopb $T/o.md")"
-check "the loopb block names converge" "mergeworthy:converge" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "BLOCK: pr-steps shape" 2 "$(sgb "pr-steps shape $T/o.md")"
+check "the shape block names converge" "mergeworthy:converge" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: codex exec starts an agent" 2 "$(sgb 'codex exec "review the diff"')"
 check "BLOCK: the Agent tool without delegate" 2 "$(sg Agent '{"prompt":"x"}')"
 check "BLOCK: delegate_task without delegate" 2 "$(sg mcp__t3-code__delegate_task '{"task":"x"}')"

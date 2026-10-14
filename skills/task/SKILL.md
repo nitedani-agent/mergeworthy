@@ -15,8 +15,8 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
 3. **Scope.** Copy every ask and link of the task into scope.md as checkboxes, at the start and whenever the user adds one; below them the critical path: the open items between now and the goal shipping, in order. Dropping or deferring any item needs the user's OK first, never after.
    Open: §Scope · Record: scope.md
-4. **The project file.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing: derive it now under §Project file (the base branch from `gh repo view --json defaultBranchRef`, the gates from the CI config and package scripts, running the app from the README), and say so in your report.
-   Open: §Project file · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
+4. **The project file.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing: run the repo study now (§Repo study), and say so in your report.
+   Open: §Project file; §Repo study · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
 5. **The watcher.** Unless the plugin's `watcher` option is `off` (§Files): `gh-watch-start <work folder> <owner/repo>`, then arm the Monitor it prints with `timeout_ms` 1800000. Every thread you open or post in joins it (the hooks add it).
    Record: `threads.txt`, `repos.txt` · Hook: pre-bash-guard (no issue or PR in a repo no watcher covers), stop-lint (no live Monitor after a post)
 6. **Prior art and precedent.** Tier M or L, or any new API: research into `<work folder>/prior-art.md` (at least 10 searches and 20 pages read, every project the user names in full, peers and upstream at pinned versions); use their approach where it fits. Before a release, a migration or any repo routine: `<work folder>/precedent.md` from its last 5 instances (commit messages, bump types, tags, commands, order), followed exactly; any difference is a question with a recommendation.
@@ -71,7 +71,16 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 - **PR conventions:** labels, title format, required reviewers, changeset or changelog expectations.
 - **Feature-scale precedent:** how bigger changes have landed before, with an example.
 - **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody (a compose override with Docker-assigned ports, derived into the work folder when the repo has none), and how to tell it is ready (the HTTP status). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.
+- **Who decides:** who merges PRs and who wrote most of each area, with the link to the repo study.
 - **Docs voice** (`docs` step 1), **Agents** (a model class every agent for this repo uses), **Conventions**, **Maintainer preferences**, **Recurring misses**, **What worked**: each line with the link that shows it (`rules` step 6).
+
+### Repo study
+
+Writes a missing project file from the repo's own record, every line quoted or linked:
+- **The base and the gates:** the base branch from `gh repo view --json defaultBranchRef`; the gates from the CI workflows and package scripts; running the app from the README and the contributing guide.
+- **Who decides:** who merged the last 100 PRs and who wrote most of the code each area holds (`gh pr list --state merged --limit 100 --json number,author,mergedBy`; `git shortlog -sn origin/<base> -- <area>`).
+- **What they ask for:** every review and comment those people left on the last 30 merged or closed outside PRs (`gh api repos/<owner>/<repo>/pulls/<N>/comments`, `gh pr view <N> --comments`), sorted into what they ask for, cut and rewrite, each with its link, into the project file's sections.
+- The full study (the data and every quote) goes to `<work folder>/repo-study.md`, linked from `## Who decides`.
 
 ### Umbrella
 

@@ -7,7 +7,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `code` | `delegate` |
-| `converge` | `design`, `finality`, `delegate`, `code`, `writing`, `pull-request`, `merging`, `post` |
+| `converge` | `design`, `finality`, `delegate`, `code`, `writing`, `pull-request`, `task`, `merging`, `post` |
 | `delegate` | `writing` |
 | `design` | `pull-request`, `delegate`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
@@ -305,11 +305,12 @@ flowchart TB
   s2 -.-> r6[["delegate"]]
   s3 -.-> r7[["delegate"]]
   s4 -.-> r8[["pull-request"]]
-  s4 -.-> r9[["delegate"]]
-  s5 -.-> r10[["merging"]]
-  s5 -.-> r11[["post"]]
-  s5 -.-> r12[["finality"]]
-  s5 -.-> r13[["code"]]
+  s4 -.-> r9[["task"]]
+  s4 -.-> r10[["delegate"]]
+  s5 -.-> r11[["merging"]]
+  s5 -.-> r12[["post"]]
+  s5 -.-> r13[["finality"]]
+  s5 -.-> r14[["code"]]
   start --> g0
 ```
 
@@ -448,7 +449,7 @@ flowchart TB
 
 ## Before writing or judging code, tests or comments
 
-Opens `mergeworthy:code` (the standard for code; its Checklist is what the guardian checks).
+Opens `mergeworthy:code` (the standard for code; its Checklist is what the shape pass checks).
 
 ```mermaid
 flowchart TB

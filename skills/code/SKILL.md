@@ -1,11 +1,11 @@
 ---
 name: code
-description: "The standard every diff meets: code, tests, comments, module shapes. Read it before writing or judging code; its Checklist is what the guardian checks."
+description: "The standard every diff meets: code, tests, comments, module shapes. Read it before writing or judging code; its Checklist is what the shape pass checks."
 ---
 
 # Code
 
-What is true of every diff. The implementer reads this before writing; whoever judges a diff (the main session, a verifier, a reviewer, the guardian) checks it against the same sections. Write to it, so the check finds nothing.
+What is true of every diff. The implementer reads this before writing; whoever judges a diff (the main session, a verifier, a reviewer, the shape pass) checks it against the same sections. Write to it, so the check finds nothing.
 
 ### Before writing
 
@@ -26,7 +26,7 @@ Fix at the root; never document around a defect. A sentence telling users to wor
 
 ### Earn every line
 
-A reviewer's, verifier's or guardian's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
+A reviewer's, verifier's or shape pass's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
 - **How likely does a real user hit it, and what happens then?** A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root.
 - **What does `main` do for the analogous case?** Add guards, asserts and caches only where `main` has an analogous one.
 - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
@@ -143,9 +143,9 @@ Every sentence about behavior in docs, a README or JSDoc is a claim, checked aga
 
 ### Checklist
 
-The implementer runs it on its own diff before handing it back; the guardian checks every line of it (`delegate/guardian.md`).
+The implementer runs it on its own diff before handing it back; the shape pass checks every line of it (`delegate/shape.md`, step 1).
 1. **Bloat:** dead code, speculative surface, duplicate intent, defensive branches for unreachable states (→ assertions), custom test scripts left in the repo (→ delete).
-2. **Quality:** every file, function and piece of logic rated with its reason (`delegate/refactor.md`).
+2. **Quality:** every file, function and piece of logic rated with its reason (`delegate/shape.md`, steps 2–3).
 3. **Problem variability:** every flow rated 0–10 on solution optimality, with a better alternative sketched for low scores.
 4. **File placement** per the repo's established structure.
 5. **Mechanism census:** every corrective mechanism with its origin by blame (fix-round = presumptively accretion), its named user-visible scenario or NO NAMED SCENARIO, the promise it implies, docs or types evidence, an honest weaker alternative, and a verdict GENUINE / OVERBUILT / SUSPECTED-PHANTOM with the lines it would save. Removal per §Removal gate.

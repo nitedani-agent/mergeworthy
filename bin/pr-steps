@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # pr-steps <step> <output-file>: records that a converge step ran on the current HEAD, after checking its output proves it.
-# Steps, in pipeline order (mergeworthy converge): verify (Loop A), loopb (Loop B's review), refactor (Loop B's ratings),
+# Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
-# The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all six.
+# The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 set -euo pipefail
-step=${1:?usage: pr-steps <preflight|approach|verify|loopb|refactor|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in preflight|approach|verify|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;; *) echo "step must be preflight, approach, verify, loopb, refactor, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <preflight|approach|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
+case "$step" in preflight|approach|verify|shape|reverify|fresh|gates) ;; review) step=fresh ;;
+  loopb|refactor) echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2)" >&2; exit 1;;
+  *) echo "step must be preflight, approach, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
@@ -50,8 +52,8 @@ if [ "$step" = approach ]; then
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0
 fi
-# A refactor record is the pass's lists (the ✅ coverage list and old ⇒ new ratings), or a small follow-up that carries an
-# earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a refactor pass
+# A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
+# carries an earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
@@ -62,22 +64,23 @@ carries() {
   changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
-if [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != gates ] && carries; then :; else
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
-  loopb)
-    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)
+    grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
     grep -qx 'MERGE AS IS: yes' "$out" || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes" >&2; exit 1; }
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
-  refactor)
-    if ! is_pass "$out"; then
+  shape)
+    if is_pass "$out"; then
+      [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent (mergeworthy:converge step 2)" >&2; exit 1; }
+    else
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}')
-      [ -n "$carried" ] || { echo "$out is not a refactor pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy delegate/refactor.md), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
+      [ -n "$carried" ] || { echo "$out is not a shape pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy delegate/shape.md), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
       full=$(git rev-parse "$carried")
-      prev=$(awk '$1=="refactor"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
-      [ -n "$prev" ] || { echo "$carried has no recorded refactor pass with ratings to carry" >&2; exit 1; }
+      prev=$(awk '$1=="shape"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings to carry" >&2; exit 1; }
       changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
