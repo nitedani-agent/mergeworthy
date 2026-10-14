@@ -155,7 +155,7 @@ It blocks an action until every skill its always-on row names was opened with th
 
 Read-only commands pass.
 
-**`pre-agent-dedupe`** registers launches that ran by ticket and blocks duplicate jobs (`delegate` step 1). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It also blocks:
+**`pre-agent-dedupe`** registers launches that ran by ticket and title and blocks duplicate jobs (`delegate` step 1). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It also blocks:
 - a brief with any role but `research` or `test` that names a repo (`owner/repo`, its URL or a path in its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`;
 - an `implementation` brief for such a repo that doesn't name `skills/code/SKILL.md`, and a brief that reads a `thread-context.md` but doesn't name `skills/writing/SKILL.md`;
 - a brief naming a linked worktree (not the launcher's own) that a process has as its cwd or an agent transcript written in the last five minutes names;

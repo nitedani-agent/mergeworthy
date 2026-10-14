@@ -211,12 +211,12 @@ if not child and not paused:
 # An agent this session launched has finished (its transcript went quiet) and its job is still open: its result is unread
 if not child and d.get('session_id'):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-    import agent_jobs
+    import agent_jobs, shlex
     for f, j in agent_jobs.jobs():
         done = j.get('session') == d['session_id'] and agent_jobs.finished(j)
         if done:
             print(f"The agent for {j['key'][:200]} has finished (its transcript {done[0]} went quiet) and its job is open: read its "
-                  f"result (task_status / its report), act on it, then `agent-job done '{j['key'][:200]}'` (mergeworthy:delegate step 6).", file=sys.stderr)
+                  f"result (task_status / its report), act on it, then `agent-job done {shlex.quote(j['key'][:200])}` (mergeworthy:delegate step 6).", file=sys.stderr)
             sys.exit(2)
 # Hook scripts run from ~/.mergeworthy/current (hooks/run), but the hook list is the one this session started with: when a newer
 # version changed hooks.json, say so once per session

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Agent, Task, delegate_task, t3_thread_launch). Exit 2 blocks the launch; stderr goes to the agent.
 With the argument `register` it runs as the PostToolUse hook: only a launch that ran is registered, so one another hook blocked leaves no job.
-One agent per job: a launch is registered under its job key (the ticket files its prompt names, else its title), and a second
+One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
-import glob, hashlib, json, os, re, sys, time
+import glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import memory_file, subprocess
 register = sys.argv[1:] == ['register']
@@ -144,7 +144,8 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
                          "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')
         sys.exit(2)
-key = ' '.join(tickets) or (str(ti.get('title') or ti.get('description') or '').strip())
+# a fan-out runs several agents on one brief, each under its own title: the title is part of the job
+key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 if not key:
     sys.exit(0)
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
@@ -160,6 +161,6 @@ elif os.path.exists(f):
             f"BLOCKED: an agent for this job is already registered ({key[:160]}, started {age} min ago). One agent per job: "
             "read its status first (task_status, its latest runs); a turn that ended or 'waiting_for_children' means it is still alive. "
             "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
-            f"release the job with `agent-job done '{key[:200]}'`, then launch.\n")
+            f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
 sys.exit(0)

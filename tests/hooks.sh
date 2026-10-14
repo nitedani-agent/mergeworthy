@@ -532,8 +532,16 @@ check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp
 check "agent-job done takes a ticket path relative to the cwd" 0 "$(mkdir -p /tmp/x && touch /tmp/x/ticket-check.md && cd /tmp/x && python3 "$R/bin/agent-job" done ticket-check.md >/dev/null; echo $?)"
 check "a ~/ ticket path is the job's key, expanded" "$HOME/x-tilde-ticket.md" "$(launch 'Execute ~/x-tilde-ticket.md' >/dev/null; python3 "$R/bin/agent-job" list | grep -o "$HOME/x-tilde-ticket.md")"
 python3 "$R/bin/agent-job" done "$HOME/x-tilde-ticket.md" >/dev/null
-check "an installed skill a brief names is no part of its job's key" "/tmp/x/rev-a.md" "$(launch 'Execute /tmp/x/rev-a.md by ~/.mergeworthy/current/skills/review/SKILL.md' >/dev/null; python3 "$R/bin/agent-job" list | grep rev-a | sed 's/^ *[0-9]* min  //')"
+check "an installed skill a brief names is no part of its job's key" "/tmp/x/rev-a.md t" "$(launch 'Execute /tmp/x/rev-a.md by ~/.mergeworthy/current/skills/review/SKILL.md' >/dev/null; python3 "$R/bin/agent-job" list | grep rev-a | sed 's/^ *[0-9]* min  //')"
 python3 "$R/bin/agent-job" done /tmp/x/rev-a.md >/dev/null
+fan() { # task title
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":sys.argv[2]}}))' "$1" "$2" > "$T/fan.json"
+  python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>/dev/null; local rc=$?
+  [ $rc = 0 ] && python3 "$R/hooks/pre-agent-dedupe.py" register < "$T/fan.json"; echo $rc; }
+check "a fan-out on one brief passes, one launch per title; the same brief and title again is blocked" "0 0 2" "$(fan $'Topic: cost\nFollow /tmp/x/fan.md' 'fan: cost') $(fan $'Topic: security\nFollow /tmp/x/fan.md' 'fan: security') $(fan $'Topic: cost\nFollow /tmp/x/fan.md' 'fan: cost')"
+check "agent-job done with the shared brief path releases neither; each job releases by its full key" "1 0 0" "$(python3 "$R/bin/agent-job" done /tmp/x/fan.md >/dev/null 2>&1; echo $?) $(python3 "$R/bin/agent-job" done '/tmp/x/fan.md fan: cost' >/dev/null; echo $?) $(python3 "$R/bin/agent-job" done '/tmp/x/fan.md fan: security' >/dev/null; echo $?)"
+fan 'Follow /tmp/x/fan.md' "the user's ask" >/dev/null; python3 "$R/hooks/pre-agent-dedupe.py" < "$T/fan.json" 2>"$T/err"
+check "the block's release command, run as printed, releases a job whose title has an apostrophe" "0 0" "$(eval "$(grep -o 'agent-job done [^\`]*' "$T/err" | sed "s|^agent-job|python3 $R/bin/agent-job|")" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c "user's ask")"
 cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
 cid() { # clientRequestId
   cid_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
@@ -718,7 +726,7 @@ python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started
 done_events > "$T/ev1"; done_events > "$T/ev2"
 check "AGENT DONE for a Codex agent once its task completes, not while it runs" "1 0" "$(grep -c "AGENT DONE $T/jobs/codex-done.md" "$T/ev1") $(grep -c codex-run "$T/ev1")"
 python3 "$R/bin/agent-job" done "$T/jobs/codex-done.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/codex-run.md" >/dev/null
-check "AGENT DONE for the quiet agent's job, once; not for an active one or one in a running tool call" "1 0 0 0" "$(grep -c "^### AGENT DONE $T/jobs/quiet-ticket.md: read its result (task_status / its report), then agent-job done $T/jobs/quiet-ticket.md$" "$T/ev1") $(cat "$T/ev2" | wc -l) $(grep -c busy-ticket "$T/ev1") $(grep -c tool-ticket "$T/ev1")"
+check "AGENT DONE for the quiet agent's job, once; not for an active one or one in a running tool call" "1 0 0 0" "$(grep -c "^### AGENT DONE $T/jobs/quiet-ticket.md Execute [^:]*: read its result (task_status / its report), then agent-job done '$T/jobs/quiet-ticket.md Execute [^']*'$" "$T/ev1") $(cat "$T/ev2" | wc -l) $(grep -c busy-ticket "$T/ev1") $(grep -c tool-ticket "$T/ev1")"
 sj() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 tr_file 'Done.'
