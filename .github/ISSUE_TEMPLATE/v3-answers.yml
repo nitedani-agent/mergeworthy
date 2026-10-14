@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        The questions of [#4](https://github.com/nitedani/mergeworthy/issues/4), one dropdown each (pick one or more, or **Other** for your own option) and a box under it for a comment or your own option. Your ticks in #4 are pre-selected. Leave a question empty to keep it open. Submitting opens a new issue with your answers.
+        The questions of [#4](https://github.com/nitedani/mergeworthy/issues/4), one dropdown each (pick one or more, or **Other** for your own option) and a box under it for a comment or your own option. Your answers from #4 are filled in: a question with one tick has it preselected, and one with several ticks lists them in its box (a dropdown can preselect only one), so select them again. Leave a question empty to keep it open. Submitting opens a new issue with your answers.
   - type: markdown
     attributes:
       value: "### Vision and goals"
@@ -183,7 +183,7 @@ body:
       label: "12. Which maintainer signal weighs most?"
       multiple: true
       options:
-        - "A: Reactions (\ud83d\udc4d, \ud83d\udc4e) on our replies."
+        - "A: Reactions (👍, 👎) on our replies."
         - "B: Questions back, because a question means the reply didn't answer."
         - "C: Silence: a reply left unanswered for seven days counts as a weak miss."
         - "Other: my own option (write it in the box below)"
@@ -860,7 +860,7 @@ body:
       multiple: true
       options:
         - "A: A short text with a time for the real answer, within 15 minutes."
-        - "B: Only a \ud83d\udc40 reaction."
+        - "B: Only a 👀 reaction."
         - "C: Nothing until there's a real answer, and your digest shows the thread as held, with the reason."
         - "Other: my own option (write it in the box below)"
   - type: textarea
