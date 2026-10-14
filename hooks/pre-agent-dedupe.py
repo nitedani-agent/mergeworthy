@@ -125,6 +125,11 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
                          "(mergeworthy:delegate step 3): " + ', '.join('~/.mergeworthy/current/' + f for f in need) + '\n')
         sys.exit(2)
+    # A drafter (reads the thread record, isn't a review) lists each scope-word claim beside its proof: the template's line
+    if 'thread-context.md' in gate_text and 'CLEAN' not in gate_text and not re.search(r'scope word', gate_text, re.I):
+        sys.stderr.write("BLOCKED: a drafter brief carries the template's scope-word check: paste "
+                         "~/.mergeworthy/current/skills/delegate/drafter.md, filled in (mergeworthy:delegate step 3)\n")
+        sys.exit(2)
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
 root = None if register else memory_file.for_cwd(d.get('cwd') or '')
 if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):
