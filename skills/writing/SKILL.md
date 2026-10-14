@@ -56,8 +56,6 @@ Only OBSERVED closes anything.
 
 ### Design threads
 
-A design reply comes out of `design` steps 1–3 and 7; this section is how it reads.
-
 - **Converge through the other side.** Each reply gives your own position with its reasons, the design's weakest part (also the part they like), and the question that would settle each disagreement. Agreeing is a conclusion, never the default; a reply that only agrees is a tool, not a colleague.
 - **Change position only on evidence,** and name it ("I measured it: …"). Their preference is a reason to look again, not to flip. When they move you, say so once, and what it changes.
 - **Every disagreement keeps its argument, every agreement its consequence.** The maintainer wants one of two outcomes: you push back with arguments, or you agree and say what it changes in the code. Agree before hundreds of lines get written: end with that change list and ask them to confirm it.
@@ -84,9 +82,7 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 |---|---|
 | A label line or heading in a comment ("Two decisions:", "**Fundamental:** the wrong word.") | A sentence: "Two things need your decision." |
 | A telegraphic verdict ("No holes, and it's built.") | A person talking, as in the model replies |
-| A coined term ("the runner", "the marker") | What it does, in the reader's words |
 | A sentence only the code explains ("two specs pin why it changed", "the detach skip for pending admissions") | What the user sees or does, and why, in their words; the review rejects any sentence the owner couldn't follow without the code |
-| An inventory of internals to prove completeness | What the user sees |
 | A reason that is true by definition ("the `+middleware` ordered after it didn't run before it") | The consequence the reader cares about, or cut it |
 | Em dashes for asides | A comma, parentheses, or two sentences |
 | Groups of three; "Not X, but Y"; a question you answer yourself; dramatic setups ("Here's the thing:") | Say what is, starting with the substance |
@@ -102,7 +98,7 @@ A post is as long as what the reader needs to decide, act or check, and no longe
 ### Forms
 
 - **Code comments:** `code §Comments`. **A caption:** one line per image or video (`evidence` step 4).
-- **The badge** starts every post, unless the plugin's `badge` option is `off`, or `auto` and the posting account is a bot; tracker posts have none. It is one line, no label, the form post-lint accepts: the icon of every agent that worked on it (researchers and reviewers too), then in italics which model did what, with its version and the effort it ran at (T3 Code's thread `effort`, a `delegate_task`'s options `effort`, Codex's `model_reasoning_effort`), ending inside the italics with a link to the WIP comment when the post belongs to a design thread that has one (a PR or issue it lists included); then a line break. With Claude and Codex:
+- **The badge** starts every post, unless the plugin's `badge` option is `off`, or `auto` and the posting account is a bot; tracker posts have none. It is one line, no label, the form post-lint accepts: the icon of every agent that worked on it (researchers and reviewers too), then in italics which model did what, with its version and the effort it ran at (T3 Code's thread `effort`, a `delegate_task`'s options `effort`, Codex's `model_reasoning_effort`), the reviewer's part written after it ran, from that call; ending inside the italics with a link to the WIP comment when the post belongs to a design thread that has one (a PR or issue it lists included); then a line break. With Claude and Codex:
 
   <img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *<model> <version> (high effort) wrote this; <model> <version> (Codex, high effort) reviewed it. [WIP comment](<link>)*
 

@@ -100,9 +100,10 @@ flowchart TB
   s4 -.-> r4[["merging"]]
   s4 -.-> r5[["delegate"]]
   s5 -.-> r6[["post"]]
-  s6 -.-> r7[["post"]]
-  s6 -.-> r8[["task"]]
-  s7 -.-> r9[["task"]]
+  s5 -.-> r7[["delegate"]]
+  s6 -.-> r8[["post"]]
+  s6 -.-> r9[["task"]]
+  s7 -.-> r10[["task"]]
   start --> g0
 ```
 

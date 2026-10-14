@@ -19,7 +19,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
    Open: §Kinds of comment
 5. **A decision question or a design point:** `design` steps 1–3 before any answer. Anything else: do the work it asks (code through an implementer, then `merging` step 1).
    Open: `design`; `delegate/implementer.md`
-6. **Answer through `post`,** as a new comment, because edits don't notify ("Done in <sha>" for done work). Beyond this answer and the wait ping, a question gets no further comments from you; later changes are edits.
+6. **Answer through `post`,** as a new comment, because edits don't notify ("Done in <sha>" for done work). Positions about code, commits or results come after reading them; what the drafter checks gets none (`delegate/drafter.md`). Beyond this answer and the wait ping, a question gets no further comments from you; later changes are edits.
    Open: `post` steps 1–5 · Record: the gate file · Hook: pre-bash-guard
 7. **Same step:** clear the owed line; put every "OK?" you asked and every promise into `proposals-open.md`; Tier M: a ledger row; Tier L: the umbrella and its Decisions comment through `post`. After a burst of maintainer comments, check the PR: no comment is the last word without a change, an answer or a reaction.
    Open: `task §Files`; `task §Umbrella` · Record: the owed line, proposals-open.md · Hook: stop-lint, gate-pass (PROMISED)
@@ -31,7 +31,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
 | Event | Do |
 |---|---|
 | a comment you answer (§Which comments) | steps 3–7 |
-| `### CI … red=` on your PR | Fix it first. When the red isn't the PR's doing (a secret forks don't get, a flaky job), one PR comment through `post` with the cause and the evidence (the workflow line, or the same failure on another PR or `main`), right away; explaining it only in chat leaves the PR looking broken. |
+| `### CI … red=` on your PR | Fix it first. When the red isn't the PR's doing (a secret forks don't get, a flaky job), one PR comment through `post` with the cause and the evidence (the workflow line, or the same failure on another PR or `main`), at once. |
 | `### MAINTAINER COMMITS` | §Maintainer commits |
 | `### ACK` | step 4 as an acknowledgement: it answers your last open proposal, which is now an instruction |
 | `### THUMBS UP` / `### THUMBS DOWN` | §Reactions |
@@ -40,7 +40,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
 | `### TRACKER STALE` | `task §Umbrella`, through `post --kind tracker` |
 | `### SHAPE STALE` | `converge` step 2 on the whole diff, before the next "Done" reply |
 | `### AGENT DONE <ticket>` | `delegate` step 6 |
-| `### FOLLOW-UP` | `rules` step 6: the session whose `events.log` got it sorts it |
+| `### FOLLOW-UP` | `rules` step 6 |
 | `### AGENT COMMAND`, `### UNROUTED /agent` | the user typing: `task` |
 | `### NEW ISSUE`, `### NEW PR` (a repo watched whole: `owner/repo all`) | answer it like a comment you owe (steps 3–7) |
 
