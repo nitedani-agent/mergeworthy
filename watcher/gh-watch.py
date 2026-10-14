@@ -4,6 +4,7 @@
 - The comments the agent answers (mergeworthy:github-threads), new or edited, each with an :eyes: reaction: a maintainer's
   (write access) on a thread in threads.txt, the threads the agent opened or posted in; and yours with /ai or /agent, on any thread
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
+- `owner/repo all` in repos.txt: the repo's new issues and PRs (`### NEW ISSUE`, `### NEW PR`), and every thread that moves joins threads.txt (moved_thread).
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
 - Machine-wide work (those two) runs in one daemon at a time (shared_pass). Every call goes through request(), which keeps the
@@ -433,7 +434,7 @@ def save_state(s):
 
 
 # The agent and the user may post as the same account (ME). The agent posts only gated drafts
-# (gate-pass registers each one's hash), so a comment by ME whose text matches no gated post is the user's.
+# (gate-pass registers each one's hash), each starting with its badge, so a comment by ME that is neither is the user's.
 GATED_POSTS = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))  # written by gate-pass
 
 
@@ -469,11 +470,11 @@ def is_bot(u):
 
 
 def is_human(u, body=None, agent_hashes=frozenset()):
-    if not u or is_bot(u):
-        return False
-    if u.get('login') != ME:
-        return True
-    return _norm(body) not in agent_hashes  # ME: the user's own comment unless it's an agent post
+    return bool(u) and not is_bot(u) and not agent_post(u, body, agent_hashes)
+
+
+def agent_post(u, body, agent_hashes):
+    return u.get('login') == ME and (_norm(body) in agent_hashes or gl_watch.BADGE in (body or '').lstrip().split('\n', 1)[0])
 
 
 def append_owed(entry, d=None):
@@ -694,8 +695,8 @@ def scan_reactions(state, threads):
             etags.update(pending)
 
 
-def react_eyes(repo, kind, cid):
-    path = f"repos/{repo}/issues/comments/{cid}/reactions" if kind == 'comment' else f"repos/{repo}/pulls/comments/{cid}/reactions"
+def react_eyes(repo, kind, cid, num=None):
+    path = {'comment': f"repos/{repo}/issues/comments/{cid}/reactions", 'body': f"repos/{repo}/issues/{num}/reactions"}.get(kind, f"repos/{repo}/pulls/comments/{cid}/reactions")
     try:
         request(path, 'POST', ['-f', 'content=eyes'])
     except Exception as e:
@@ -883,7 +884,7 @@ def scan(state, jobs):
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
                 note_active(state, user, upd)
-                if answerable(user, body, agent_hashes, kind, own=author == ME):
+                if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
             pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
@@ -963,10 +964,7 @@ def feed_repos():
         except (OSError, ValueError):
             st = {'prs': {}}
         repos |= {k.rsplit('#', 1)[0] for k in listed_threads(d) if thread_kind(st, k, now) != 'closed' and st.get('author', {}).get(k) != ME}
-        try:
-            repos |= github_repo_lines(d)
-        except OSError:
-            pass
+        repos |= set(repo_lines(d))
     return repos
 
 
@@ -994,6 +992,9 @@ def poll_feed(url, repo_of, watched, size):
         items, pages = items + page, pages + 1
     seen = {key(i): i['updated_at'] for i in items}
     moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
+    for i in items:  # before the feed is recorded: a pass that ran out of calls finds them again, and claims keep each once
+        if key(i) in moved:
+            moved_thread(repo_of(i), i, key(i) not in before and (i.get('created_at') or '') >= oldest)
     now = time.time()
     def put(s):
         s['feeds'][url] = dict(list(seen.items())[:size])  # one page's worth: the next poll reads back to its oldest
@@ -1001,6 +1002,27 @@ def poll_feed(url, repo_of, watched, size):
         s['dirty'].update({k.rsplit('#', 1)[0]: now for k in moved})
     shared_update(put)
     publish(moved & watched)
+
+
+def moved_thread(repo, i, new):
+    """A thread an issue list shows moved. A new one whose body starts with your /agent is an agent command. One of a repo a live dir
+    watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
+    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's."""
+    num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
+    key, dirs = f"{repo}#{num}", live_dirs()
+    if new and AGENT_CMD.match(body) and user.get('login') == ME:
+        return agent_command(repo, num, 'body', i)
+    d = next((d for d in dirs if repo_lines(d).get(repo)), None)
+    if not d or any(key in listed_threads(x) for x in dirs):
+        return
+    if not ONCE:
+        open(os.path.join(d, 'threads.txt'), 'a').write(f"{repo} {num}\n")
+    if new and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
+        indented = '\n'.join('    ' + l for l in body.splitlines())
+        emit_to(d, f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n")
+        if not ONCE:
+            append_owed(f"{key} body {i['id']} by {user.get('login')} {i['html_url']} — {i['title'][:80]}", d)
+            react_eyes(repo, 'body', i['id'], num)
 
 
 def repo_feeds():
@@ -1022,9 +1044,17 @@ def live_dirs():
     return [d for d in dict.fromkeys(watch_dirs()) if live(d)]
 
 
-def github_repo_lines(d):
-    """The GitHub whole-repo lines of d's repos.txt."""
-    return {r for r in (l.split('#', 1)[0].strip() for l in open(os.path.join(d, 'repos.txt'))) if r and not r.startswith(gl_watch.HOST)}
+def repo_lines(d):
+    """d's GitHub repos.txt lines: owner/repo -> True for `owner/repo all` (watched whole), False for a bare line (covered only)."""
+    try:
+        words = [l.split('#', 1)[0].split() for l in open(os.path.join(d, 'repos.txt'))]
+    except OSError:
+        return {}
+    out = {}
+    for w in words:
+        if w and not w[0].startswith(gl_watch.HOST):
+            out[w[0]] = out.get(w[0]) or w[1:] == ['all']
+    return out
 
 
 def listed_threads(d):
@@ -1054,7 +1084,7 @@ def thread_links(repo, num):
 
 def route_agent_command(repo, num, name):
     """-> (watch dir, routed). The dir named `name` (its folder's name); else the dir listing most of the threads this one
-    links to or is linked from (a tie goes to main_dir); else main_dir, unrouted."""
+    links to or is linked from (a tie goes to main_dir); else a dir watching its repo whole; else main_dir, unrouted."""
     dirs = live_dirs()
     for d in dirs:
         if name and os.path.basename(d.rstrip('/')).lower() == name.lower():
@@ -1065,7 +1095,8 @@ def route_agent_command(repo, num, name):
     if best:
         top = [d for d in dirs if score[d] == best]
         return (main_dir() if main_dir() in top else top[0]), True
-    return main_dir(), False
+    whole = [d for d in dirs if repo_lines(d).get(repo)]
+    return (whole[0], True) if whole else (main_dir(), False)
 
 
 def claim(sk, record=True):
@@ -1082,9 +1113,9 @@ def claim(sk, record=True):
 
 
 def agent_command(repo, num, kind, c):
-    """Your comment starting with /agent on a thread no live watch dir lists (a listed thread's own scan reports it) goes to
-    one dir's events.log, once: `/agent <name>` to the dir of that name, else the dir that lists a thread this one links to
-    or is linked from, else main_dir (UNROUTED). You and the agent post as one account: a gated post is not a command."""
+    """Your comment, or a new issue's or PR's body (kind 'body'), starting with /agent on a thread no live watch dir lists (a listed
+    thread's own scan reports it) goes to one dir's events.log, once: `/agent <name>` to the dir of that name, else the dir that lists
+    a thread this one links to or is linked from, else a dir watching its repo whole, else main_dir (UNROUTED). You and the agent post as one account: a gated post is not a command."""
     key, body, cid = f"{repo}#{num}", c.get('body') or '', c.get('id')
     sk = f"{kind}:{cid}"
     if not cid or not AGENT_CMD.match(body) or (c.get('user') or {}).get('login', ME) != ME or _norm(body) in agent_post_hashes() \
@@ -1102,7 +1133,7 @@ def agent_command(repo, num, kind, c):
     if routed and line not in open(os.path.join(target, 'threads.txt')).read().splitlines():
         open(os.path.join(target, 'threads.txt'), 'a').write(line + '\n')  # its follow-ups are watched
     append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
-    react_eyes(repo, kind, cid)
+    react_eyes(repo, kind, cid, num)
     with open(os.path.join(target, 'events.log'), 'a') as f:  # last: the event wakes that session, which finds the rest in place
         f.write(event)
 
@@ -1111,11 +1142,7 @@ def watched_repos():
     """Every repo a live watch dir lists a thread or a whole-repo line for (and this dir's own)."""
     repos = set()
     for d in dict.fromkeys(live_dirs() + [HERE]):
-        repos |= {t.rsplit('#', 1)[0] for t in listed_threads(d)}
-        try:
-            repos |= github_repo_lines(d)
-        except OSError:
-            pass
+        repos |= {t.rsplit('#', 1)[0] for t in listed_threads(d)} | set(repo_lines(d))
     return repos
 
 
@@ -1595,10 +1622,26 @@ def announce():
             save_state(state)
 
 
+STEWARD_LINE = 'nitedani/mergeworthy all  # the steward watches its repo (gh-watch.py)'
+
+
+def steward_line():
+    """The steward's watch dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it."""
+    path = os.path.join(HERE, 'repos.txt')
+    lines = open(path).read().splitlines() if os.path.exists(path) else []
+    want = (steward.read() or ('',))[0] == HERE.rstrip('/')
+    if want != (STEWARD_LINE in lines) and not ONCE:
+        with open(path + '.tmp', 'w') as f:
+            f.writelines(l + '\n' for l in lines if l != STEWARD_LINE)
+            f.write(STEWARD_LINE + '\n' if want else '')
+        os.replace(path + '.tmp', path)
+
+
 def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
     follow_update()
+    steward_line()
     lvl = level()
     if lvl < PAUSED:
         try:

@@ -17,7 +17,7 @@ These scripts enforce the rules that failed as text alone.
 ### `gh-watch-start` (enforces 1.5)
 
 `gh-watch-start [--main] <dir> [owner/repo [N]]…` is the one way to start watching; running it again is harmless.
-- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt` (the watcher rewrites a hand-written `owner/repo#N` so); for GitLab, `gitlab.com/<path> N`, or `'!N'` for an MR. A bare repo goes to `repos.txt`, which covers it before an issue exists; a thread of that repo joining the dir drops that line.
+- **What it adds.** It adds `owner/repo N` to `<dir>/threads.txt` (the watcher rewrites a hand-written `owner/repo#N` so); for GitLab, `gitlab.com/<path> N`, or `'!N'` for an MR. A bare repo goes to `repos.txt`, covering it until a thread of it joins the dir. `owner/repo all` stays and watches the whole repo: new issues and PRs are reported (`### NEW ISSUE`, `### NEW PR`), and any thread that moves joins the dir, reporting each comment without the agent's badge. The steward's dir gets `nitedani/mergeworthy all`.
 - **`--main`:** this dir gets the user's `/ai` calls on threads no watcher watches. The default is the first live dir.
 - **The supervisor.** It starts the daemon under a supervisor: the systemd user service `gh-watch@<dir>` on Linux, a launchd agent on macOS, else a detached daemon that cron revives.
 - **Maintainers.** `GH_WATCH_EYES` names the maintainers whose commits and 👍/👎 are reported; without it, `<dir>/eyes`, else your own login.
@@ -39,7 +39,6 @@ These scripts enforce the rules that failed as text alone.
 ### `thread-context` (enforces 1.6 and writing step 0)
 
 `thread-context <owner/repo#N> [--depth 2] [--max 30] [--out <file>]` writes the record a reply is drafted from (default `./thread-context.md`). Run it into the draft folder, and hand it to the drafter and the reviewer, never read it into the main session.
-- It fetches the thread's comments, reviews and review comments, and the threads they reference, breadth-first to `--depth`, at most `--max` threads, skipping bots.
 - The file holds a header, a **Decisions and positions** ledger (each human comment that agrees, rejects, proposes or decides, quoted with its permalink), the root's full transcript, then each linked thread's first post and last 30 comments. The agent's posts are marked `AGENT` and kept out of the ledger.
 - `--latest <repo#N>` prints the latest human comment; `--verify <file> [--target <repo#N>] [--parent <file>]` is what the gate and the guard run.
 
@@ -99,10 +98,10 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
     - `### AGENT DONE <ticket>`: an agent the session launched finished (`agent_jobs.py`: its transcript went quiet), once per finish until `agent-job done`; the dir is the one whose `session` file names the launcher, or whose `events.log` the launcher's transcript tails;
     - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once, with its time. A commit touching several of your PRs is one line naming them all. While the steward's watcher runs, its dir gets these instead, plus a copy of each `MAINTAINER COMMITS`, which the PR's session still handles. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits and hunks that only bump dependency versions don't count. Read each as `core` 1.3 says (Learning from follow-ups).
-- **`/agent` commands.** Your comment starting with `/agent` on a thread no live watch dir lists is found in the recent comments of every repo a live watch dir lists, or by a search of your comments. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: to the dir named by `/agent <folder name>`, else to the dir listing a thread this one links to or is linked from (most matches), else to the `--main` dir as `### UNROUTED /agent`.
-- **Retiring.** It retires itself, service, launchd agent and cron lines included, once every thread is merged or closed and `repos.txt` is empty.
+- **`/agent` commands.** Your comment, issue or PR starting with `/agent` on a thread no live dir lists is found in the watched repos' recent comments and issue lists, or by a search. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: the dir named by `/agent <folder name>`, else the one listing most threads linked to or from it, else one watching its repo whole, else the `--main` dir, as `### UNROUTED /agent`.
+- **Retiring.** It retires itself (service, launchd agent, cron lines) once every thread is merged or closed and `repos.txt` is empty.
 - **API budget.** All watchers share one account's 5,000 calls an hour through `~/.mergeworthy/shared-watch.json`. Below 1500 calls left, the jobs one daemon runs for all (finding `/agent` comments, `FOLLOW-UP`s) wait for the reset while each daemon reads its own threads; below 500, only GitHub's notifications feed and the threads it names are read; after a rate-limit answer every daemon waits and prints one `WATCH ERROR API budget: paused until <time>`.
-- **Cadence and state.** An open thread changed in the last day is checked every 5 minutes, other open threads every 30, merged or closed ones every 6 hours; the rest is in `gh-watch.py`'s header. Restarts and plugin updates lose nothing and cost no calls. The same `WATCH ERROR` is printed once an hour.
+- **Cadence and state.** An open thread changed in the last day is checked every 5 minutes, other open threads every 30, merged or closed ones every 6 hours; the rest is in `gh-watch.py`'s header. Restarts and updates lose nothing and cost no calls. A repeated `WATCH ERROR` prints once an hour.
 
 ## Hooks
 

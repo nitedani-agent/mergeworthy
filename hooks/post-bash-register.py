@@ -115,7 +115,7 @@ for repo, num, line in found:
         continue
     home = next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None)
     if not home:
-        covering = [dr for dr in live_dirs if repo in lines(dr, 'repos.txt') or any(l.split()[:1] == [repo] for l in lines(dr, 'threads.txt'))]
+        covering = [dr for dr in live_dirs if any(l.split()[:1] == [repo] for l in lines(dr, 'repos.txt') + lines(dr, 'threads.txt'))]
         home = ([dr for dr in own if dr in covering] + own + covering + live_dirs + [None])[0]
         if home:
             open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')

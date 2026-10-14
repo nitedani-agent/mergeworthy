@@ -420,5 +420,71 @@ check "gh-watch-start stores the GitLab lines and drops the covered repo line" "
 ( dir="$GS"; set -- o/r '!9'; eval "$args_step" ) >/dev/null 2>&1
 check "gh-watch-start: !N on a GitHub repo is not a thread" "o/r" "$(cat "$GS/repos.txt")"
 
+( dir="$GS"; : > "$GS/repos.txt"; set -- o/r all o/r 5; eval "$args_step" ) >/dev/null 2>&1
+check "gh-watch-start: an 'owner/repo all' line stays when a thread of its repo joins" "o/r all" "$(cat "$GS/repos.txt")"
+
+# `owner/repo all` in repos.txt: a moved thread of the repo joins that dir (unless another dir lists it), a new one is reported unless
+# it carries the badge, and /agent at the start of a new body is an agent command (routed to the dir watching the repo whole, else main_dir)
+WH="$T/whole"; for d in all other bare; do mkdir -p "$WH/$d"; : > "$WH/$d/threads.txt"; : > "$WH/$d/events.log"; done
+printf "o/r all\no/r\n" > "$WH/all/repos.txt"; echo 'o/r 7' > "$WH/other/threads.txt"; echo 'x/y' > "$WH/bare/repos.txt"
+printf '%s\n' "$WH/all" "$WH/other" "$WH/bare" > "$HOME/.claude/gh-watch-dirs.txt"; rm -f "$HOME/.mergeworthy/main-watch"
+WHOLE='
+WH = os.path.join(os.path.dirname(m.HERE), "whole")
+for d in ("all", "other", "bare"): open(os.path.join(WH, d, "gh-watch.pid"), "w").write(str(os.getpid()))
+B = "<img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\nDone."
+'
+got=$(py "$WHOLE"'
+m.HERE = os.path.join(WH, "all")
+it = lambda n, who, body, created, pr=False, upd=None: {"id": 1000 + n, "number": n, "user": {"login": who}, "body": body, "title": f"t{n}", "html_url": f"<i{n}>",
+                                                       "created_at": created, "updated_at": upd or created, **({"pull_request": {}} if pr else {})}
+feeds = {"o/r": [it(1, "them", "", "2026-01-01T00:00:00Z"), it(7, "them", "", "2026-01-02T00:00:00Z")], "x/y": []}
+eyes = []
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data, "next": lambda self: None})()
+def fake_request(path, *a, **k):
+    if "reactions" in path:
+        eyes.append(path.split("/")[4])
+        return Answer({})
+    if "/issues?" in path:
+        return Answer(feeds[path.split("/")[1] + "/" + path.split("/")[2].split("?")[0]])
+    return Answer({"body": ""})  # thread_links reads the issue
+m.request, m.paged = fake_request, lambda *a, **k: []
+poll = lambda: [m.poll_feed(f"repos/{r}/issues?state=all", lambda i, r=r: r, set(), 30) for r in ("o/r", "x/y")]
+poll()
+feeds["o/r"] = [it(8, "me", "V3 please", "2026-10-13T22:01:13Z"), it(9, "me", B, "2026-10-13T22:02:00Z"), it(10, "them", "a fix", "2026-10-13T22:03:00Z", pr=True),
+                it(11, "me", "/agent go", "2026-10-13T22:04:00Z"), it(1, "them", "", "2026-01-01T00:00:00Z", upd="2026-10-13T22:05:00Z"),
+                it(7, "them", "", "2026-01-02T00:00:00Z", upd="2026-10-13T22:05:00Z")]
+feeds["x/y"] = [it(3, "me", "hello", "2026-10-13T22:00:00Z"), it(4, "me", "/agent hi", "2026-10-13T22:00:00Z")]
+poll(); poll()
+print(" ".join(eyes))
+')
+evs() { grep '^###' "$WH/$1/events.log" | tr '\n' '|'; }
+check "whole repo: new issue and PR reported once, the badge one and old threads not, /agent bodies are commands; :eyes: on each" \
+  "8 10 11 4|### NEW ISSUE o/r#8 by me 2026-10-13T22:01:13Z <i8>: t8|### NEW PR o/r#10 by them 2026-10-13T22:03:00Z <i10>: t10|### AGENT COMMAND o/r#11 body 1011 by me 2026-10-13T22:04:00Z  <i11>|### UNROUTED /agent x/y#4 body 1004 by me 2026-10-13T22:00:00Z  <i4>||" \
+  "$got|$(evs all)|$(evs other)$(evs bare)"
+check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
+  "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
+scanned() { py "$WHOLE"'
+m.HERE = os.path.join(WH, "'"$1"'"); m.STATE = os.path.join(m.HERE, "gh-watch-state.json"); m.THREADS = os.path.join(m.HERE, "threads.txt")
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 1\n")
+ev = lambda i, who, body: ("comment", i, "2026-10-13T22:06:00Z", {"login": who, "assoc": "NONE"}, f"<c{i}>", body, "")
+m.fetch_thread = lambda *a, **k: (False, "them", [ev(21, "them", "a question"), ev(22, "me", B), ev(23, "me", "mine")], None, None, None, {}, True, None)
+m.react_eyes = m.scan_reactions = lambda *a: None
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+print(" ".join(l.split()[3] for l in buf.getvalue().splitlines() if l.startswith("### o/r#1 comment")))
+'; }
+check "whole repo: every comment on its threads is reported but the badge one; a bare line's dir reports only the user's" "21 23|23" "$(scanned all)|$(scanned bare)"
+got=$(py "$WHOLE"'
+m.HERE = os.path.join(WH, "bare")
+sw = os.path.expanduser("~/.mergeworthy/steward")
+open(sw, "w").write(m.HERE + " tid\n"); m.steward_line(); m.steward_line()
+a = open(os.path.join(m.HERE, "repos.txt")).read().count(m.STEWARD_LINE), sorted(m.repo_lines(m.HERE).items())
+open(sw, "w").write(os.path.join(WH, "all") + " tid\n"); m.steward_line()
+os.remove(sw)
+print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
+')
+check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
+
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
