@@ -115,6 +115,13 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: the brief works on a repo with a project file; name each project file in it so the agent reads "
                          "and applies them (mergeworthy:delegate §Brief):\n" + '\n'.join(missing) + '\n')
         sys.exit(2)
+    # The producer reads the standard its checker uses, by path (delegate step 3): code for an implementer, writing for a drafter.
+    need = [f for f, applies in (('skills/code/SKILL.md', named and ti.get('role') == 'implementation'),
+                                 ('skills/writing/SKILL.md', 'thread-context.md' in gate_text)) if applies and f not in gate_text]
+    if need:
+        sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
+                         "(mergeworthy:delegate step 3): " + ', '.join('~/.mergeworthy/current/' + f for f in need) + '\n')
+        sys.exit(2)
 # Research the program already wrote up (memory.md, the notes) is read, not redone.
 root = None if register else memory_file.for_cwd(d.get('cwd') or '')
 if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get('title') or ''} {ti.get('description') or ''}", re.I)):

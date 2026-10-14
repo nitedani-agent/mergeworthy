@@ -155,6 +155,7 @@ Read-only commands pass.
 
 **`pre-agent-dedupe`** registers launches that ran by ticket and blocks duplicate jobs (`delegate` step 1). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It also blocks:
 - a brief with any role but `research` or `test` that names a repo (`owner/repo`, its URL or a path in its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`;
+- an `implementation` brief for such a repo that doesn't name `skills/code/SKILL.md`, and a brief that reads a `thread-context.md` but doesn't name `skills/writing/SKILL.md`;
 - a brief naming a linked worktree (not the launcher's own) that a process has as its cwd or an agent transcript written in the last five minutes names;
 - a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list;
 - in an main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the work folder not named in a `Checked:` line.

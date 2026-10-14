@@ -621,7 +621,10 @@ check "a brief with an https URL finishes (its //host is not a path), and the UR
 git init -q "$HOME/occ"; git -C "$HOME/occ" remote add origin git@github.com:o/r.git; mkdir -p "$HOME/occ/src"
 check "BLOCK: the repo as git@github.com:o/r.git, and a ~/ path in its checkout" "2 2" "$(ag "$T" 'Fix git@github.com:o/r.git') $(ag "$T" 'Fix the bug in ~/occ/src')"
 check "a brief that writes nothing to the repo (role research or test) needs no notes; a review does" "0 0 2" "$(ag "$T" 'Mine session logs for o/r' research) $(ag "$T" 'Run the tests of o/r' test) $(ag "$T" 'Review o/r#7' review)"
-check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "a brief naming the notes file passes; one naming another repo or none passes; a memory-refresh brief passes" "0 0 0 0" "$(ag "$T" 'Fix o/r#5 by skills/code/SKILL.md, notes in ~/.mergeworthy/projects/o/r.md') $(ag "$T" 'Fix o/r-two#5') $(ag "$T" 'Tidy the README') $(ag "$T" 'Follow skills/delegate/memory-refresh.md on o/r#5 lines')"
+check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
+check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
+check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md' review)"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
 alive() { # task [transcript_path]
