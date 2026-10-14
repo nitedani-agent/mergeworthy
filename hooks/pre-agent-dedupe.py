@@ -27,9 +27,13 @@ tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
 # Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
 gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t) and not os.path.realpath(t).startswith(os.path.realpath(os.path.expanduser('~/.mergeworthy')) + os.sep))
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
-    for draft in sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
+    # The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): when it does, that draft is
+    # the one reviewed, and the files beside it (thread record, brief, parent) are not drafts
+    named = {re.sub(r'(\.review)?\.out$', '.md', o) for o in re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.out)\b', gate_text)}
+    named = {p for p in named if os.path.isfile(p)}
+    for draft in sorted(named or set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
-        if base.endswith(('.parent.md', '.current.md', '.report.md')) or 'ticket' in base or 'brief' in base or 'research' in base or re.search(r'\.v\d+\.md$', base) or not os.path.isfile(draft):
+        if not named and (base.endswith(('.parent.md', '.current.md', '.report.md')) or re.search(r'ticket|brief|prompt|research|context', base) or re.search(r'\.v\d+\.md$', base)) or not os.path.isfile(draft):
             continue
         try: ok = open(draft + '.lint.sha').read().strip() == hashlib.sha256(open(draft, 'rb').read()).hexdigest()
         except OSError: ok = False
