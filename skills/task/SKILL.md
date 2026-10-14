@@ -13,7 +13,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Run: `gh issue view`, `gh pr list --state all --search "<keyword>"`, `ls ~/*-work`
 2. **Triage.** Write `Tier: <0|S|M|L>, because <signals>` as line 1 of `<work folder>/scope.md`, and in your first report. Count every PR and repo the work has had so far, not only today's ask: two or more independently maintained repos make it Tier L. Re-triage when the deliverables or open decisions change, and say so.
    Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
-3. **Scope.** Copy every ask and link of the task into scope.md as checkboxes, at the start and whenever the user adds one; below them the critical path: the open items between now and the goal shipping, in order. Dropping or deferring any item needs the user's OK first, never after.
+3. **Scope.** Each ask and link, later ones too, is a scope.md checkbox; then the critical path: the goal's open items, in order. Dropping or deferring one, also when a later instruction seems to replace it, needs the user's OK first: ask in one line whether that item holds.
    Open: §Scope · Record: scope.md
 4. **The project file.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing: run the repo study now (§Repo study), and say so in your report.
    Open: §Project file; §Repo study · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
