@@ -46,6 +46,7 @@ _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') i
 _asked_list = bool(_rp and os.path.exists(_rp) and re.search(r'\brefactor this pr\b|\bold rating\b|\bratings?\b.*\blists?\b|\b\d+\s+(?:questions|items|options)\b|\bquestions?\b.*\b(?:checkbox|choices)\b', open(_rp).read(), re.I | re.S))
 if _asked_list:
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
+    prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
 prose = re.sub(r'<details>\s*<summary>(?:Approach|Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 code = '\n'.join(m.group(2) for m in re.finditer(r'^(```|~~~)[^\n]*\n(.*?)^\1[^\n]*$', prose, flags=re.S | re.M))
@@ -154,7 +155,9 @@ if kind == 'tracker':
 # as prose, so they count
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
-    if _asked_list: counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)  # the lists the reader asked for
+    if _asked_list:  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
+        counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
+        counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
     counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
     counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
