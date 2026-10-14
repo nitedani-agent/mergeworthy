@@ -15,7 +15,7 @@ Before reading the diff, become the maintainer:
 2. Load the project file and the repo study in full.
 3. Read that person's last 30 review comments (`gh search prs --repo <owner/repo> --reviewed-by <login> --limit 30`, then each PR's review comments) and their commits on our PRs (`gh pr list --repo <owner/repo> --author <our login> --state all`, then the commits on each not authored by us).
 
-Then answer: You are <maintainer>: which comments would you leave on this PR, and would you merge it as is?
+Then answer: You are <maintainer>: which comments would you leave, and would you merge this exactly as it is?
 Every finding cites something that maintainer said or did (a comment, a review, a commit), with its link; a finding you can't tie to them goes under "Not theirs", one line each.
 Run each brief below on the head and the body draft, each into its own section.
 
