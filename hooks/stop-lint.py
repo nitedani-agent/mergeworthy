@@ -2,7 +2,7 @@
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers
 the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:reply)."""
-import json, os, re, sys
+import glob, json, os, re, sys
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -204,6 +204,24 @@ if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.p
     os.makedirs(os.path.dirname(told), exist_ok=True); open(told, 'w').close()
     print(f"mergeworthy's hook list changed after this session started ({own_root} -> {cur}): tell the user that a restart of this "
           "session (exit, then `claude --resume`) loads it.", file=sys.stderr)
+    sys.exit(2)
+# The Skill tool opens the skills this session started with: when a newer version changed them, say once per session where
+# the installed text is
+def skill_texts(r):
+    out = {}
+    for f in glob.glob(os.path.join(r, 'skills', '*', '*.md')):
+        try: out[os.path.relpath(f, r)] = open(f).read()
+        except OSError: pass
+    return out
+told = os.path.expanduser(f"~/.claude/mergeworthy-skills-told/{d.get('session_id')}")
+if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.path.isdir(own_root) and os.path.isdir(cur)
+        and os.path.realpath(own_root) != cur and not os.path.exists(told) and skill_texts(own_root) != skill_texts(cur)):
+    os.makedirs(os.path.dirname(told), exist_ok=True); open(told, 'w').close()
+    names = ', '.join(sorted(os.path.basename(x) for x in glob.glob(os.path.join(cur, 'skills', '*')) if os.path.isdir(x)))
+    print(f"The Skill tool opens this session's older copy of the mergeworthy skills ({own_root}); the installed version ({cur}) "
+          f"changed them. Until a restart, after opening a skill, read and follow ~/.mergeworthy/current/skills/<name>/SKILL.md "
+          f"and paste briefs from there. Installed skills: {names}. Renamed: core -> task; github-threads -> post and reply; "
+          "design-loop -> design; delegating -> delegate and rules; past-failures -> rules; verify, guardian and refactor -> converge; mechanisms -> docs/mechanisms.md; memory-refresh -> delegate/memory-refresh.md.", file=sys.stderr)
     sys.exit(2)
 # Before a turn ends, one check-in (the hook doesn't ask twice in a row: stop_hook_active lets the next stop through)
 # At most once per MERGEWORTHY_STOP_CHECKIN_SECONDS (default 30 min): every extra turn re-reads the whole context from cache

@@ -1134,6 +1134,8 @@ echo '{"hooks": 1}' > "$PO/hooks/hooks.json"; echo '{"hooks": 2}' > "$PN/hooks/h
 rs() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
     | CLAUDE_PLUGIN_ROOT="$PO" MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 check "BLOCK once per session: a newer version changed hooks.json, so a restart loads it; the same hook list says nothing" "2 1 0 0" "$(rs rs-1) $(grep -c 'restart of this session' "$T/err") $(rs rs-1) $(cp "$PN/hooks/hooks.json" "$PO/hooks/"; rs rs-2)"
+mkdir -p "$PO/skills/task" "$PN/skills/task"; echo old > "$PO/skills/task/SKILL.md"; echo new > "$PN/skills/task/SKILL.md"
+check "BLOCK once per session: a newer version changed the skills, naming where the installed text is; the same skills say nothing" "2 1 0 0" "$(rs rs-3) $(grep -c 'read and follow ~/.mergeworthy/current/skills/<name>/SKILL.md' "$T/err") $(rs rs-3) $(cp "$PN/skills/task/SKILL.md" "$PO/skills/task/"; rs rs-4)"
 if [ -n "$CUR" ]; then ln -sfn "$CUR" "$HOME/.mergeworthy/current"; else rm -f "$HOME/.mergeworthy/current"; fi
 # ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
 cat > "$T/bin/glab" <<'EOF'
