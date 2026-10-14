@@ -18,6 +18,7 @@ Evidence: <the verifier's and reviewer's reports>.
 
 Check every line of code §Checklist. Each finding: path:line, the checklist line, its disposition, its price in lines, and the exact change for behavior-preserving ones.
 - Code and docs that disagree: code §Docs are a claim. Owner code: code §Owner code and authority.
+- Docs, a README or JSDoc in the diff: docs steps 2–3 (the right page, the minimum, the siblings' shape and length).
 - Each finding must earn its diff (code §Earn every line). Each project-file line the diff breaks is a finding that quotes it.
 - When the change follows a reference (a design, a mockup, another project): compare every screen and interaction the reference shows with the head.
 - When the change is to a methodology (skills, prompts, hooks): check that every named mechanism survived, and fail any compressed into generic prose.
