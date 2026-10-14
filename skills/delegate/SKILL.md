@@ -53,9 +53,9 @@ The classes are model families, never versions: the strongest class is the newes
 ### Reviewers
 
 Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order:
-- **First, a model from another company than the main session's,** since a model misses the bugs it tends to write: Codex for a Claude session, a Claude agent for a Codex session, the strongest model of that provider the user hasn't excluded, at high effort. Start it through the orchestration tools, so it is tracked and can be cancelled: in T3 Code one `delegate_task` per round, the model from `orchestrator_capabilities`:
+- **First, a model from another company than the main session's:** Codex for a Claude session, a Claude agent for a Codex session, the strongest model of that provider the user hasn't excluded, at the effort chosen per call (high for a full review, medium for a quick check of a short reply). Start it through the orchestration tools: in T3 Code one `delegate_task` per round, the model from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>", "options": {"reasoningEffort": "high"}}, "clientRequestId": "<review>-<round>"}
+   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>", "options": {"reasoningEffort": "<effort>"}}, "clientRequestId": "<review>-<round>"}
    ```
    Without them: `codex exec -m <model> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
 - **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (out of credits, a rate limit, an error: a failure is not a review).
