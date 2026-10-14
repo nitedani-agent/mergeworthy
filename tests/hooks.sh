@@ -889,6 +889,12 @@ check "an edit passes once the branch has its preflight" 0 "$(pfedit "$P/a.ts")"
 check "git commit passes it too" 0 "$(pfcommit | grep -c 'pr-steps preflight')"
 git -C "$P" checkout -q -b other
 check "BLOCK: another branch needs its own preflight" 2 "$(pfedit "$P/a.ts")"
+Q="$T/q"; git init -q "$Q"; git -C "$Q" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i; qb=$(git -C "$Q" symbolic-ref --short HEAD)
+(cd "$Q" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null 2>&1)
+git -C "$Q" config remote.origin.url "$Q"; git -C "$Q" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'; git -C "$Q" update-ref "refs/remotes/origin/$qb" HEAD
+git -C "$Q" checkout -q -b cleanup "origin/$qb" 2>/dev/null
+qedit() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[1]}))' "$Q/a.ts" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?; }
+check "a local branch tracking the recorded branch shares its preflight; one tracking nothing doesn't" "0 2" "$(qedit) $(git -C "$Q" checkout -q -b loose; qedit)"
 touch "$T/pf.png"; check "a PNG the browser MCP just took records" 0 "$(pf "$T/pf.png")"
 git -C "$P" checkout -q -b docs
 check "none, because with its reason records" 0 "$(pf 'none, because it only changes a CLI flag')"

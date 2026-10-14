@@ -8,9 +8,12 @@ def branch_record(d, kind):
     common = git('rev-parse', '--git-common-dir')
     if not common:
         return None
+    root = os.path.realpath(os.path.join(d, common))
+    rec = lambda b: os.path.expanduser(f'~/.claude/pr-steps/{kind}.' + hashlib.sha256((root + '\n' + b).encode()).hexdigest()[:40])
     branch = git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
-    key = hashlib.sha256(f"{os.path.realpath(os.path.join(d, common))}\n{branch}".encode()).hexdigest()[:40]
-    return os.path.expanduser(f'~/.claude/pr-steps/{kind}.{key}')
+    # a worktree on its own local branch tracking the PR's branch shares that branch's records
+    up = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}').split('/', 1)[-1]
+    return next((rec(b) for b in (branch, up) if b and os.path.exists(rec(b))), rec(branch))
 
 
 def no_preflight(d):
