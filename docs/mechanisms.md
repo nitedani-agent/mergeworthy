@@ -40,7 +40,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 ### `gate-pass` (`post` step 4)
 
 `gate-pass <abs>/drafts/x.md <review output> [post-lint flags]` records that a draft passed the gate.
-- It re-runs `post-lint` with the draft's last flags, checks that the review's final message is exactly `CLEAN`, and records the draft's sha256 in `<draft>.gate`.
+- It re-runs `post-lint` with the draft's last flags, checks that the review's final message is exactly `CLEAN` and that the review output is newer than the draft (a draft trimmed after its review is linted and reviewed again; gate-pass's own harness line keeps the draft's time), and records the draft's sha256 in `<draft>.gate`.
 - A `reply`, `inline` or `proposal` draft needs `thread-context.md` in its folder, newer than its `.parent.md`, recording a latest human comment (`thread-context --verify`).
 - A `thread-context.md` beside the draft must be older than its last edit; posting refuses one regenerated after the gate.
 - When `~/.mergeworthy/harness-shown/<owner>` exists, it appends to a `reply` or `proposal`, after the review, a link comparing the mergeworthy commit it names with the installed one, and records the installed one there.

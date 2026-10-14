@@ -8,6 +8,8 @@ d="$1"; r="$2"
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
 shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
+# the reviewer saw the text that gets posted: a draft edited after its review (a trim to the length ceiling) is reviewed again
+[ "$r" -nt "$d" ] || { echo "$d changed after its review $r: lint it again (post step 2), then send it back to the reviewer (post step 3)"; exit 1; }
 # a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
 case "$kind" in reply|comment|inline|proposal)
@@ -32,7 +34,9 @@ installed=$(git -C "${MERGEWORTHY_SRC:-$HOME/.claude/plugins/marketplaces/mergew
 shown=$(cat "$hs" 2>/dev/null | head -c 40 | tr -d '[:space:]' || true)
 case "$kind" in reply|comment|proposal)
   if [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && [ "$shown" != "$installed" ]; then
+    ref=$(mktemp); touch -r "$d" "$ref"  # gate-pass's own line is not an edit after the review: the draft keeps its time
     printf '\nHarness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/%s...%s>\n' "$shown" "$installed" >> "$d"
+    touch -r "$ref" "$d"; rm -f "$ref"
   fi;;
 esac
 sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
