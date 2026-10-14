@@ -227,6 +227,13 @@ if decision and words > 400 + extra:
     findings.append(f"{words} words > {400 + extra} for a decision issue (tables and code count): the options a user would see and your pick; cut the rest")
 if kind == 'issue' and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
+# a code location the reader can't click is one they can't find (elysiajs/elysia#2018: bare `:160`, "off Bun")
+_loc = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
+_loc = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', _loc, flags=re.M)
+_loc = re.sub(r'\[(?:[^\[\]]|\[[^\]]*\])*\]\([^)]*\)', '', _loc)  # linked text, `[x](url)` included
+_locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b|\blines? \d+(?:[-–]\d+)?\b', _loc)
+if _locs:
+    findings.append(f"code location without a link: {', '.join(dict.fromkeys(_locs))}: link each to the line at a commit (a permalink), so a reader can open it")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)
 if kind == 'issue':
     shown = re.sub(r'^(?:<img [^>]*>[ \t]*)+\n', '', text)  # the badge is no evidence
