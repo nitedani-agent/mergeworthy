@@ -75,4 +75,5 @@ out = os.path.join(root, f"memory-brief-{re.sub(r'[^0-9]', '', until)[:14]}.md")
 for old in glob.glob(os.path.join(root, 'memory-brief-*.md')):
     os.remove(old)
 open(out, 'w').write(brief)
+open(os.path.join(root, '.memory-order-repeated'), 'w').close()  # a refresh is under way: stop-lint's hourly repeat waits an hour
 print(f'memory: {len(entries)} new log entries after {after}, {len(text)} characters; brief: {out}')

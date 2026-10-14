@@ -570,9 +570,13 @@ ss_all=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" </dev/null 2>/dev
 echo "measured with tests/fixtures/memory.md (a real memory.md, words hashed): session-start $ss_all bytes, session-memory $ss_m bytes"
 check "each SessionStart output with a real-sized memory.md stays under 9,000 bytes; the order comes first, the digest after" "yes yes 1 1" "$([ "$ss_all" -le 9000 ] && echo yes) $([ "$ss_m" -le 9000 ] && echo yes) $(head -1 "$T/ss.out" | grep -c 'is behind') $(grep -c '^### Still intended' "$T/ss.out")"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Please pause the work"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Paused."}]}}))' > "$T/tr.jsonl"
+rm -f "$MR/.memory-order-repeated"  # left by the prep runs above
 check "the user's pause holds the refresh order too" "0 no" "$(stop "$OC") $([ -e "$MR/.memory-order-repeated" ] && echo yes || echo no)"
 tr_file "Done."
 check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, running beside the work, then not within the hour" "2 1 0 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR.*keep working meanwhile" "$T/err") $(grep -c "without starting other work" "$T/err") $(stop "$OC")"
+rm "$MR/.memory-order-repeated"
+python3 "$R/bin/memory-prep" prep "$MR" >/dev/null
+check "a refresh just started with memory-prep prep: stop-lint doesn't repeat the order" 0 "$(stop "$OC")"
 rm "$MR/.memory-order-repeated"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task. Fix it."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' > "$T/tr.jsonl"
 check "a delegated sub-agent in the orchestrator's checkout never gets the order" 0 "$(stop "$OC")"
