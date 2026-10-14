@@ -12,7 +12,8 @@ if sys.argv[1] == 'list':
     sys.exit(0)
 want = ' '.join(sys.argv[2:]).strip()
 # the exact key; a single ticket path only when one job holds it, so one release never drops another agent's job
-hit = [f for f, j in entries if j['key'] == want] or [f for f, j in entries if want in j['key'].split()]
+def find(w): return [f for f, j in entries if j['key'] == w] or [f for f, j in entries if w in j['key'].split()]
+hit = find(want) or (find(os.path.abspath(want)) if os.path.exists(want) else [])  # a ticket path relative to the cwd
 if not hit:
     sys.exit(f'agent-job: no registered job for {want!r} (agent-job list)')
 if len(hit) > 1:

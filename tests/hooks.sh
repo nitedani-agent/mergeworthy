@@ -507,6 +507,7 @@ launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >
 check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
+check "agent-job done takes a ticket path relative to the cwd" 0 "$(mkdir -p /tmp/x && touch /tmp/x/ticket-check.md && cd /tmp/x && python3 "$R/bin/agent-job" done ticket-check.md >/dev/null; echo $?)"
 cid_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":"x","clientRequestId":sys.argv[1]}}))' "$1"; }
 cid() { # clientRequestId
   cid_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
