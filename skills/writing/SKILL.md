@@ -10,8 +10,8 @@ How every outward word reads: comments, replies, edits, PR and issue bodies, gis
 ### Draft
 
 - **Read everything the reply builds on** before a word of it: the whole thread from its first comment (on a GitHub thread, its record, `thread-context.md`), the threads and PRs it links, your own earlier replies there, the thread map and the evidence. Never repeat what's settled, contradict an earlier reply silently, or miss an earlier question.
-- **Say it across the desk first:** what you found, what you think, what you'll do, what you need from them. Write that down, then read it out loud as them: what you wouldn't say to a colleague goes, replaced by what you would. A newcomer who finds it later must follow it too.
-- **A passage that can't be fixed sentence by sentence** is explained aloud to an imagined friend and replaced by what you said. Review findings are fixed the same way: their substance in your own plain words, never a reviewer's wording, never patched clause by clause.
+- **Say it across the desk first:** what you found, what you think, what you'll do, what you need from them. Write that down, then read it out loud as them: what you wouldn't say to a colleague goes, replaced by what you would.
+- **A passage that can't be fixed sentence by sentence** is explained aloud to an imagined friend and replaced by what you said.
 - **Start from the shortest answer:** the verdict, its one reason, the next step. Add a sentence only when the reader needs it to act, decide or check. How it works inside, a justification of the justification, and "which it needs anyway" stay out unless asked. Cut jargon and repeats, never an argument.
 
 ### Voice
