@@ -6,6 +6,7 @@ cd "${1:-$(dirname "$0")/..}"
 python3 docs/build-graphs.py --check
 bash tests/hooks.sh .
 bash tests/word-budget .
+python3 tests/pointers.py .
 bash tests/watcher.sh .
 python3 tests/watch-budget.py .
 python3 tests/watch-cadence.py .

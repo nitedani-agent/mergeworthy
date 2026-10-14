@@ -9,7 +9,7 @@ description: "A rule failed or the user names a failure; a 👎; editing a skill
 
 1. **A named failure** ("why didn't you…?" or "why are you not…?" about something already required, or a 👎): give one line of why, stop, re-read, and fix the instance now (the PR, the comment, the code).
    Record: the fixed artifact
-2. **Not the steward?** The steward is the one session named in `~/.mergeworthy/steward` (`<watch dir> <T3 thread id>`; you are it if that is your T3 thread or your delegator's, or `<watch dir>/session` names your session). Only the steward and its agents commit to mergeworthy. Anyone else writes the rule fix as one line in `<steward's watch dir>/inbox.md`, and stops here.
+2. **Not the steward?** The steward is the one session named in `~/.mergeworthy/steward` (`<work folder> <T3 thread id>`; you are it if that is your T3 thread or your delegator's, or `<work folder>/session` names your session). Only the steward and its agents commit to mergeworthy. Anyone else writes the rule fix as one line in `<the steward's work folder>/inbox.md`, and stops here.
    Record: the inbox line · Hook: pre-bash-guard (a commit or push to mergeworthy by any other session)
 3. **The steward: fix the rule where it bites.** Find the step (always-on row → skill → step). Grep first and change the text that already covers it, never add beside it; merge any overlap you find. Make exactly the requested operation on exactly the named text; text the user supplied verbatim stays verbatim.
    Open: §Editing · Record: the diff · Hook: pre-skill-gate (an edit to a skill or rules file waits for `rules`)

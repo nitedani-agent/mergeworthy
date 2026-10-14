@@ -7,6 +7,7 @@ The user's prompt, verbatim; `finality`'s steps say which part each agent gets. 
 - **§A, the shared node schema** is the per-function field list under PHASE A.
 - **§B** is PHASE B; **§B½** is PHASE B½; Phase C is the implementer's (`delegate/implementer.md`).
 - **§Closure** is the Owner-Safe closure paragraph at the end. *Every SETTLED decision propagated to its named surfaces*: every decision in `<work folder>/decisions/*.md` reached every place that describes it (code, tests, types, docs, PR bodies). *Owning lanes, mutations, reference captures, clean-tree scope*: the lanes that own the changed code (`code §Gates`), mutation probes (`code §Tests`), before/after screenshots, and a `git status` with only in-scope changes, each observed on the head.
+- *(`core`, The task and 1.1.9)* in PHASE C points to `code §Owner code and authority`.
 - The design doc it ends with is posted through `post` (a gist counts) unless the repo keeps design docs.
 
 ```
