@@ -609,6 +609,25 @@ check "a refresh just started with memory-prep prep: stop-lint doesn't repeat th
 rm "$MR/.memory-order-repeated"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task. Fix it."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' > "$T/tr.jsonl"
 check "a delegated sub-agent in the orchestrator's checkout never gets the order" 0 "$(stop "$OC")"
+# a T3 child as T3 starts one: its prompt opens with the brief, no introduction; T3's state links its thread to the parent's
+mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)')
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'thread:delegated-task:notes-1', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3-child"}}')""")
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p2', 'main-thread', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3-main"}}')""")
+c.execute("insert into orchestration_v2_projection_subagents values ('s1', 'main-thread', 'thread:delegated-task:notes-1')"); c.commit()
+EOF2
+python3 -c 'import json; w=lambda o: print(json.dumps(o,separators=(",",":"))); b="Goal: ~/.mergeworthy/projects/o/r.md exists: the project notes for o/r.\n\nFacts:\n- The study: /w/guide.md"
+w({"type":"queue-operation","operation":"enqueue","sessionId":"t3-child","content":b})
+w({"parentUuid":None,"attachment":{"type":"hook_success","hookName":"SessionStart:startup","content":"## Subagent models"},"type":"attachment","entrypoint":"sdk-ts"})
+w({"type":"user","promptSource":"sdk","entrypoint":"sdk-ts","message":{"role":"user","content":b}})
+w({"type":"assistant","entrypoint":"sdk-ts","message":{"content":[{"type":"text","text":"Notes written."}]}})' > "$T/tr.jsonl"
+t3stop() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$OC" "$1" \
+  | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
+check "a T3 child whose prompt doesn't introduce it (T3's state gives it a parent thread) never gets the order; a top-level thread does" "0 2" "$(t3stop t3-child) $(t3stop t3-main)"
+rm -f "$MR/.memory-order-repeated" "$HOME/.t3/userdata/statev2.sqlite"
 if [ -d "${MW_REAL_DAYS:-/nonexistent}" ]; then  # local only: the real day files are private
   python3 - "$MR/memory.md" "$MW_REAL_DAYS"/2026-10-12.md "$MW_REAL_DAYS"/2026-10-11.md <<'EOF'
 import re, sys

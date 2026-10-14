@@ -28,8 +28,10 @@ try:
     lines = open(d['transcript_path']).readlines()
 except Exception:
     sys.exit(0)
-# A T3 Code delegated child: its result is its last message, and the main session owns replies and next steps
-child = any(re.match(r'Act as the [\w-]+ sub-agent for this task', (json.loads(l).get('message') or {}).get('content') or '')
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import steward
+# A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
+child = len(steward.threads(d.get('session_id'))) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', (json.loads(l).get('message') or {}).get('content') or '')
             for l in lines[:20] if '"type":"user"' in l.replace(' ', '') and 'sub-agent for this task' in l)
 for line in lines:
     try:
@@ -180,8 +182,6 @@ if watcher_on and not paused and not child:
 # by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's
 if watcher_on and not paused and not child:
     import datetime, time
-    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-    import steward
     st = steward.read()
     for wd in sorted(own_dirs | ({st[0]} if st and steward.is_steward(d.get('session_id'), cwd_d) else set())):
         try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
