@@ -1040,6 +1040,13 @@ THREAD_REF = re.compile(r'(?<![\w/.-])([\w.-]+/[\w.-]+)#(\d+)|github\.com/([\w.-
 AGENT_CLAIMS = os.path.expanduser('~/.mergeworthy/agent-commands.seen')  # shared by every daemon: each command is emitted once
 
 
+def first_line(path):
+    try:
+        return open(path).read().strip()
+    except OSError:
+        return ''
+
+
 def live_dirs():
     return [d for d in dict.fromkeys(watch_dirs()) if live(d)]
 
@@ -1699,7 +1706,10 @@ def agent_jobs_pass():
             except OSError:
                 log = b''
             named = [os.path.expanduser(w.decode()) for w in re.findall(rb'(?<![\w.-])([~/][\w./-]*)/events\.log', log)]
-            _routed[f] = bool(mine and j.get('session') == mine) or bool(named) and max(set(named), key=named.count) == HERE
+            # A launcher another live watch dir declares as its session is that dir's alone: its transcript may name this
+            # dir's events.log more often (the steward reads the orchestrator's on every tick)
+            owner = [d for d in live_dirs() if d != HERE and j.get('session') and first_line(os.path.join(d, 'session')) == j['session']]
+            _routed[f] = bool(mine and j.get('session') == mine) or not owner and bool(named) and max(set(named), key=named.count) == HERE
         if _routed[f] and agent_jobs.claim(f, done[1]):
             k = shlex.quote(j['key'])
             emit(f"### AGENT DONE {j['key']}: read its result (task_status / its report), then agent-job done {k}")

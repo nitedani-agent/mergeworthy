@@ -663,6 +663,14 @@ check "BLOCK: stop-lint while the launching session's finished job is open, nami
 touch -d '30 minutes ago' "$JD/tool.jsonl"; python3 "$R/bin/agent-job" done "$T/jobs/quiet-ticket.md" >/dev/null
 check "a released job is never reported again; a tool call quiet past ten minutes counts as finished" "0 1" "$(done_events > "$T/ev3"; grep -c quiet-ticket "$T/ev3") $(grep -c tool-ticket "$T/ev3")"
 python3 "$R/bin/agent-job" done "$T/jobs/tool-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/busy-ticket.md" >/dev/null
+# a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
+WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
+for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
+python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"stew","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":"stew job"}}))' "Execute $T/jobs/stew-ticket.md exactly" "$T/stew-tr.jsonl" | python3 "$R/hooks/pre-agent-dedupe.py" register
+child_log "$JD/stew.jsonl" "Execute $T/jobs/stew-ticket.md exactly" 5 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "stew-ticket" in open(f).read()]'
+check "a job of another live watch dir's declared session is not reported here" 0 "$(done_events > "$T/ev4"; grep -c stew-ticket "$T/ev4")"
+python3 "$R/bin/agent-job" done "$T/jobs/stew-ticket.md" >/dev/null
 check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
 reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
