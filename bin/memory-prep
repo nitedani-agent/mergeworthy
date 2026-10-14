@@ -9,7 +9,8 @@ import datetime as dt, glob, json, os, re, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import memory_file as mf
 
-if len(sys.argv) < 3 or sys.argv[1] not in ('init', 'prep', 'digest') or (sys.argv[1] == 'init') != (len(sys.argv) == 4):
+if len(sys.argv) < 3 or sys.argv[1] not in ('init', 'prep', 'digest') or (sys.argv[1] == 'init') != (len(sys.argv) == 4) \
+        or not all(a.strip() for a in sys.argv[2:]):  # an empty folder would resolve to the cwd and register it
     sys.exit('usage: memory-prep init <work folder> <T3 thread id> | prep <work folder> | digest <work folder>')
 cmd, root = sys.argv[1], os.path.abspath(os.path.expanduser(sys.argv[2]))
 if cmd == 'init':

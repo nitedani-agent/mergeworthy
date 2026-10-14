@@ -30,6 +30,18 @@ CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-st
 check "session-start writes the options it is given" 'MERGEWORTHY_BADGE=off' "$(cat "$HOME/.mergeworthy/settings.env")"
 rm -f "$HOME/.mergeworthy/settings.env"
 check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
+# ---------- shared state under ~/.mergeworthy changes only from a real input: an empty environment leaves it as it was ----------
+EH="$T/emptyhome"; mkdir -p "$EH/.mergeworthy" "$EH/.claude/projects/$(printf '%s' "$EH/cwd" | sed 's/[^A-Za-z0-9]/-/g')" "$EH/cwd"
+printf 'MERGEWORTHY_BADGE=on\nMERGEWORTHY_WATCHER=on\n' > "$EH/.mergeworthy/settings.env"; echo /keep > "$EH/.mergeworthy/memory-roots.txt"; echo /keep > "$EH/.mergeworthy/main-watch"
+ln -s /keep "$EH/.mergeworthy/current"; snap() { (cd "$EH" && find . -path ./cwd -prune -o -print | sort; cat .mergeworthy/settings.env .mergeworthy/memory-roots.txt .mergeworthy/main-watch; readlink .mergeworthy/current) | md5sum; }
+before=$(snap)
+(cd "$EH/cwd" && env -i HOME="$EH" PATH="$PATH" bash "$R/hooks/session-start" </dev/null >/dev/null 2>&1
+ env -i HOME="$EH" PATH="$PATH" python3 "$R/bin/memory-prep" init "" "" </dev/null >/dev/null 2>&1
+ env -i HOME="$EH" PATH="$PATH" bash "$R/bin/gh-watch-start" --main "" </dev/null >/dev/null 2>&1)
+check "session-start, memory-prep and gh-watch-start with no input leave ~/.mergeworthy unchanged (settings, roots, main dir, current link, no new files)" "$before" "$(snap)"
+check "memory-prep init with an empty folder or thread is refused" 1 "$(cd "$EH/cwd" && env -i HOME="$EH" PATH="$PATH" python3 "$R/bin/memory-prep" init "" t1 </dev/null >/dev/null 2>&1; echo $?)"
+(cd "$EH/cwd" && env -i HOME="$EH" PATH="$PATH" CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-start" </dev/null >/dev/null 2>&1)
+check "session-start writes only the options it was given, keeping the rest" "MERGEWORTHY_BADGE=off MERGEWORTHY_WATCHER=on" "$(sort "$EH/.mergeworthy/settings.env" | xargs)"
 
 # ---------- stop-lint ----------
 sleep 600 & SPID=$!
