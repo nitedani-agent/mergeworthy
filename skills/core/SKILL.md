@@ -14,7 +14,6 @@ Size the work first (1.0), then apply only what that size requires.
 These defaults hold unless the user overrides them:
 - **The user** owns the goal. Code in the user's own repos is theirs, and so are beta, experimental or pre-1.0 features. That code is yours to change for the goal: decide, act, and report afterwards. Removing or rewriting an owner's code on an agent's reading alone is `converge`'s owner-code rule.
 - **External maintainers** are whoever merges in a repo you don't own (CODEOWNERS, recent mergers). Their requests are settled decisions. Changes to their code's behavior or public surface are their call (`converge`, authority).
-- **Models** follow `delegating`; reviews follow `review`. Never a model the user excluded, nor a model version in a prompt, skill or memory.
 - **Artifact root:** a persistent `<task>-work/` directory next to the worktree. It holds notes, logs, probes, agent outputs and scratch worktrees; never use `/tmp`.
 - **Publishing authority:** what the task allows you to open, comment and file. A reviewed draft isn't permission to publish.
 
@@ -54,7 +53,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - **How-to instructions** are done right away, as given. Try another way only after the given way fails, and quote the failure.
     - **User decisions stay decided.** Mark a setting or design the user decided where it lives (`# user decision YYYY-MM-DD: <what, why>`); a session that never saw the decision reads the marker, not the chat. If you find a problem with the decision, keep it and report the problem with evidence.
     - **A broken premise** (e.g. "one PR per item" when the items depend on each other): say so with a recommendation before acting.
-5. **Investigate before claiming.** Support factual claims with sources and say what you could not verify (`writing`).
+5. **Investigate before claiming.**
     - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything.
     - When you report a measurement, take it through the exact path the real work takes: the same client, API and settings the user runs, never a convenient substitute. A result from any other path is not evidence.
     - A CI workflow change works only once a real run on the branch shows it.
@@ -143,7 +142,6 @@ Run every PR through bug verification, code review and a fresh read on the final
 ## 1.2 Tracking
 
 - **Every tier:** drafts and their reviews go under `drafts/`; evidence goes under the artifact root.
-    - Record exit codes (`EXIT=$?`) and quote them, never a log tail.
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
 - **`memory.md` in the artifact root** holds what the built-in compaction summary loses: its Standing part (rulings in force, ruled out, superseded, still intended) is carried until replaced, its Recent part covers the last 24 hours. Run `memory-prep init <artifact root> <your T3 thread id>` once from your checkout when the work spans a compaction or a day (Tier L: before the first PR).
