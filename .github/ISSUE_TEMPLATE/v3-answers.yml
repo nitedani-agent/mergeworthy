@@ -1,0 +1,1474 @@
+name: v3 answers
+description: Answer the 100 v3 questions of #4, with a comment box under each.
+title: "v3 answers"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The questions of [#4](https://github.com/nitedani/mergeworthy/issues/4), one dropdown each (pick one or more, or **Other** for your own option) and a box under it for a comment or your own option. Your ticks in #4 are pre-selected. Leave a question empty to keep it open. Submitting opens a new issue with your answers.
+  - type: markdown
+    attributes:
+      value: "### Vision and goals"
+  - type: dropdown
+    id: q1
+    attributes:
+      label: "1. Which kind of bar decides that a PR is ready?"
+      multiple: true
+      options:
+        - "A: One checklist, the same for every change in every repo."
+        - "B: A list of proof per kind of change, the same in every repo: nothing for a typo, a screenshot for a change to what people see on screen, a design thread before a change to an interface other programs rely on."
+        - "C: Each repo's own bar, learned from its merged PRs and review comments, with no shared list."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c1
+    attributes:
+      label: "1. Comment, or your own option"
+  - type: dropdown
+    id: q2
+    attributes:
+      label: "2. Who is v3 built for first?"
+      multiple: true
+      options:
+        - "A: The orchestrator: every part aims at making its work easier."
+        - "B: The maintainer who reviews the PR: their reaction is the test of every part."
+        - "C: The steward: the orchestrator only ever sees the action in front of it, so the rules can grow without the orchestrator carrying them."
+        - "Other: my own option (write it in the box below)"
+      default: 1
+  - type: textarea
+    id: c2
+    attributes:
+      label: "2. Comment, or your own option"
+  - type: dropdown
+    id: q3
+    attributes:
+      label: "3. What does \"it always knows everything\" turn into?"
+      multiple: true
+      options:
+        - "A: Recall: every fact about the repo and the thread is kept and loaded."
+        - "B: Lookup: each fact has one known place and one command that finds it."
+        - "C: Neither: it keeps only what the current job needs, and before each job writes down what it doesn't know, so the reader sees the gap."
+        - "Other: my own option (write it in the box below)"
+      default: 1
+  - type: textarea
+    id: c3
+    attributes:
+      label: "3. Comment, or your own option"
+  - type: dropdown
+    id: q4
+    attributes:
+      label: "4. What does \"a perfect developer\" mean in a way we can measure?"
+      multiple: true
+      options:
+        - "A: It never repeats a mistake it was told about, and each lesson has a record."
+        - "B: Its mistakes are cheap: PRs small enough that one revert undoes any of them."
+        - "C: A maintainer never needs a second round on anything the agent could have checked itself."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c4
+    attributes:
+      label: "4. Comment, or your own option"
+      value: "Ticked in #4: A, C"
+  - type: dropdown
+    id: q5
+    attributes:
+      label: "5. If only one rule could be guarded by a test rather than by good intent, which one?"
+      multiple: true
+      options:
+        - "A: Nothing reaches GitHub without passing the posting check."
+        - "B: Nothing the orchestrator can write itself counts as evidence: verdicts, ratings and reactions come from a process it can't touch."
+        - "C: The orchestrator's always-loaded text stays under a word cap."
+        - "Other: my own option (write it in the box below)"
+      default: 0
+  - type: textarea
+    id: c5
+    attributes:
+      label: "5. Comment, or your own option"
+  - type: dropdown
+    id: q6
+    attributes:
+      label: "6. What is the first milestone that proves v3 works?"
+      multiple: true
+      options:
+        - "A: The replay gives the same or better outcomes than v1 on comments v3 was never tuned on."
+        - "B: One real PR merged, with no change request, in a repo v3 never worked in."
+        - "C: Ten PRs in a row where no maintainer changed a line the agent could have checked itself."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c6
+    attributes:
+      label: "6. Comment, or your own option"
+      value: "Ticked in #4: A, B, C"
+  - type: dropdown
+    id: q7
+    attributes:
+      label: "7. How does v3 spend your attention?"
+      multiple: true
+      options:
+        - "A: It asks about each fork it can't decide as soon as it hits it, with options."
+        - "B: It saves its questions for one daily digest of everything that moved."
+        - "C: It asks only when a wrong guess would cost more than your time, and each question says what the guess would have cost."
+        - "Other: my own option (write it in the box below)"
+      default: 2
+  - type: textarea
+    id: c7
+    attributes:
+      label: "7. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Measuring success"
+  - type: dropdown
+    id: q8
+    attributes:
+      label: "8. Which one number tells us v3 is getting better?"
+      multiple: true
+      options:
+        - "A: Merged PRs per week."
+        - "B: The share of merged PRs where no maintainer asked for something the agent could have checked itself."
+        - "C: How often you or a maintainer give the same correction twice, across sessions."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c8
+    attributes:
+      label: "8. Comment, or your own option"
+      value: "Ticked in #4: B, C"
+  - type: dropdown
+    id: q9
+    attributes:
+      label: "9. What do the numbers compare against?"
+      multiple: true
+      options:
+        - "A: Fixed targets, such as 90% merged with no change request."
+        - "B: v1, through the replay."
+        - "C: The same repo's own history before and after each change, never one repo against another."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c9
+    attributes:
+      label: "9. Comment, or your own option"
+  - type: dropdown
+    id: q10
+    attributes:
+      label: "10. How does a PR closed without merging count?"
+      description: "Why it matters: about 69% of rejected agent PRs get no stated reason."
+      multiple: true
+      options:
+        - "A: As a failure, with the reason written down."
+        - "B: Split by reason: a maintainer choosing another direction doesn't count against v3, a quality reason does."
+        - "C: As unknown until we ask the maintainer one question about what would have made it mergeable."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c10
+    attributes:
+      label: "10. Comment, or your own option"
+      value: "Ticked in #4: A, B"
+  - type: dropdown
+    id: q11
+    attributes:
+      label: "11. How long after a merge can the verdict on a PR still change?"
+      multiple: true
+      options:
+        - "A: Never: the verdict is set at merge time."
+        - "B: For 7 days, then it's final."
+        - "C: For 14 days, and after that a revert, a reopened issue or a follow-up bug still changes it."
+        - "Other: my own option (write it in the box below)"
+      default: 1
+  - type: textarea
+    id: c11
+    attributes:
+      label: "11. Comment, or your own option"
+  - type: dropdown
+    id: q12
+    attributes:
+      label: "12. Which maintainer signal weighs most?"
+      multiple: true
+      options:
+        - "A: Reactions (\ud83d\udc4d, \ud83d\udc4e) on our replies."
+        - "B: Questions back, because a question means the reply didn't answer."
+        - "C: Silence: a reply left unanswered for seven days counts as a weak miss."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c12
+    attributes:
+      label: "12. Comment, or your own option"
+  - type: dropdown
+    id: q13
+    attributes:
+      label: "13. What is the main measure of speed?"
+      multiple: true
+      options:
+        - "A: Time from a maintainer's comment to our first reply."
+        - "B: Time from draft PR to merge."
+        - "C: Maintainer rounds per merged PR, since each round costs the maintainer the most."
+        - "Other: my own option (write it in the box below)"
+      default: 2
+  - type: textarea
+    id: c13
+    attributes:
+      label: "13. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Architecture and implementation"
+  - type: dropdown
+    id: q14
+    attributes:
+      label: "14. What does the orchestrator work with every day?"
+      description: "Why it matters: this is the main fork of v3; the prototype built A."
+      multiple: true
+      options:
+        - "A: The planner (`take`, `next`, `done`) plus one short always-loaded skill of about 900 words."
+        - "B: One book of about 3,600 words with every rule, plus four commands to record steps: smaller to build, but the agent must remember each step."
+        - "C: The planner, and nothing always-loaded beyond one line that points at `mw next`."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c14
+    attributes:
+      label: "14. Comment, or your own option"
+  - type: dropdown
+    id: q15
+    attributes:
+      label: "15. Who reads what a maintainer's comment asks for?"
+      multiple: true
+      options:
+        - "A: The orchestrator, for every comment (seconds of its time); code handles only the obvious cases, such as a bare commit hash or a bot confirming."
+        - "B: Rules in code that sort comments by their wording, tuned on past comments. In the prototype they matched v1's action for 92 of 161 comments they weren't tuned on; 14 differed, 35 were left unsure, and 20 needed work no rule covers or were unclear."
+        - "C: A cheaper model reads each comment first, and the orchestrator checks only the ones it's unsure about."
+        - "Other: my own option (write it in the box below)"
+      default: 2
+  - type: textarea
+    id: c15
+    attributes:
+      label: "15. Comment, or your own option"
+  - type: dropdown
+    id: q16
+    attributes:
+      label: "16. What makes a step due?"
+      multiple: true
+      options:
+        - "A: Only the orchestrator asking: the planner hands the step out on `mw next`."
+        - "B: A hook blocks the next tool call while a required step has no record, as in v1."
+        - "C: Events push it: a subagent finishing, a CI result (the repo's automatic test run) or a new comment puts the next action in front of the orchestrator without it asking."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c16
+    attributes:
+      label: "16. Comment, or your own option"
+  - type: dropdown
+    id: q17
+    attributes:
+      label: "17. Who writes the record that a step is done?"
+      multiple: true
+      options:
+        - "A: The orchestrator runs `mw done` with the result, and the planner checks the result before it counts."
+        - "B: Hooks write it from the tool call itself."
+        - "C: The subagent writes it with a hash of its output, and the planner checks the hash later."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c17
+    attributes:
+      label: "17. Comment, or your own option"
+  - type: dropdown
+    id: q18
+    attributes:
+      label: "18. Where does the state live?"
+      multiple: true
+      options:
+        - "A: The ledger, one append-only file per working folder, which every check reads."
+        - "B: GitHub is the truth, and the local files are a cache that can be rebuilt from it."
+        - "C: A notes file per work item, as in v1, with the ledger only for owed replies."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c18
+    attributes:
+      label: "18. Comment, or your own option"
+  - type: dropdown
+    id: q19
+    attributes:
+      label: "19. Which one language runs the scripts and hooks?"
+      description: "Why it matters: Node starts in 19 ms and Python in 63 ms, and v1 runs three Python hooks on every shell command."
+      multiple: true
+      options:
+        - "A: Node, with each hook a separate short-lived program; the Python scripts are ported and deleted."
+        - "B: Python, with v1's Node parts (about 660 lines, against about 4,100 lines of Python) ported instead."
+        - "C: Node, with one long-running program that answers every hook over a local socket (a connection between two programs on the same machine), and each hook a tiny client that forwards to it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c19
+    attributes:
+      label: "19. Comment, or your own option"
+  - type: dropdown
+    id: q20
+    attributes:
+      label: "20. What is a PR step's record tied to, so it goes stale exactly when the change does?"
+      multiple: true
+      options:
+        - "A: The patch-id (a hash of the diff's content, which a rebase that changes no lines keeps), as v2 does."
+        - "B: The commit hash: exact, but every rebase redoes every step."
+        - "C: A hash of only the files that step looked at, so a change elsewhere doesn't redo it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c20
+    attributes:
+      label: "20. Comment, or your own option"
+  - type: dropdown
+    id: q21
+    attributes:
+      label: "21. What does a hook say when it blocks an action?"
+      multiple: true
+      options:
+        - "A: The rule's ID and what to do."
+        - "B: One `mw why` command to run, which explains the block and the fix."
+        - "C: A short block message, and the fix arrives as an action in `mw next`, so it shows up as work."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c21
+    attributes:
+      label: "21. Comment, or your own option"
+  - type: dropdown
+    id: q22
+    attributes:
+      label: "22. What happens to work no procedure covers (hunting a styling bug, a gist, a review someone asked for)?"
+      description: "Why it matters: it was 14% of the comments in the prototype's replay. A gist is a shareable snippet page on GitHub."
+      multiple: true
+      options:
+        - "A: Every time, `mw take \"text\"` gives it a generic plan, and `mw done --did \"<what>\"` records it so the reply still closes with a link."
+        - "B: Every time, the orchestrator works freely outside the planner, and only the GitHub checks apply."
+        - "C: The first time, a generic plan as in A; when the same kind of work shows up a second time, it gets its own procedure in the planner."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c22
+    attributes:
+      label: "22. Comment, or your own option"
+  - type: dropdown
+    id: q23
+    attributes:
+      label: "23. What mainly keeps two rules from contradicting each other?"
+      multiple: true
+      options:
+        - "A: A test over all lines and hook messages before each release."
+        - "B: Each action names its line IDs, and the planner refuses to hand out an action whose lines disagree."
+        - "C: A model reads all the rules before each release (like Claude Code's `/doctor prompt-audit`, which checks instruction files for conflicts and broken references), and its findings go to the steward."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c23
+    attributes:
+      label: "23. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Memory and compaction"
+  - type: dropdown
+    id: q24
+    attributes:
+      label: "24. How does memory reach the orchestrator?"
+      multiple: true
+      options:
+        - "A: Only with each action: `mw next` attaches the item's failures, ruled-out options and rulings, at most 300 words."
+        - "B: Only as one digest at session start and after each compaction, at most 9,000 characters."
+        - "C: With each action, plus a hook that shows a lesson the moment the orchestrator is about to repeat the failure behind it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c24
+    attributes:
+      label: "24. Comment, or your own option"
+  - type: dropdown
+    id: q25
+    attributes:
+      label: "25. What happens to Claude Code's summary at compaction?"
+      multiple: true
+      options:
+        - "A: It is checked against the ledger, and anything it dropped is put back as an open item."
+        - "B: It is kept for the steward to audit, and the session works from the ledger."
+        - "C: It is never read: every step writes its record before the next one starts, so the summary adds nothing."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c25
+    attributes:
+      label: "25. Comment, or your own option"
+  - type: dropdown
+    id: q26
+    attributes:
+      label: "26. Claude Code's own memory (notes the model writes about you and the project)?"
+      multiple: true
+      options:
+        - "A: Off in v3 sessions; the ledger is the only memory."
+        - "B: On, with the steward reading it as one more input."
+        - "C: On, as it is now."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c26
+    attributes:
+      label: "26. Comment, or your own option"
+  - type: dropdown
+    id: q27
+    attributes:
+      label: "27. Must each lesson cite where it came from?"
+      description: "Why it matters: the memories of GitHub Copilot (GitHub's coding agent) cite code and are re-checked before use; PRs merged 90% of the time with them, 83% without."
+      multiple: true
+      options:
+        - "A: Yes, a link, a commit or a ledger ID, checked when the lesson is delivered, and flagged when what it cites has changed."
+        - "B: Yes, but nothing checks it."
+        - "C: No; the wording of the lesson is enough."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c27
+    attributes:
+      label: "27. Comment, or your own option"
+  - type: dropdown
+    id: q28
+    attributes:
+      label: "28. Do lessons expire?"
+      multiple: true
+      options:
+        - "A: A lesson about one work item expires 28 days after it was last used; your rulings never expire."
+        - "B: Nothing expires; the steward prunes by hand."
+        - "C: A fixed number of lessons is kept, and the oldest goes out first."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c28
+    attributes:
+      label: "28. Comment, or your own option"
+  - type: dropdown
+    id: q29
+    attributes:
+      label: "29. What shape does a lesson take?"
+      multiple: true
+      options:
+        - "A: Symptom, cause, fix, how the fix was checked, and when to stop trying (the shape OpenAI's Codex agent uses)."
+        - "B: One sentence, like today's rulings in memory.md."
+        - "C: The exact words of the person who taught it, quoted, with no paraphrase."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c29
+    attributes:
+      label: "29. Comment, or your own option"
+  - type: dropdown
+    id: q30
+    attributes:
+      label: "30. When is memory merged and pruned?"
+      multiple: true
+      options:
+        - "A: In the background while the session is idle, given only what changed in the ledger since the last time."
+        - "B: At each compaction."
+        - "C: On the steward's schedule, from the session logs, as v1's memory refresh does."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c30
+    attributes:
+      label: "30. Comment, or your own option"
+  - type: dropdown
+    id: q31
+    attributes:
+      label: "31. When memory is over its size limit, what goes first?"
+      multiple: true
+      options:
+        - "A: The least used, then the oldest."
+        - "B: Whatever the steward has marked low priority."
+        - "C: The oldest."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c31
+    attributes:
+      label: "31. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Skill lines"
+  - type: dropdown
+    id: q32
+    attributes:
+      label: "32. Where may a proposed skill line come from?"
+      multiple: true
+      options:
+        - "A: Only from our own evidence: a failure seen in our sessions or a maintainer's correction."
+        - "B: Our own evidence, plus lines from popular human-written rule files (obra/superpowers, the uv project's AGENTS.md, Sentry's skills), when the line matches a failure we saw."
+        - "C: Our own evidence, plus patterns the steward finds across many sessions that no single failure shows, each backed by a with-and-without run; no lines from outside rule files."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c32
+    attributes:
+      label: "32. Comment, or your own option"
+      value: "Ticked in #4: A, B, C"
+  - type: dropdown
+    id: q33
+    attributes:
+      label: "33. Where do v3's first lines come from?"
+      description: "Why it matters: v1 has about 35,000 words of rules; picking from them may take several sittings."
+      multiple: true
+      options:
+        - "A: v1's lines that have evidence, proposed in batches by procedure; lines without evidence aren't proposed."
+        - "B: Nothing at first; a line is proposed only after a test shows the model gets that step wrong."
+        - "C: v1's lines that have evidence, proposed one at a time when the planner first reaches the step that needs them, so you pick each in context."
+        - "Other: my own option (write it in the box below)"
+      default: 0
+  - type: textarea
+    id: c33
+    attributes:
+      label: "33. Comment, or your own option"
+  - type: dropdown
+    id: q34
+    attributes:
+      label: "34. Who writes a line's words?"
+      multiple: true
+      options:
+        - "A: A model drafts two or three wordings, and you pick or edit one."
+        - "B: You write each line yourself."
+        - "C: A model drafts one wording, and you approve it or not."
+        - "Other: my own option (write it in the box below)"
+      default: 0
+  - type: textarea
+    id: c34
+    attributes:
+      label: "34. Comment, or your own option"
+  - type: dropdown
+    id: q35
+    attributes:
+      label: "35. What must a line show before it goes in?"
+      multiple: true
+      options:
+        - "A: A failure seen in a real session, plus a with-and-without run that shows the line changes the behavior."
+        - "B: The failure seen in a real session alone."
+        - "C: A maintainer's correction alone."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c35
+    attributes:
+      label: "35. Comment, or your own option"
+      value: "Ticked in #4: B, C"
+  - type: dropdown
+    id: q36
+    attributes:
+      label: "36. How do we decide that \"the model does this anyway\"?"
+      multiple: true
+      options:
+        - "A: At least 5 runs without the line, in 2 wordings; if the behavior shows in 4 of 5, the line is proposed to you for removal, and its test stays."
+        - "B: One run without the line."
+        - "C: Ask a fresh model whether it would do it anyway."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c36
+    attributes:
+      label: "36. Comment, or your own option"
+  - type: dropdown
+    id: q37
+    attributes:
+      label: "37. What form does a line take?"
+      multiple: true
+      options:
+        - "A: It depends on the failure: for a step skipped under pressure, a ban plus the excuses we actually saw, each answered; for output with the wrong shape, a recipe of its parts in order; for a missing part, a required slot in the template."
+        - "B: Always the rule plus its reason (the style of Anthropic's skill-creator)."
+        - "C: Always a hard MUST (the style of the superpowers collection)."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c37
+    attributes:
+      label: "37. Comment, or your own option"
+      value: "Ticked in #4: A, B, C"
+  - type: dropdown
+    id: q38
+    attributes:
+      label: "38. What limits how much loads at one step?"
+      multiple: true
+      options:
+        - "A: A count: at most 2 or 3 focused skills or brief parts, chosen by the planner."
+        - "B: A word budget per step, which a test counts."
+        - "C: Nothing; removal tests decide what stays."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c38
+    attributes:
+      label: "38. Comment, or your own option"
+  - type: dropdown
+    id: q39
+    attributes:
+      label: "39. Steps that loop (\"for each PR\", \"repeat until it's clean\")?"
+      multiple: true
+      options:
+        - "A: Run by `mw` code; the skill only names the command."
+        - "B: Written as prose; the agent writes a record of each pass itself, and nothing checks it."
+        - "C: Written as prose, with a hook that records each pass and blocks the next step until the pass is recorded."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c39
+    attributes:
+      label: "39. Comment, or your own option"
+  - type: dropdown
+    id: q40
+    attributes:
+      label: "40. Vivid words in rules (\"relentless\", \"your human partner\")?"
+      multiple: true
+      options:
+        - "A: Plain words only."
+        - "B: Plain words by default, and two or three strong words tested with and without."
+        - "C: A fixed vocabulary of strong words, protected the way the superpowers collection protects its own."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c40
+    attributes:
+      label: "40. Comment, or your own option"
+  - type: dropdown
+    id: q41
+    attributes:
+      label: "41. Where do rejected ideas live?"
+      multiple: true
+      options:
+        - "A: One file per rejected idea, listing every time someone asked for it (Matt Pocock's `.out-of-scope/` folder)."
+        - "B: In memory.md's \"ruled out\" section."
+        - "C: In commit messages only."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c41
+    attributes:
+      label: "41. Comment, or your own option"
+  - type: dropdown
+    id: q42
+    attributes:
+      label: "42. What happens when a new model version comes out?"
+      description: "Why it matters: behavior nobody asked for in writing breaks twice as often when the model changes."
+      multiple: true
+      options:
+        - "A: The whole test suite runs again, including the tests of lines dropped because the old model did it anyway."
+        - "B: Tests run again only after a failure shows up."
+        - "C: Nothing runs again."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c42
+    attributes:
+      label: "42. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Self learning"
+  - type: dropdown
+    id: q43
+    attributes:
+      label: "43. What starts the learning?"
+      multiple: true
+      options:
+        - "A: A verdict on every finished item, then a lesson if there is one."
+        - "B: Only failures and maintainer corrections."
+        - "C: Only a failure you point out."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c43
+    attributes:
+      label: "43. Comment, or your own option"
+  - type: dropdown
+    id: q44
+    attributes:
+      label: "44. How fast does one maintainer's correction change what the agent does?"
+      multiple: true
+      options:
+        - "A: Right away, as a line in that repo's notes file, used from the next brief on."
+        - "B: Only after you pick it."
+        - "C: Right away in that thread only, and everywhere after a second, independent event confirms it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c44
+    attributes:
+      label: "44. Comment, or your own option"
+  - type: dropdown
+    id: q45
+    attributes:
+      label: "45. How many events before a lesson becomes a proposed skill line?"
+      multiple: true
+      options:
+        - "A: One clear correction."
+        - "B: Two independent events in different PRs."
+        - "C: Five events, or one failure that cost a merge, whichever comes first."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c45
+    attributes:
+      label: "45. Comment, or your own option"
+  - type: dropdown
+    id: q46
+    attributes:
+      label: "46. Lines the model draws from its own runs that went well?"
+      description: "Why it matters: [Agent Workflow Memory](https://arxiv.org/html/2409.07429v1) reported relative gains of 24.6% in step success on Mind2Web and 51.1% in task success on WebArena (two web-browsing benchmarks) from reusable routines; in its online version the routines came only from the agent's own runs that a model judged successful. Requiring a merge or a maintainer's approval instead is our inference, not something it tested."
+      multiple: true
+      options:
+        - "A: Allowed as candidates when an outside check confirmed the success (a merge, a maintainer's approval), and you pick them."
+        - "B: Never."
+        - "C: Allowed only as lines in a repo's notes file, never as skill lines."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c46
+    attributes:
+      label: "46. Comment, or your own option"
+  - type: dropdown
+    id: q47
+    attributes:
+      label: "47. What happens to a lesson that turned out wrong?"
+      multiple: true
+      options:
+        - "A: It is deleted."
+        - "B: It is marked replaced, with a link to the lesson that replaced it."
+        - "C: It goes to a \"returned\" list with its reason, and can't come back without new evidence."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c47
+    attributes:
+      label: "47. Comment, or your own option"
+  - type: dropdown
+    id: q48
+    attributes:
+      label: "48. How does old evidence fade?"
+      multiple: true
+      options:
+        - "A: It doesn't; a lesson stays until you cut it."
+        - "B: It loses half its weight every 90 days unless a later event confirms it."
+        - "C: Only when a newer event contradicts it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c48
+    attributes:
+      label: "48. Comment, or your own option"
+  - type: dropdown
+    id: q49
+    attributes:
+      label: "49. Can learning lead to removing a check?"
+      multiple: true
+      options:
+        - "A: Never: checks are only added."
+        - "B: The steward proposes removing a check, with a replay showing it changed nothing, and you pick."
+        - "C: The steward proposes running a check that caught nothing in 30 days on 1 PR in 10 instead of every PR, and you pick; it goes back to every PR when it catches something."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c49
+    attributes:
+      label: "49. Comment, or your own option"
+  - type: dropdown
+    id: q50
+    attributes:
+      label: "50. Besides a failure traced to a line, what is the one other thing that makes the steward propose cutting it?"
+      description: "Every cut comes to you as a proposal, with its evidence."
+      multiple: true
+      options:
+        - "A: Nothing else."
+        - "B: No step has used the line in 30 days."
+        - "C: A with-and-without run after a new model release shows the line no longer changes anything."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c50
+    attributes:
+      label: "50. Comment, or your own option"
+  - type: dropdown
+    id: q51
+    attributes:
+      label: "51. What do you say you want, against what you pick?"
+      description: "Why it matters: in a 60-person study, what people said they liked predicted their picks poorly; their picks predicted them well."
+      multiple: true
+      options:
+        - "A: A stated wish becomes a candidate line, kept only if it predicts your picks."
+        - "B: A stated wish becomes a line at once."
+        - "C: Stated wishes and picks count the same."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c51
+    attributes:
+      label: "51. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Writing and talking with maintainers"
+  - type: dropdown
+    id: q52
+    attributes:
+      label: "52. What does an A/B pair compare?"
+      multiple: true
+      options:
+        - "A: Two drafts that differ in one writing rule, so each pick tests one rule."
+        - "B: Two drafts written freely."
+        - "C: A model's draft against a real human reply a maintainer praised."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c52
+    attributes:
+      label: "52. Comment, or your own option"
+  - type: dropdown
+    id: q53
+    attributes:
+      label: "53. Where do A/B pairs come from?"
+      multiple: true
+      options:
+        - "A: Live, only when no maintainer is waiting, plus replays of past threads."
+        - "B: Replays of past threads only."
+        - "C: Live, as a shadow pair: one draft is posted, and you pick between it and the unposted one later, next to the maintainer's reaction."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c53
+    attributes:
+      label: "53. Comment, or your own option"
+  - type: dropdown
+    id: q54
+    attributes:
+      label: "54. When is a writing rule settled?"
+      multiple: true
+      options:
+        - "A: When it predicts at least 70% of 20 or more of your picks it wasn't built from."
+        - "B: After 3 picks that agree."
+        - "C: Once you approve its wording."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c54
+    attributes:
+      label: "54. Comment, or your own option"
+  - type: dropdown
+    id: q55
+    attributes:
+      label: "55. Who judges drafts between your picks?"
+      description: "Why it matters: models prefer text that reads like their own."
+      multiple: true
+      options:
+        - "A: Only you, until a model judge agrees with 80% of your held-back picks; then that judge, with you checking a sample."
+        - "B: Always only you."
+        - "C: A model judge from the start."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c55
+    attributes:
+      label: "55. Comment, or your own option"
+  - type: dropdown
+    id: q56
+    attributes:
+      label: "56. How do we stop the picks from rewarding replies that only agree?"
+      multiple: true
+      options:
+        - "A: Include pairs where the better reply disagrees with the reader, and count maintainer reactions next to your picks."
+        - "B: No guard."
+        - "C: Maintainer reactions decide, and your picks break ties."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c56
+    attributes:
+      label: "56. Comment, or your own option"
+  - type: dropdown
+    id: q57
+    attributes:
+      label: "57. Your sense of a good reply changes after you've seen many drafts. Then?"
+      multiple: true
+      options:
+        - "A: When a new rule appears, a sample of your old picks is graded again under it."
+        - "B: Old picks stay as they were."
+        - "C: The tuning starts over."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c57
+    attributes:
+      label: "57. Comment, or your own option"
+  - type: dropdown
+    id: q58
+    attributes:
+      label: "58. What does a holding reply look like?"
+      multiple: true
+      options:
+        - "A: A short text with a time for the real answer, within 15 minutes."
+        - "B: Only a \ud83d\udc40 reaction."
+        - "C: Nothing until there's a real answer, and your digest shows the thread as held, with the reason."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c58
+    attributes:
+      label: "58. Comment, or your own option"
+  - type: dropdown
+    id: q59
+    attributes:
+      label: "59. When a maintainer is wrong about the code?"
+      multiple: true
+      options:
+        - "A: Say so directly, with a link to the line that shows it."
+        - "B: Agree with the part they got right, then ask one question that leads them to the rest."
+        - "C: Push a failing test that shows it, and link it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c59
+    attributes:
+      label: "59. Comment, or your own option"
+  - type: dropdown
+    id: q60
+    attributes:
+      label: "60. When a request is unclear?"
+      multiple: true
+      options:
+        - "A: Ask before changing anything."
+        - "B: Act on the likeliest reading, say so in the first line, and name the other reading."
+        - "C: Build it on a separate branch, post the result, and let them choose by merging or closing."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c60
+    attributes:
+      label: "60. Comment, or your own option"
+  - type: dropdown
+    id: q61
+    attributes:
+      label: "61. What opens a PR body (the PR's description)?"
+      multiple: true
+      options:
+        - "A: What was wrong, in a user's words, as what happened against what should have."
+        - "B: What the maintainer must decide."
+        - "C: What the PR changes, as the code a user writes after it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c61
+    attributes:
+      label: "61. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Self healing"
+  - type: dropdown
+    id: q62
+    attributes:
+      label: "62. Which alarm do we build first for a mechanism that silently stopped working?"
+      multiple: true
+      options:
+        - "A: Each mechanism writes a heartbeat, and a stale one raises an alarm."
+        - "B: A test event goes through the real path every 30 minutes, and its result must appear in the ledger."
+        - "C: The steward compares the orchestrator's transcript with the ledger: an action with no record is the alarm."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c62
+    attributes:
+      label: "62. Comment, or your own option"
+  - type: dropdown
+    id: q63
+    attributes:
+      label: "63. When the watcher dies, what brings it back?"
+      multiple: true
+      options:
+        - "A: The operating system's service manager restarts it."
+        - "B: Any hook that runs checks the watcher's heartbeat and restarts it."
+        - "C: Nothing restarts it; while it's down, each session polls GitHub itself."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c63
+    attributes:
+      label: "63. Comment, or your own option"
+  - type: dropdown
+    id: q64
+    attributes:
+      label: "64. When a hook crashes, what happens to the action it guards?"
+      multiple: true
+      options:
+        - "A: Blocked until the hook works again."
+        - "B: Allowed, and the crash is recorded for the steward."
+        - "C: Reads allowed, writes blocked, and the steward is shown the time window the hook was down."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c64
+    attributes:
+      label: "64. Comment, or your own option"
+  - type: dropdown
+    id: q65
+    attributes:
+      label: "65. A subagent stops making progress. Then?"
+      multiple: true
+      options:
+        - "A: A time limit per job; past it, the job is stopped and handed to a new agent."
+        - "B: No file change or record for N minutes gets one nudge, then a stop."
+        - "C: It is asked one status question, and stopped only if it can't answer."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c65
+    attributes:
+      label: "65. Comment, or your own option"
+  - type: dropdown
+    id: q66
+    attributes:
+      label: "66. How is a stopped agent's work picked up?"
+      multiple: true
+      options:
+        - "A: From the start, with the same brief and the commit it started from."
+        - "B: By resuming the same session, when it still exists."
+        - "C: A new agent gets the record of what's done and what failed, and checks each done item before going on."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c66
+    attributes:
+      label: "66. Comment, or your own option"
+  - type: dropdown
+    id: q67
+    attributes:
+      label: "67. The usage limit is reached. Then?"
+      multiple: true
+      options:
+        - "A: Everything pauses and resumes at the reset."
+        - "B: New work moves to a cheaper model until the reset."
+        - "C: The watcher keeps running, each waiting maintainer gets a holding reply, and the answers queue up for after the reset."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c67
+    attributes:
+      label: "67. Comment, or your own option"
+  - type: dropdown
+    id: q68
+    attributes:
+      label: "68. Who repairs a mechanism that failed?"
+      multiple: true
+      options:
+        - "A: The steward repairs it in place, with no rollback, and the orchestrator gets one line saying what changed."
+        - "B: The system rolls back to the last good release at once, and the steward writes the fix later."
+        - "C: The system rolls back at once, a model writes a patch from the failure log and runs it against the replay, and the steward reviews only patches that pass."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c68
+    attributes:
+      label: "68. Comment, or your own option"
+  - type: dropdown
+    id: q69
+    attributes:
+      label: "69. How do we avoid \"done\" records nobody checked?"
+      multiple: true
+      options:
+        - "A: A done record needs a result from the job that did the work (a green run, a posted link), and nothing checks it later."
+        - "B: The same, plus one done record in ten checked again every day by a cheap job."
+        - "C: No result needed up front; a done item turns \"unchecked\" after 7 days unless a later event confirms it."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c69
+    attributes:
+      label: "69. Comment, or your own option"
+  - type: dropdown
+    id: q70
+    attributes:
+      label: "70. A check that looked at nothing?"
+      description: "Why it matters: Trail of Bits, a security firm, found checks in its public skills that inspected zero items and stayed green for months."
+      multiple: true
+      options:
+        - "A: Every check fails when it inspects zero items, and has a test proving it catches what it's for."
+        - "B: Only the posting and PR checks do."
+        - "C: No such rule."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c70
+    attributes:
+      label: "70. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Cost efficiency"
+  - type: dropdown
+    id: q71
+    attributes:
+      label: "71. How is a step's effort level (how long the model thinks) chosen?"
+      multiple: true
+      options:
+        - "A: By role, as now: writers at high, judges at medium."
+        - "B: By what a miss costs: a missed security problem costs more than a misjudged PR size."
+        - "C: Per PR, from the diff: a small, clean diff gets a lower-effort reviewer, and the measured miss rate tunes the rule."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c71
+    attributes:
+      label: "71. Comment, or your own option"
+  - type: dropdown
+    id: q72
+    attributes:
+      label: "72. Which model writes reply drafts?"
+      multiple: true
+      options:
+        - "A: Opus, every draft."
+        - "B: One Haiku draft per reply, and Opus judges it before it posts."
+        - "C: Three Haiku drafts of every design reply, and Opus picks one; a plain reply gets one Haiku draft and an Opus check."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c72
+    attributes:
+      label: "72. Comment, or your own option"
+  - type: dropdown
+    id: q73
+    attributes:
+      label: "73. How many review passes does a PR get?"
+      multiple: true
+      options:
+        - "A: A fixed set, as now: a bug check, then a quality check."
+        - "B: Passes repeat until one finds nothing, at most three."
+        - "C: By risk: one pass for a small PR, up to four for a large one, with each skipped pass shown with its reason."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c73
+    attributes:
+      label: "73. Comment, or your own option"
+  - type: dropdown
+    id: q74
+    attributes:
+      label: "74. Which cache do we build first?"
+      multiple: true
+      options:
+        - "A: The rule text, kept byte-identical between sessions so the model provider reuses the cached start of the prompt (the text sent to the model)."
+        - "B: Review verdicts, keyed by the diff's hash, so the same diff is never reviewed twice."
+        - "C: Repo studies, keyed by the repo's commit, redone only after the repo has moved on."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c74
+    attributes:
+      label: "74. Comment, or your own option"
+  - type: dropdown
+    id: q75
+    attributes:
+      label: "75. What is the main cost measure?"
+      multiple: true
+      options:
+        - "A: Model tokens per merged PR."
+        - "B: Hours of agent time per merged PR."
+        - "C: Rounds a maintainer spent per merged PR, with tokens only as a tiebreak."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c75
+    attributes:
+      label: "75. Comment, or your own option"
+  - type: dropdown
+    id: q76
+    attributes:
+      label: "76. What limits spending on one PR?"
+      multiple: true
+      options:
+        - "A: Nothing; the steward looks at spending afterwards."
+        - "B: A limit you set per repo; the PR pauses there and asks you."
+        - "C: Twice the median of past merged PRs in that repo; going over asks you."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c76
+    attributes:
+      label: "76. Comment, or your own option"
+  - type: dropdown
+    id: q77
+    attributes:
+      label: "77. How many subagents does a PR use?"
+      multiple: true
+      options:
+        - "A: One per role: bug check, quality, and a reader who saw none of the work."
+        - "B: One per group of changed lines, in parallel."
+        - "C: One reviewer with every role's instructions in a single pass, and a second pass by a new session only for a large diff."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c77
+    attributes:
+      label: "77. Comment, or your own option"
+  - type: dropdown
+    id: q78
+    attributes:
+      label: "78. How often are threads checked?"
+      multiple: true
+      options:
+        - "A: Every 60 seconds per thread, as now."
+        - "B: One shared watcher with a 5-minute floor, sending each signed-in request with the tag from GitHub's last answer, so an unchanged thread gets a \"not modified\" answer that GitHub doesn't count against the main hourly request limit."
+        - "C: GitHub webhooks (GitHub calls us when something changes) where we can get them, and a 30-minute poll as the fallback."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c78
+    attributes:
+      label: "78. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Multi-repo usage"
+  - type: dropdown
+    id: q79
+    attributes:
+      label: "79. How does a lesson from one repo reach another?"
+      multiple: true
+      options:
+        - "A: It stays in its repo until a second repo shows the same lesson with its own evidence; then it applies to both."
+        - "B: The steward sends it to every repo with the same stack (the same languages and frameworks)."
+        - "C: It doesn't; each repo learns on its own."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c79
+    attributes:
+      label: "79. Comment, or your own option"
+  - type: dropdown
+    id: q80
+    attributes:
+      label: "80. Who may change a repo's notes file?"
+      multiple: true
+      options:
+        - "A: Only the steward."
+        - "B: The orchestrator working in that repo, with the steward reviewing afterwards."
+        - "C: Only a fresh repo study; hand edits go into a separate file the study reads."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c80
+    attributes:
+      label: "80. Comment, or your own option"
+  - type: dropdown
+    id: q81
+    attributes:
+      label: "81. How is the GitHub API quota (the number of requests GitHub allows per hour) shared between sessions?"
+      multiple: true
+      options:
+        - "A: A fixed share per session."
+        - "B: First come, first served, through one queue."
+        - "C: Only the steward reads GitHub, in one batched query, and hands each session its own events."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c81
+    attributes:
+      label: "81. Comment, or your own option"
+  - type: dropdown
+    id: q82
+    attributes:
+      label: "82. When the quota runs low, what keeps going?"
+      multiple: true
+      options:
+        - "A: Everything, slower."
+        - "B: Everything except new PRs."
+        - "C: Only replies to a maintainer's direct question; the rest waits, each with its deadline shown."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c82
+    attributes:
+      label: "82. Comment, or your own option"
+  - type: dropdown
+    id: q83
+    attributes:
+      label: "83. How many orchestrator sessions run at once?"
+      multiple: true
+      options:
+        - "A: One per repo, with no limit on the total."
+        - "B: One per repo, three at most; other repos wait."
+        - "C: A small pool that takes turns across repos, so no repo owns a session."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c83
+    attributes:
+      label: "83. Comment, or your own option"
+  - type: dropdown
+    id: q84
+    attributes:
+      label: "84. Which one thing does the repo study add to its checklist and model PR body?"
+      multiple: true
+      options:
+        - "A: Nothing more."
+        - "B: A comparison with a sibling repo's checklist (same organization or same framework), to show what's unusual here."
+        - "C: A dry run: it drafts a PR body for a recently merged PR and compares it with what the maintainer accepted."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c84
+    attributes:
+      label: "84. Comment, or your own option"
+  - type: dropdown
+    id: q85
+    attributes:
+      label: "85. What do you see across all repos?"
+      multiple: true
+      options:
+        - "A: A morning summary from the steward."
+        - "B: One line per repo, listing only what needs you."
+        - "C: A live page with every open item and its next action."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c85
+    attributes:
+      label: "85. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Security and trust"
+  - type: dropdown
+    id: q86
+    attributes:
+      label: "86. Where does the posting check live?"
+      multiple: true
+      options:
+        - "A: In the hook on the posting command, as now."
+        - "B: In one `mw post` command that records a hash of the text, with a hook refusing any post made another way."
+        - "C: In front of you: each post is shown to you in the terminal and goes out when you confirm."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c86
+    attributes:
+      label: "86. Comment, or your own option"
+  - type: dropdown
+    id: q87
+    attributes:
+      label: "87. What happens when outgoing text contains something that looks like a secret (an access token, a key)?"
+      multiple: true
+      options:
+        - "A: The post is refused and the line reported."
+        - "B: The post is refused, and a task opens to replace that secret, naming it but never showing its value."
+        - "C: If it matches a known secret format, it posts with that part replaced by a placeholder; anything else is refused."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c87
+    attributes:
+      label: "87. Comment, or your own option"
+  - type: dropdown
+    id: q88
+    attributes:
+      label: "88. A comment from someone other than you or the maintainer tries to give the agent an instruction. Then?"
+      multiple: true
+      options:
+        - "A: It is ignored silently."
+        - "B: It is ignored, and its link goes to the steward."
+        - "C: The agent replies in public that it didn't take it as an instruction, and flags it to the steward."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c88
+    attributes:
+      label: "88. Comment, or your own option"
+  - type: dropdown
+    id: q89
+    attributes:
+      label: "89. Who decides an action that can't be undone (a merge, deleting a branch, a force push that rewrites a branch's history)?"
+      multiple: true
+      options:
+        - "A: You, each time."
+        - "B: The steward, with its reason logged for you."
+        - "C: Each repo's notes list the kinds of action already approved there; anything else goes to you."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c89
+    attributes:
+      label: "89. Comment, or your own option"
+  - type: dropdown
+    id: q90
+    attributes:
+      label: "90. Which GitHub account posts?"
+      multiple: true
+      options:
+        - "A: Yours, as now."
+        - "B: A bot account, for every post."
+        - "C: Yours in repos where maintainers know you, a bot account everywhere else."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c90
+    attributes:
+      label: "90. Comment, or your own option"
+  - type: dropdown
+    id: q91
+    attributes:
+      label: "91. Does the agent say it is an AI?"
+      multiple: true
+      options:
+        - "A: Only when asked."
+        - "B: In its first post in each new repo."
+        - "C: On every post, with no way to turn it off."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c91
+    attributes:
+      label: "91. Comment, or your own option"
+  - type: dropdown
+    id: q92
+    attributes:
+      label: "92. A repo bans AI contributions. Then?"
+      description: "Why it matters: in a study of 49 repos, agents never declined to contribute where AI was banned."
+      multiple: true
+      options:
+        - "A: The repo study records the ban, and a hook blocks every post and PR there."
+        - "B: A line in that repo's notes file."
+        - "C: The agent contributes there only when a maintainer of that repo asks it to."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c92
+    attributes:
+      label: "92. Comment, or your own option"
+  - type: dropdown
+    id: q93
+    attributes:
+      label: "93. How are private notes kept out of public posts?"
+      multiple: true
+      options:
+        - "A: By the agent's care alone."
+        - "B: Outgoing text is matched against the private notes before posting."
+        - "C: One agent holds the private notes and drafts; a second, which never saw them, posts only what the thread itself supports."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c93
+    attributes:
+      label: "93. Comment, or your own option"
+  - type: dropdown
+    id: q94
+    attributes:
+      label: "94. How do you stop everything at once?"
+      multiple: true
+      options:
+        - "A: A command you type into the session."
+        - "B: A file the hooks check before every tool call, so it works even when a session is stuck."
+        - "C: A label on a GitHub issue that the watcher checks, so you can stop it from your phone."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c94
+    attributes:
+      label: "94. Comment, or your own option"
+  - type: markdown
+    attributes:
+      value: "### Switching from v1"
+  - type: dropdown
+    id: q95
+    attributes:
+      label: "95. Which path does the planner build first?"
+      multiple: true
+      options:
+        - "A: Replies, the most frequent work (319 owed replies in v1's records)."
+        - "B: PRs, since a merged PR is the goal."
+        - "C: The steward's own loop, so learning starts before anything else changes."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c95
+    attributes:
+      label: "95. Comment, or your own option"
+  - type: dropdown
+    id: q96
+    attributes:
+      label: "96. How does v1's state (notes, memory, watch lists, owed replies) reach v3 without loss?"
+      multiple: true
+      options:
+        - "A: One migration script copies it, after a dry run (a run that reports what it would do without doing it)."
+        - "B: No copy: v3 reads v1's files where they are until each open item closes, and writes only its own new records."
+        - "C: v3 rebuilds it by replaying v1's session logs, then compares the result with v1's files and reports every difference before the switch."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c96
+    attributes:
+      label: "96. Comment, or your own option"
+  - type: dropdown
+    id: q97
+    attributes:
+      label: "97. Which test is the gate before v3 touches live work?"
+      multiple: true
+      options:
+        - "A: Unit tests (tests of one piece of code on its own) with a fake GitHub."
+        - "B: The replay of v1's recorded history."
+        - "C: A shadow week: v3 computes its next action next to v1 on live events, and every difference becomes a test."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c97
+    attributes:
+      label: "97. Comment, or your own option"
+  - type: dropdown
+    id: q98
+    attributes:
+      label: "98. In what order do sessions switch?"
+      multiple: true
+      options:
+        - "A: The steward first, then the main orchestrator, one watch folder at a time, with v1 installed beside v3 for 7 days."
+        - "B: All at once."
+        - "C: A new repo first, where v1 holds no state, then the rest."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c98
+    attributes:
+      label: "98. Comment, or your own option"
+  - type: dropdown
+    id: q99
+    attributes:
+      label: "99. How do we go back if v3 breaks?"
+      multiple: true
+      options:
+        - "A: Switch the watch folder back to v1, which stays installed for 7 days."
+        - "B: We don't: v1 is removed at the switch, and problems are fixed in v3."
+        - "C: v3 hands any open item back to v1 with its owed replies intact."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c99
+    attributes:
+      label: "99. Comment, or your own option"
+  - type: dropdown
+    id: q100
+    attributes:
+      label: "100. What happens to the v2 branch?"
+      multiple: true
+      options:
+        - "A: Its good parts (checks that run a command, records tied to the diff, one `mw` command) are taken into v3, and the branch is archived."
+        - "B: v3 is built on top of the v2 branch."
+        - "C: It is deleted."
+        - "Other: my own option (write it in the box below)"
+  - type: textarea
+    id: c100
+    attributes:
+      label: "100. Comment, or your own option"
