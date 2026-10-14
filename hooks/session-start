@@ -5,6 +5,16 @@
 root=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json')))['plugins']['mergeworthy@mergeworthy'][0]['installPath'])" 2>/dev/null)
 [ -d "$root" ] || root=$CLAUDE_PLUGIN_ROOT
 mkdir -p ~/.mergeworthy && ln -sfn "$root" ~/.mergeworthy/current
+# The skill catalog this session loaded is the one in its own plugin folder ($CLAUDE_PLUGIN_ROOT), at start, resume and
+# compaction alike: pre-skill-gate reads it to tell a session still on the old skills from one on the skill graph
+[ -t 0 ] || python3 -c 'import json, os, select, sys, time
+d = json.loads(sys.stdin.read() or "{}") if select.select([sys.stdin], [], [], 1)[0] else {}; sid = d.get("session_id"); root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+if sid and root:
+    catalog = "graph" if os.path.isfile(os.path.join(root, "skills", "task", "SKILL.md")) else "v1"
+    line = " ".join([os.path.basename(os.path.realpath(root)), catalog, d.get("source") or "-", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())])
+    sd = os.path.expanduser("~/.mergeworthy/sessions"); os.makedirs(sd, exist_ok=True)
+    [os.remove(os.path.join(sd, f)) for f in os.listdir(sd) if os.path.getmtime(os.path.join(sd, f)) < time.time() - 30 * 86400]
+    open(os.path.expanduser("~/.mergeworthy/sessions/" + os.path.basename(sid)), "w").write(line + "\n")'
 # Every tool in bin/ is on PATH through the stable path, so a tool added in an update is usable without a manual link
 mkdir -p ~/.local/bin
 for t in "$root"/bin/*; do n=$(basename "$t"); [ -e ~/.local/bin/"$n" ] || [ -L ~/.local/bin/"$n" ] || ln -s ~/.mergeworthy/current/bin/"$n" ~/.local/bin/"$n"; done

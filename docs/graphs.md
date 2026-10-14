@@ -8,14 +8,14 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 |---|---|
 | `code` | `delegate` |
 | `converge` | `design`, `finality`, `delegate`, `code`, `writing`, `pull-request`, `task`, `post`, `merging` |
-| `delegate` | `finality`, `writing` |
+| `delegate` | `finality`, `converge`, `writing` |
 | `design` | `pull-request`, `delegate`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
 | `evidence` | `post` |
 | `finality` | `delegate`, `code`, `post`, `design`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
 | `open-issue` | `pull-request`, `task`, `evidence`, `writing`, `post` |
-| `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task` |
+| `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task`, `merging` |
 | `pull-request` | `post`, `evidence`, `design`, `finality`, `delegate`, `code`, `docs`, `converge`, `merging`, `task`, `writing`, `reply` |
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
@@ -223,11 +223,12 @@ flowchart TB
     s5 --> s6
   end
   s0 -.-> r1[["finality"]]
-  s6 -.-> r2[["writing"]]
+  s0 -.-> r2[["converge"]]
+  s6 -.-> r3[["writing"]]
   start --> g0
 ```
 
-## A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick
+## A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick
 
 Opens `mergeworthy:rules` (fix the instance, then the rule or the steward's inbox (6 steps)).
 
@@ -244,7 +245,7 @@ flowchart TB
     s2 --> s3
     s4["5. Ship it"]
     s3 --> s4
-    s5["6. Steward tick"]
+    s5["6. Follow-ups"]
     s4 --> s5
   end
   s1 -.-> r1[["task"]]
@@ -276,8 +277,10 @@ flowchart TB
   s0 -.-> r2[["open-issue"]]
   s0 -.-> r3[["writing"]]
   s0 -.-> r4[["delegate"]]
-  s2 -.-> r5[["delegate"]]
-  s3 -.-> r6[["task"]]
+  s2 -.-> r5[["pull-request"]]
+  s2 -.-> r6[["delegate"]]
+  s3 -.-> r7[["task"]]
+  s3 -.-> r8[["merging"]]
   start --> g0
 ```
 
@@ -305,8 +308,8 @@ flowchart TB
   s0 -.-> r2[["finality"]]
   s1 -.-> r3[["delegate"]]
   s2 -.-> r4[["code"]]
-  s2 -.-> r5[["writing"]]
-  s2 -.-> r6[["delegate"]]
+  s2 -.-> r5[["delegate"]]
+  s2 -.-> r6[["writing"]]
   s3 -.-> r7[["delegate"]]
   s4 -.-> r8[["pull-request"]]
   s4 -.-> r9[["task"]]
@@ -343,8 +346,8 @@ flowchart TB
   s0 -.-> r2[["finality"]]
   s1 -.-> r3[["delegate"]]
   s2 -.-> r4[["code"]]
-  s2 -.-> r5[["writing"]]
-  s2 -.-> r6[["delegate"]]
+  s2 -.-> r5[["delegate"]]
+  s2 -.-> r6[["writing"]]
   s3 -.-> r7[["delegate"]]
   s4 -.-> r8[["pull-request"]]
   s4 -.-> r9[["task"]]
@@ -381,8 +384,8 @@ flowchart TB
   s0 -.-> r2[["finality"]]
   s1 -.-> r3[["delegate"]]
   s2 -.-> r4[["code"]]
-  s2 -.-> r5[["writing"]]
-  s2 -.-> r6[["delegate"]]
+  s2 -.-> r5[["delegate"]]
+  s2 -.-> r6[["writing"]]
   s3 -.-> r7[["delegate"]]
   s4 -.-> r8[["pull-request"]]
   s4 -.-> r9[["task"]]
@@ -419,8 +422,8 @@ flowchart TB
   s0 -.-> r2[["finality"]]
   s1 -.-> r3[["delegate"]]
   s2 -.-> r4[["code"]]
-  s2 -.-> r5[["writing"]]
-  s2 -.-> r6[["delegate"]]
+  s2 -.-> r5[["delegate"]]
+  s2 -.-> r6[["writing"]]
   s3 -.-> r7[["delegate"]]
   s4 -.-> r8[["pull-request"]]
   s4 -.-> r9[["task"]]

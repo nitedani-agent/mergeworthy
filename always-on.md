@@ -19,7 +19,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 | Opening an issue | `mergeworthy:open-issue` | already filed?, reproduce, body, post (5 steps) |
 | Writing or changing docs a user reads: a page, a README, JSDoc, an `llms.txt` line | `mergeworthy:docs` | profile, placement, imitate, the docs reader (5 steps) |
 | Starting, continuing or checking a subagent; writing a brief | `mergeworthy:delegate` | one agent per job, model class, the brief, its result (7 steps) |
-| A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick | `mergeworthy:rules` | fix the instance, then the rule or the steward's inbox (6 steps) |
+| A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick | `mergeworthy:rules` | fix the instance, then the rule or the steward's inbox (6 steps) |
 | Posting or editing anything on GitHub (a step sends you here) | `mergeworthy:post` | draft, lint, review to `CLEAN`, re-check, post (5 steps) |
 | Converging a PR's head before it is ready (a step sends you here) | `mergeworthy:converge` | Loop A, Loop B, Loop A again, the fresh reader, gates (6 steps) |
 | Verifying a bug or a PR: does it break anything, reproduce-only | `mergeworthy:converge` | step 1 (Loop A), with `delegate/verifier.md` |
@@ -39,7 +39,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 - **Tier** is the size of the work (0, S, M, L: `task` step 2). The model an agent runs on is its **model class** (`delegate` step 2).
 - **The Monitor** is Claude Code's `Monitor` tool (load it with ToolSearch `select:Monitor`). To arm it, call it with the command `gh-watch-start` printed and `timeout_ms` 1800000; it wakes you on each line the watcher writes to `events.log`.
 - **The fresh reader** is a PR's last check, read as the maintainer who will merge it (`converge` step 4). Docs get the **docs reader** (`docs` step 4); a changed skill or rules file gets a **cold read** (`rules` step 4).
-- **The steward** is the one session named in `~/.mergeworthy/steward`; only it changes mergeworthy. Any other session writes a mergeworthy fix it owes as one line in the steward's `inbox.md` (`rules` step 2).
+- **The steward** is the one session named in `~/.mergeworthy/steward`. While one is declared, only it changes mergeworthy, and any other session writes a mergeworthy fix it owes as one line in the steward's `inbox.md` (`rules` step 2); with none declared, each session fixes mergeworthy itself.
 
 ### Every session
 - **Answer every user message first,** before status, including ones typed while you worked; a question that needs work goes in `questions-owed.md` with an ETA. Do how-to instructions as given; try another way only after the given one fails, and quote the failure.

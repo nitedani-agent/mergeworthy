@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agent.md`.
 
-After one of our PRs merges, the commits others make to its lines (polish, a rename, a revert) and the PRs that reference it are a review we didn't get. The steward fills this for each `### FOLLOW-UP` (`rules` step 6).
+After one of our PRs merges, the commits others make to its lines (polish, a rename, a revert) and the PRs that reference it are a review we didn't get. The session whose `events.log` received the `### FOLLOW-UP` fills this (`rules` step 6).
 
 ```
 Our merged PR: <PR URL>, our diff: <merge SHA>. The follow-up: <commit SHA or PR URL>, in <worktree>.

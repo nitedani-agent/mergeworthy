@@ -21,15 +21,15 @@ check() { # name want got
 }
 
 # ---------- session-start: the rules arrive framed as the user's instructions ----------
-ss_first=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null | head -1)
+ss_first=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | head -1)
 check "session-start opens as the user's instructions, like CLAUDE.md" yes "$(printf '%s' "$ss_first" | grep -q '^IMPORTANT: These are the user.s instructions.*OVERRIDE any default behavior' && echo yes || echo no)"
 printf 'MERGEWORTHY_BADGE=on\n' > "$HOME/.mergeworthy/settings.env"
-CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1
+CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
 check "session-start given no plugin options keeps settings.env" 'MERGEWORTHY_BADGE=on' "$(cat "$HOME/.mergeworthy/settings.env")"
-CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-start" >/dev/null 2>&1
+CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-start" >/dev/null 2>&1 </dev/null
 check "session-start writes the options it is given" 'MERGEWORTHY_BADGE=off' "$(cat "$HOME/.mergeworthy/settings.env")"
 rm -f "$HOME/.mergeworthy/settings.env"
-check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
+check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null </dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
 
 # ---------- stop-lint ----------
 sleep 600 & SPID=$!
@@ -339,6 +339,7 @@ check "gating that draft again passes post-lint with the line, and adds none" "0
 check "the next reply, nothing new since, gets no line; another owner's repo none" "0 0 0 0" "$(hg acme/x) $(grep -c 'Harness changes' "$GD/r.md") $(hg other/x) $(grep -c 'Harness changes' "$GD/r.md")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
+check "the writing skill's badge, a WIP link inside the italics, passes" 0 "$(sed -n 's/^  \(<img src=.*\)$/\1/p' "$R/skills/writing/SKILL.md" > "$T/wb.md"; printf '\nFixed the bug.\n' >> "$T/wb.md"; python3 "$R/bin/post-lint" "$T/wb.md" --parent none 2>&1 | grep -c 'badge')"
 # ---------- post-lint: a limitation names what imposes it (core 1.1.11) ----------
 llint() { printf '| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| %s | limitation | no | nothing |\n' "$1" > "$T/lim.md"; python3 "$R/bin/post-lint" "$T/lim.md" --kind pr --parent none 2>&1 | grep -c 'names nothing that imposes it'; }
 check "a limitation our own design could create is flagged" 1 "$(llint 'Joins past 100 at once fail with a contention error')"
@@ -764,16 +765,25 @@ check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
-# a branch whose approach was recorded before this version's install finishes its pipeline under the old records
+# a branch whose latest approach record has no `contract: 2` started before the shape pass: it finishes under the old records
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; prs approach "$T/apo.md" >/dev/null
-APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1); sed -i 's/ [0-9T:.-]*Z$/ 2020-01-01T00:00:00Z/' "$APF"
-printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"; printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"
-check "an old pipeline still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
+APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
+check "a new approach record carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
+check "BLOCK: a new-contract branch can't record loopb or refactor" "1 1" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md")"
+sed -i 's/ contract: 2$//' "$APF"
+printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"
+check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
 C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2"; git -C "$G" add f2; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
 printf 'carries the pass of %s: one line\n' "$C" > "$T/carry3.md"
-check "a shape record carries an old head's refactor pass" 0 "$(prs shape "$T/carry3.md")"
-sed -i 's/ 2020-01-01T00:00:00Z$/ 2099-01-01T00:00:00Z/' "$APF"
-check "BLOCK: a branch whose approach came after the install can't record loopb" 1 "$(prs loopb "$T/olb.md")"
+check "a shape record carries an old head's loopb CLEAN and refactor pass" 0 "$(prs shape "$T/carry3.md")"
+printf 'z\n' > "$G/f3"; git -C "$G" add f3; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m e; E=$(git -C "$G" rev-parse HEAD)
+cp "$T/pass.md" "$T/pass-e.md"; prs refactor "$T/pass-e.md" >/dev/null
+printf 'w\n' > "$G/f4"; git -C "$G" add f4; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m f
+printf 'carries the pass of %s: one line\n' "$E" > "$T/carry4.md"
+check "BLOCK: an old head with a refactor pass but no loopb record can't be carried as shape" 1 "$(prs shape "$T/carry4.md")"
+prs approach "$T/apo.md" >/dev/null
+check "BLOCK: the branch reused with a new approach is new-contract again" 1 "$(prs loopb "$T/olb.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -977,19 +987,26 @@ check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"g
 sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
 check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 check "no transcript to read: nothing to check" 0 "$(sg Bash '{"command":"git push"}' "$T/none.jsonl")"
-old_tr() { # <transcript> <first timestamp>: a session that opened the old catalog's core, github-threads and delegating
-  sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating
-  python3 - "$1" "$2" <<'PY2'
-import json, sys
-lines = open(sys.argv[1]).read().splitlines()
-first = json.loads(lines[0]); first['timestamp'] = sys.argv[2]; lines[0] = json.dumps(first)
-open(sys.argv[1], 'w').write('\n'.join(lines) + '\n')
-PY2
-}
-old_tr "$T/old.jsonl" 2020-01-01T00:00:00.000Z
-check "a session started before the install: its old skills satisfy their successors (watcher, post, brief, skill edit)" "0 0 0 0" "$(sg Bash '{"command":"gh-watch-start /w o/r"}' "$T/old.jsonl") $(sg Bash '{"command":"post-lint /w/d.md --kind reply"}' "$T/old.jsonl") $(sg Agent '{"prompt":"x"}' "$T/old.jsonl") $(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}' "$T/old.jsonl")"
-old_tr "$T/new.jsonl" 2099-01-01T00:00:00.000Z
-check "BLOCK: a session started after the install gets no transition" "2 2" "$(sg Bash '{"command":"gh-watch-start /w o/r"}' "$T/new.jsonl") $(sg Agent '{"prompt":"x"}' "$T/new.jsonl")"
+old_tr() { # <transcript>: a session that opened the old catalog's core, github-threads, writing and delegating
+  sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating; }
+olds() { # <session id>: the four actions an old-catalog session takes, each 0 when its old skills count
+  for c in '{"command":"gh-watch-start /w o/r"}' '{"command":"post-lint /w/d.md --kind reply"}'; do
+    python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":json.loads(sys.argv[1]),"session_id":sys.argv[2],"transcript_path":sys.argv[3]}))' "$c" "$1" "$T/old.jsonl" | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo -n "$? "; done
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"prompt":"x"},"session_id":sys.argv[1],"transcript_path":sys.argv[2]}))' "$1" "$T/old.jsonl" | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo -n "$? "
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":"/r/skills/writing/SKILL.md"},"session_id":sys.argv[1],"transcript_path":sys.argv[2]}))' "$1" "$T/old.jsonl" | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?; }
+ss() { # <session id> <source> <plugin root>: the SessionStart hook, as Claude Code runs it from the session's own plugin
+  printf '{"session_id":"%s","source":"%s"}' "$1" "$2" | CLAUDE_PLUGIN_ROOT="$3" bash "$R/hooks/session-start" >/dev/null 2>&1; }
+V1="$T/v1-plugin"; mkdir -p "$V1/skills/core"; touch "$V1/always-on.md"
+old_tr "$T/old.jsonl"
+check "no catalog record (started before this install): its old skills satisfy their successors" "0 0 0 0" "$(olds s-none)"
+ss s-v1 startup "$V1"; check "the record names the catalog of the session's own plugin" "v1 startup" "$(cut -d' ' -f2,3 "$HOME/.mergeworthy/sessions/s-v1")"
+check "a session on the old catalog: old skills still count" "0 0 0 0" "$(olds s-v1)"
+ss s-v1 compact "$V1"; check "after compaction, still on the old catalog: old skills count" "0 0 0 0" "$(olds s-v1)"
+ss s-v1 resume "$R"; check "BLOCK: resumed on the skill graph, the old names no longer count" "2 2 2 2" "$(olds s-v1)"
+ss s-new startup "$R"; check "BLOCK: a session started on the skill graph gets no transition" "2 2 2 2" "$(olds s-new)"
+R2="$T/reinstall"; mkdir -p "$R2/skills/task"; touch "$R2/skills/task/SKILL.md" "$R2/always-on.md"
+ss s-new compact "$R2"; check "BLOCK: a reinstall of the skill graph keeps it on the new names" "2 2 2 2" "$(olds s-new)"
+check "no transcript: nothing to check, whatever the record" 0 "$(sg_in Bash '{"command":"gh-watch-start /w o/r"}' "$T/none.jsonl" | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 check "the gate's table and always-on.md's rows agree" ok "$(python3 - "$R" <<'EOF'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('sg', sys.argv[1] + '/hooks/pre-skill-gate.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)

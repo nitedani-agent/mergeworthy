@@ -119,7 +119,7 @@ Every fix also keeps usage errors visible (a silent fallback only per §Root cau
 - **Owner code is deliberate,** in the user's repos too. It is never removed or rewritten on an agent's reading alone: trimming it, "simplifying" it, or deleting a mechanism in it as phantom or overbuilt. Such findings are OWNER-DECISION rows with a recommendation. An agent's own earlier code can be changed freely; if an agent removed an owner line, restore it.
 - **The user's own repos:** changing the user's code as the task needs is yours to decide. A rewrite the user asked for replaces all of their code: nothing of the old code is carried over or protected. A removal that passed §Removal gate is not a reading alone: make it, and report it with the probe.
 - **External maintainers:** their requests are settled decisions; record each with its link and date, and do it as asked or ask back with a recommendation, never decide otherwise and inform. Ask them before changing their code's behavior or public surface; refactors preserve behavior. The newest statement on a subject wins: re-read the thread before citing anyone.
-- **A security or bug fix closes only the hole.** A change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision: its own decision issue (`open-issue`), not part of the fix.
+- **A security or bug fix closes only the hole.** A change to what a legitimate user sees or can do (a field made read-only, a value now rejected that the UI sends) is the owner's product decision: a decision block in the PR body (`writing §Forms`), or its own decision issue (`open-issue`) when no PR carries it; never part of the fix.
 
 ### Docs are a claim
 

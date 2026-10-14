@@ -134,25 +134,20 @@ def actions(d):
     return []
 
 
-# A session started before this skill catalog was installed has the old skills loaded, and can open only those: until
-# it restarts, an old name it opened satisfies the new skill that took over its steps.
+# A session still on the old skill catalog can open only the old skills: an old name it opened satisfies the new skill
+# that took over its steps. session-start records the catalog each session loaded; no record means the session
+# started before this version was installed.
 OLD_NAMES = {'task': {'core'}, 'post': {'github-threads'}, 'reply': {'github-threads'}, 'design': {'design-loop'},
              'delegate': {'delegating'}, 'rules': {'delegating'}}
 
 
-def started_before_install(path):
-    """True when the transcript's first timestamp is older than this catalog's install (skills/task/SKILL.md's mtime)."""
+def old_catalog(session_id):
     try:
-        installed = os.path.getmtime(os.path.join(ROOT, 'skills', 'task', 'SKILL.md'))
-        with open(path, 'rb') as f:
-            for l in f:
-                m = re.search(rb'"timestamp"\s*:\s*"([^"]+)"', l)
-                if m:
-                    from datetime import datetime
-                    return datetime.fromisoformat(m.group(1).decode().replace('Z', '+00:00')).timestamp() < installed
-    except (OSError, ValueError):
-        pass
-    return False
+        return open(os.path.expanduser(f'~/.mergeworthy/sessions/{session_id}')).read().split()[1] != 'graph'
+    except OSError:
+        return True
+    except IndexError:
+        return False
 
 
 def rlines(path, chunk=1 << 20):
@@ -204,7 +199,7 @@ def main():
     if not path:
         return 0
     have = opened(path)
-    if have & set().union(*OLD_NAMES.values()) and started_before_install(path):
+    if have & set().union(*OLD_NAMES.values()) and old_catalog(d.get('session_id') or ''):
         have |= {new for new, old in OLD_NAMES.items() if have & old}
     need = {}
     for a in acts:

@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agent.md`.
 
-One read-only agent, after the reviewer brief in the same run (`converge` step 2), rating whole slices with fresh eyes every round. This brief says how to audit; the agent decides what to flag. Three steps, in order. An implementer (`delegate/implementer.md`) lands what you decide commit by commit; the same agent then re-rates. Step 2's prompt is the user's text and applies unchanged in every repo, whatever the project file says.
+One read-only agent, after the reviewer brief in the same run (`converge` step 2), rating whole slices with fresh eyes every round. This brief says how to audit; the agent decides what to flag. Three steps, in order. An implementer (`delegate/implementer.md`) lands what you decide commit by commit; the same agent then re-rates (`delegate §Continue`: in T3 Code, a new task carrying this report). Step 2's prompt is the user's text and applies unchanged in every repo, whatever the project file says.
 
 Dispositions, one list:
 - **DELETE-NOW:** remove; behavior-preserving, no probe needed.

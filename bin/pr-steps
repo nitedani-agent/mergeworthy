@@ -10,19 +10,10 @@ case "$step" in preflight|approach|verify|shape|loopb|refactor|reverify|fresh|ga
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
-# A pipeline whose approach was recorded before this version was installed (skills/task/SKILL.md's mtime) finishes under
-# its old contract: loopb and refactor instead of shape, and a fresh report without a Maintainer line.
-old_pipeline() {
-  python3 - ~/.claude/pr-steps/approach."$key" "$(dirname "$(readlink -f "$0")")/../skills/task/SKILL.md" <<'PY'
-import datetime, os, sys
-try:
-    t = open(sys.argv[1]).readline().split()[-1]
-    sys.exit(0 if datetime.datetime.fromisoformat(t.replace('Z', '+00:00')).timestamp() < os.path.getmtime(sys.argv[2]) else 1)
-except (OSError, IndexError, ValueError):
-    sys.exit(1)
-PY
-}
-case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2). Only a branch whose approach was recorded before the switch still records them." >&2; exit 1; };; esac
+# A branch whose latest approach record has no `contract: 2` field started its pipeline before the shape pass and the
+# maintainer's fresh read: it finishes under that contract (loopb and refactor, a fresh report without a Maintainer line).
+old_pipeline() { [ -s ~/.claude/pr-steps/approach."$key" ] && ! tail -n1 ~/.claude/pr-steps/approach."$key" | grep -q ' contract: 2$'; }
+case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2). Only a branch whose latest approach record predates the shape pass (no contract: 2) still records them." >&2; exit 1; };; esac
 # pr-steps preflight <app URL> [Chrome flags] | <PNG the session's browser MCP took just now> | 'none, because <why>':
 # before any code, the app runs and browser control loads it (pull-request, Check you can finish before you start)
 if [ "$step" = preflight ]; then
@@ -60,7 +51,7 @@ if [ "$step" = approach ]; then
   rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
   [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
-  echo "approach $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/approach."$key"
+  echo "approach $(realpath "$out") $(date -u +%FT%TZ) contract: 2" >> ~/.claude/pr-steps/approach."$key"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0
 fi
@@ -94,7 +85,13 @@ case "$step" in
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}')
       [ -n "$carried" ] || { echo "$out is not a shape pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy delegate/shape.md), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
       full=$(git rev-parse "$carried")
-      prev=$(awk '$1=="shape"||$1=="refactor"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      rec=~/.claude/pr-steps/"$full"
+      prev=$(awk -v s="$step" '$1=="shape"||$1==s{print $2}' "$rec" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      # an old head's refactor pass stands for a shape pass only with its Loop B review: a loopb record ending CLEAN
+      if [ -z "$prev" ] && [ "$step" = shape ]; then
+        prev=$(awk '$1=="loopb"{print $2}' "$rec" 2>/dev/null | while read -r f; do [ "$(grep -v '^[[:space:]]*$' "$f" 2>/dev/null | tail -n1)" = CLEAN ] && echo "$f"; done | head -n1)
+        [ -n "$prev" ] && prev=$(awk '$1=="refactor"{print $2}' "$rec" | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      fi
       [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings to carry" >&2; exit 1; }
       changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }

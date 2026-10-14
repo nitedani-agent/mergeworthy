@@ -9,7 +9,7 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 
 ## Steps
 
-1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a skill's step itself requires (`finality`'s phases, one set of loop agents per slice); only the main session starts agents. Stop an agent as soon as its question is settled.
+1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a step's own text names to run together (`finality` steps 2–3: the mappers, the branch agents; `converge`: one set of loop agents per slice); an implementer landing findings counts toward the 3; only the main session starts agents. Stop an agent as soon as its question is settled.
    Hook: pre-agent-dedupe
 2. **Model class and effort.**
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides · Hook: route.py
@@ -38,13 +38,14 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 
 Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache.
 - **Claude Code:** `SendMessage` to its agent id.
-- **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you. Never for a review: each review round is a new `delegate_task` whose prompt carries the earlier findings and what changed (T3 Code's own rule; §Reviewers).
+- **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you.
+- **A review round in T3 Code** (a reviewer's, a post review's, the fresh reader's, the shape pass's re-rating): a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send` (T3 Code's own rule). That counts as continuing the same reviewer. Elsewhere a review round continues its agent like any other.
 - **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two run one job, keep the one with the most progress.
 
 ### Model class
 
-The classes are model families, never versions: the strongest is the newest Opus your harness offers, the smallest with an effort setting the newest Haiku (`~/local-llm/hooks/route.py` refuses others where it runs). The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
+The classes are model families, never versions: the strongest class is the newest Opus your harness offers, and the smallest class that has an effort setting is the newest Haiku (`~/local-llm/hooks/route.py` refuses others where it runs). The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
 - **Root causes and choosing among approaches** (`pull-request` step 5): the main session's class at high effort; lower effort makes fewer tool calls, and the approach that read one more dependency file was half the code.
 - **Authors** (code, docs, PR bodies, replies, designs): the main session's class at high effort. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.
@@ -59,4 +60,4 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    Without them: `codex exec -m <model> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
 - **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (out of credits, a rate limit, an error: a failure is not a review).
 
-The prompt is a file with the template filled. The final message is exactly `CLEAN`, or the findings, at most 15 lines; the full list goes in the output file. When one run follows several briefs, each writes its own file, and the final message is `CLEAN` only when none has a finding. Never write `CLEAN` yourself. Send fixes to the same reviewer; a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran and what it found (Tier M: in the ledger); on Tier M or L work, re-review on the other company's model once it's back.
+The prompt is a file with the template filled. The final message is exactly `CLEAN`, or the findings, at most 15 lines; the full list goes in the output file. When one run follows several briefs, each writes its own file, and the final message is `CLEAN` only when none has a finding. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran and what it found (Tier M: in the ledger); on Tier M or L work, re-review on the other company's model once it's back.

@@ -7,7 +7,7 @@ A new agent that hasn't seen the fixes (`converge` step 4); the loop agents judg
 ```
 You read <PR> cold, at head <SHA> (origin/<base> merged in), in <worktree>.
 The project file: <project file path>. The repo study: <its path, from the project file's ## Who decides>.
-The PR body draft: <abs>/drafts/<pr>/pr-body.md.
+The PR body draft: <work folder>/drafts/<pr>/pr-body.md.
 <Docs in the diff: also the rendered page and two sibling pages alone; answer docs' two questions: can I do the task from this, and which sentences read unlike the siblings.>
 
 Before reading the diff, become the maintainer:
@@ -20,5 +20,6 @@ Every finding cites something that maintainer said or did (a comment, a review, 
 Run each brief below on the head and the body draft, each into its own section.
 
 Write <work folder>/drafts/fresh.report.md: a line `Maintainer: <login>`; `MERGE AS IS: yes`, or `no` with every comment you'd leave, each a finding; then each brief's section; end the file with CLEAN when nothing was found.
+Write the post-review brief's verdict alone to <work folder>/drafts/<pr>/pr-body.review.out: exactly CLEAN, or that brief's findings only.
 Final message: exactly CLEAN, or the findings.
 ```

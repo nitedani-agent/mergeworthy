@@ -7,6 +7,7 @@ The user's prompt, verbatim; `finality`'s steps say which part each agent gets. 
 - **§A, the shared node schema** is the per-function field list under PHASE A.
 - **§B** is PHASE B; **§B½** is PHASE B½; Phase C is the implementer's (`delegate/implementer.md`).
 - **§Closure** is the Owner-Safe closure paragraph at the end. *Every SETTLED decision propagated to its named surfaces*: every decision in `<work folder>/decisions/*.md` reached every place that describes it (code, tests, types, docs, PR bodies). *Owning lanes, mutations, reference captures, clean-tree scope*: the lanes that own the changed code (`code §Gates`), mutation probes (`code §Tests`), before/after screenshots, and a `git status` with only in-scope changes, each observed on the head.
+- Where PHASE C cites the old core skill's task and authority rules, read `code §Owner code and authority`.
 - *The session's model tier* is the main session's model class (`delegate §Model class`).
 - *Fresh Guardian evidence* is Loop B's latest shape report (`converge` step 2).
 - The design doc it ends with is posted through `post` (a gist counts) unless the repo keeps design docs.
@@ -114,7 +115,7 @@ Execute the convergence plan:
   lethal in the new home — a refactor voids prior probe results for moved code),
 - adversarially gated before push.
 Keep convergence behavior-preserving; ask external maintainers about behavior or public-surface
-changes and decide changes authorized by the user’s task (`code §Owner code and authority`).
+changes and decide changes authorized by the user’s task (`core`, The task and 1.1.9).
 Finish by distilling the graph into a short design doc a maintainer can read in one sitting: the
 concept list, the stable/brittle boundary, the glossary, how it all fits together.
 Then run Owner-Safe closure reconciliation:

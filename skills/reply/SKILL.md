@@ -40,7 +40,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
 | `### TRACKER STALE` | `task §Umbrella`, through `post --kind tracker` |
 | `### SHAPE STALE` | `converge` step 2 on the whole diff, before the next "Done" reply |
 | `### AGENT DONE <ticket>` | `delegate` step 6 |
-| `### FOLLOW-UP` | the steward runs `rules` step 6. Another session gets it only while no steward is declared in `~/.mergeworthy/steward`, and then runs `rules` step 6 itself. |
+| `### FOLLOW-UP` | `rules` step 6: the session whose `events.log` got it sorts it |
 | `### AGENT COMMAND`, `### UNROUTED /agent` | the user typing: `task` |
 | `### NEW ISSUE`, `### NEW PR` (a repo watched whole: `owner/repo all`) | answer it like a comment you owe (steps 3–7) |
 

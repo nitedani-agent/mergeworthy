@@ -1,6 +1,6 @@
 ---
 name: docs
-description: "Writing or changing docs a user reads (a docs page, a README, JSDoc, an llms.txt line): the project's docs voice, where the text belongs, the shape, drafting from the closest sibling page, and the fresh-reader check."
+description: "Writing or changing docs a user reads (a docs page, a README, JSDoc, an llms.txt line): the project's docs voice, where the text belongs, the shape, drafting from the closest sibling page, and the docs reader."
 ---
 
 # Docs
@@ -24,7 +24,7 @@ A docs change passes when a maintainer would have written it: imitating the proj
    - A sentence that says when something applies states its exact condition and one example with real names, in words the docs already use.
    - Keep sections near their siblings' length; one several times longer is probably two pages, or details that don't belong.
    Record: the draft
-4. **The docs reader:** a fresh agent with only the rendered page and two sibling pages: can I do the task from this, and which sentences read unlike the siblings? Fix the text from step 3 until (a) is yes and (b) is empty.
+4. **The docs reader:** a fresh agent with only the rendered page and two sibling pages: (a) can I do the task from this, and (b) which sentences read unlike the siblings? Fix the text from step 3 until (a) is yes and (b) is empty.
    Open: `delegate/docs-reader.md` · Record: its report
 5. **Gates:** the project's docs lint and spellcheck; update `llms.txt` or the index where the project keeps one. In a PR, `converge` covers the docs with the code; docs that disagree with the code: `code §Docs are a claim`.
    Open: the project file's Gates · Record: the gates log
