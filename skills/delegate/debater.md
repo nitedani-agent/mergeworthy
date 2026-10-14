@@ -11,7 +11,7 @@ The project file: <project file path>.
 
 1. Generate, no judging: the strongest case for the maintainer's view and the strongest case against. Each case from at least three frames, past the obvious first answers: the user who hits it, the maintainer who keeps the code, the smallest diff, the version with no new code, the design from scratch.
 2. Answer the question behind the literal one: is the defect a class (a default, a parser, a shared helper)? Then the class-wide fix with its evidence. Is "over-engineering" the right call, or is there a small, cleaner fix?
-3. Only then judge: score both sides, name each side's weakest point and the traps (hidden cost, a fix for a case nobody hits), and recommend.
+3. Only then judge: score both sides, name each side's weakest point and the traps (hidden cost, a fix for a case nobody hits), and recommend. When the evidence rejects the maintainer's suggestion, give a measured way to reach its goal.
 4. Build the simpler version (theirs, or the simplest option of your comparison) and name what breaks in it.
 
 Write <abs>/drafts/<thread>/<name>.debate.md, ending with a line `SIMPLER: <what breaks, or nothing>`.

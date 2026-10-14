@@ -76,6 +76,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge` step 3).
 - `fresh`: a `Maintainer: <login>` line, `MERGE AS IS: yes` and trailing `CLEAN` (`converge` step 4).
 - `shape`: Loop B's shape report: the ✅ list and old ⇒ new ratings ending `CLEAN`, or `carries the pass of <sha>` with ≤ 80 changed lines. Old heads' `loopb` and `refactor` records together count as one.
+- A branch whose `approach` was recorded before this version was installed (the mtime of `skills/task/SKILL.md`) finishes under the old contract: `loopb` (trailing `CLEAN`) and `refactor` still record, a `fresh` report needs no `Maintainer:` line, and a `shape` record may carry an old head's `refactor` pass.
 - `gates`: `<command> -> exit 0` lines.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
 
@@ -149,6 +150,8 @@ It blocks an action until every skill its always-on row names was opened with th
 - `gh pr ready`: `pull-request`, `merging`; `gh pr merge` and `git push`: `merging`. `pr-steps approach`: `pull-request`; the other `pr-steps` records: `converge`.
 - Starting an agent (`Agent`, `delegate_task`, `codex exec`, `claude -p`) or editing a brief or prompt file: `delegate`. Editing a skill, `always-on.md`, `AGENTS.md` or `CLAUDE.md`: `rules`.
 - `code`, `finality` and `docs` are ungated: `code` reaches agents by path in their briefs, `finality` has pre-bash-guard's third-proposal block, and no tool call tells docs apart.
+
+- A session whose transcript starts before this version was installed has the old skills loaded: until it restarts, an old name it opened satisfies its successor (`core` → `task`; `github-threads` → `post`, `reply`; `design-loop` → `design`; `delegating` → `delegate`, `rules`).
 
 Read-only commands pass.
 

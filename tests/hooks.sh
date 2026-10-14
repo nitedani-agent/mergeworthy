@@ -415,18 +415,18 @@ check "a PR body that opens with its status is flagged" 1 "$(python3 "$R/bin/pos
 printf '%s Routes after vike(app) skip the auth +middleware. This PR runs it first.\n\nDraft until the release ships.\n' "$B" > "$T/st2.md"
 check "status after the opening is fine" 0 "$(python3 "$R/bin/post-lint" "$T/st2.md" --kind pr --parent none 2>&1 | grep -c 'opens with its status')"
 # ---------- post-lint + pre-bash-guard: a draft PR's body says why it's a draft, on a bold State line under the badge ----------
-# ---------- post-lint: a ready PR body follows pull-request step 7's template ----------
+# ---------- post-lint: a ready PR body follows pull-request §Body's template ----------
 printf 'Compression stopped after sirv() answered; this PR runs it.\n\nA wall of prose about it.\n' > "$T/s7a.md"
 printf 'Compression stopped after sirv() answered; this PR runs it.\n\n### What you should see\n\n**1.** main, then this PR:\n\n```\ncurl -sI /a.js | grep content-encoding\n```\n' > "$T/s7b.md"
-check "a ready PR body without What you should see is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7a.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
-check "one with numbered evidence passes" 0 "$(python3 "$R/bin/post-lint" "$T/s7b.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+check "a ready PR body without What you should see is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7a.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body')"
+check "one with numbered evidence passes" 0 "$(python3 "$R/bin/post-lint" "$T/s7b.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body')"
 printf 'Compression stopped after sirv() answered; this PR runs it.\n\n### What you should see\n\n**1.** the asset arrives compressed:\n\n<img width="600" alt="gzip" src="https://example.invalid/a.png" />\n' > "$T/s7c.md"
-check "an uploaded image counts as the evidence" 0 "$(python3 "$R/bin/post-lint" "$T/s7c.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+check "an uploaded image counts as the evidence" 0 "$(python3 "$R/bin/post-lint" "$T/s7c.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body')"
 printf 'Compression stopped after sirv() answered; this PR runs it.\n\n<details><summary>Evidence</summary>\n\n### What you should see\n\n**1.** main, then this PR:\n\n```\ncurl -sI /a.js\n```\n</details>\n' > "$T/s7d.md"
-check "evidence only inside <details> is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7d.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
+check "evidence only inside <details> is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7d.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body')"
 printf 'Compression stopped after sirv() answered; this PR runs it.\n\n### What you should see\n\nThe asset arrives compressed now, as the curl output shows when you run it.\n' > "$T/s7e.md"
-check "a section without numbered evidence is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7e.md" --kind pr --parent none 2>&1 | grep -c 'step 7')"
-check "a draft's body needn't have it yet" 0 "$(printf '**State: draft** (waits on the release)\n\nCompression stopped after sirv() answered.\n' > "$T/s7f.md"; python3 "$R/bin/post-lint" "$T/s7f.md" --kind pr --draft --parent none 2>&1 | grep -c 'step 7')"
+check "a section without numbered evidence is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/s7e.md" --kind pr --parent none 2>&1 | grep -c 'pull-request §Body')"
+check "a draft's body needn't have it yet" 0 "$(printf '**State: draft** (waits on the release)\n\nCompression stopped after sirv() answered.\n' > "$T/s7f.md"; python3 "$R/bin/post-lint" "$T/s7f.md" --kind pr --draft --parent none 2>&1 | grep -c 'pull-request §Body')"
 dlint() { python3 "$R/bin/post-lint" "$T/ds.md" --kind pr --parent none "$@" 2>&1 | grep -c "State line\|State: draft\|opens with its status"; }
 printf '%s\n**State: draft** (waits on the Vike release with vikejs/vike#3594)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/ds.md"
 check "a draft's body with its State line passes" 0 "$(dlint --draft)"
@@ -764,6 +764,16 @@ check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
+# a branch whose approach was recorded before this version's install finishes its pipeline under the old records
+printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; prs approach "$T/apo.md" >/dev/null
+APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1); sed -i 's/ [0-9T:.-]*Z$/ 2020-01-01T00:00:00Z/' "$APF"
+printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"; printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"
+check "an old pipeline still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
+C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2"; git -C "$G" add f2; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
+printf 'carries the pass of %s: one line\n' "$C" > "$T/carry3.md"
+check "a shape record carries an old head's refactor pass" 0 "$(prs shape "$T/carry3.md")"
+sed -i 's/ 2020-01-01T00:00:00Z$/ 2099-01-01T00:00:00Z/' "$APF"
+check "BLOCK: a branch whose approach came after the install can't record loopb" 1 "$(prs loopb "$T/olb.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -967,6 +977,19 @@ check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"g
 sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
 check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 check "no transcript to read: nothing to check" 0 "$(sg Bash '{"command":"git push"}' "$T/none.jsonl")"
+old_tr() { # <transcript> <first timestamp>: a session that opened the old catalog's core, github-threads and delegating
+  sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating
+  python3 - "$1" "$2" <<'PY2'
+import json, sys
+lines = open(sys.argv[1]).read().splitlines()
+first = json.loads(lines[0]); first['timestamp'] = sys.argv[2]; lines[0] = json.dumps(first)
+open(sys.argv[1], 'w').write('\n'.join(lines) + '\n')
+PY2
+}
+old_tr "$T/old.jsonl" 2020-01-01T00:00:00.000Z
+check "a session started before the install: its old skills satisfy their successors (watcher, post, brief, skill edit)" "0 0 0 0" "$(sg Bash '{"command":"gh-watch-start /w o/r"}' "$T/old.jsonl") $(sg Bash '{"command":"post-lint /w/d.md --kind reply"}' "$T/old.jsonl") $(sg Agent '{"prompt":"x"}' "$T/old.jsonl") $(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}' "$T/old.jsonl")"
+old_tr "$T/new.jsonl" 2099-01-01T00:00:00.000Z
+check "BLOCK: a session started after the install gets no transition" "2 2" "$(sg Bash '{"command":"gh-watch-start /w o/r"}' "$T/new.jsonl") $(sg Agent '{"prompt":"x"}' "$T/new.jsonl")"
 check "the gate's table and always-on.md's rows agree" ok "$(python3 - "$R" <<'EOF'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('sg', sys.argv[1] + '/hooks/pre-skill-gate.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)

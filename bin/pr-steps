@@ -5,12 +5,24 @@
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 set -euo pipefail
 step=${1:?usage: pr-steps <preflight|approach|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in preflight|approach|verify|shape|reverify|fresh|gates) ;; review) step=fresh ;;
-  loopb|refactor) echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2)" >&2; exit 1;;
+case "$step" in preflight|approach|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
   *) echo "step must be preflight, approach, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
+# A pipeline whose approach was recorded before this version was installed (skills/task/SKILL.md's mtime) finishes under
+# its old contract: loopb and refactor instead of shape, and a fresh report without a Maintainer line.
+old_pipeline() {
+  python3 - ~/.claude/pr-steps/approach."$key" "$(dirname "$(readlink -f "$0")")/../skills/task/SKILL.md" <<'PY'
+import datetime, os, sys
+try:
+    t = open(sys.argv[1]).readline().split()[-1]
+    sys.exit(0 if datetime.datetime.fromisoformat(t.replace('Z', '+00:00')).timestamp() < os.path.getmtime(sys.argv[2]) else 1)
+except (OSError, IndexError, ValueError):
+    sys.exit(1)
+PY
+}
+case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2). Only a branch whose approach was recorded before the switch still records them." >&2; exit 1; };; esac
 # pr-steps preflight <app URL> [Chrome flags] | <PNG the session's browser MCP took just now> | 'none, because <why>':
 # before any code, the app runs and browser control loads it (pull-request, Check you can finish before you start)
 if [ "$step" = preflight ]; then
@@ -64,22 +76,25 @@ carries() {
   changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
-if [ "$step" != shape ] && [ "$step" != gates ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
+  loopb)
+    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)
-    grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
+    grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
     grep -qx 'MERGE AS IS: yes' "$out" || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes" >&2; exit 1; }
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
-  shape)
+  shape|refactor)
     if is_pass "$out"; then
+      [ "$step" = refactor ] ||
       [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent (mergeworthy:converge step 2)" >&2; exit 1; }
     else
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}')
       [ -n "$carried" ] || { echo "$out is not a shape pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy delegate/shape.md), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
       full=$(git rev-parse "$carried")
-      prev=$(awk '$1=="shape"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      prev=$(awk '$1=="shape"||$1=="refactor"{print $2}' ~/.claude/pr-steps/"$full" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
       [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings to carry" >&2; exit 1; }
       changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }

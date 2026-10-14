@@ -19,7 +19,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `pull-request` | `post`, `evidence`, `design`, `finality`, `delegate`, `code`, `docs`, `converge`, `merging`, `task`, `writing`, `reply` |
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
-| `rules` | `delegate`, `task` |
+| `rules` | `task`, `delegate` |
 | `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
 | `writing` | nothing |
 
@@ -236,9 +236,9 @@ flowchart TB
   start(["A rule failed or the<br/>user names a failure; a<br/>👎; editing a skill, …"])
   subgraph g0["Steps"]
     s0["1. A named failure"]
-    s1["2. Not the steward?"]
+    s1["2. Whose rule is it?"]
     s0 --> s1
-    s2["3. The steward"]
+    s2["3. Fix the mergeworthy rule<br/>where it bites"]
     s1 --> s2
     s3["4. Cold read"]
     s2 --> s3
@@ -247,9 +247,10 @@ flowchart TB
     s5["6. Steward tick"]
     s4 --> s5
   end
-  s3 -.-> r1[["delegate"]]
-  s5 -.-> r2[["delegate"]]
-  s5 -.-> r3[["task"]]
+  s1 -.-> r1[["task"]]
+  s3 -.-> r2[["delegate"]]
+  s5 -.-> r3[["delegate"]]
+  s5 -.-> r4[["task"]]
   start --> g0
 ```
 
