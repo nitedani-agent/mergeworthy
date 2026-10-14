@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/writing/SKILL.md` (§Self-check is what you check). Include `delegate/agent.md`.
 
-The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (a reply of a few claims: "Done in <sha>", a holding reply): only the Claims check, on those claims.
+The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (a reply of a few claims: "Done in <sha>", a holding reply; a draft PR's first body; an edit that changes only a typo or a sha): only the Claims check, on those claims.
 
 ```
 Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is posted on <owner/repo#N>.

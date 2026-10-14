@@ -11,7 +11,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 0. **The shape is agreed and the area is clean.** A new API, protocol or behavior is built only once the maintainer OK'd its shape (`design` step 9); in the user's own repos, once the walkthrough is posted. Code being reshaped, or a change that can't be made cleanly because of past patches: `finality`. Size the batch first (§Batching): a change of 80 lines or fewer that adds no behavior carries the pass.
    Open: §Batching; `finality` · Hook: pre-bash-guard
-1. **Loop A: does it break anything?** One verifier per slice set, kept for the loop's whole life. You decide each reproduced bug's root-cause fix; an implementer lands it; the same verifier gets the commits. Done when every slice has a pass with no bugs after its last fix, and its file ends `NO BUGS`.
+1. **Loop A: does it break anything?** One verifier per slice (§Running the agents), kept for the loop's whole life. You decide each reproduced bug's root-cause fix; an implementer lands it; the same verifier gets the commits. Done when every slice has a pass with no bugs after its last fix, and its file ends `NO BUGS`.
    Open: `delegate/verifier.md`; `delegate/implementer.md` · Run: `pr-steps verify <its file>` · Hook: pre-bash-guard
 2. **Loop B: is it good code?** After Loop A, one agent in one prompt, each into its own file: first the reviewer brief, then the shape pass (cut what shouldn't exist, reshape what stays, rate every file and function old ⇒ new). You decide which findings land (`code §Earn every line`); an implementer lands them commit by commit, gates after each, and the same agent re-rates (`delegate §Continue`: in T3 Code, a new task carrying its report). A bug its review finds is fixed, and Loop A re-checks that slice. OWNER-DECISION rows go in the PR body's decision blocks (`writing §Forms`) or your report. Done when its shape report lists every file, function and piece of logic old ⇒ new with the ✅ coverage list, high and justified, and ends `CLEAN`.
    Open: `delegate/reviewer.md`, `delegate/shape.md`, `delegate/implementer.md` · Run: `pr-steps shape <its shape report>` · Hook: pre-bash-guard
@@ -32,9 +32,9 @@ Agent runs cost the user's subscription, so converge per push, not per commit.
 
 ### Running the agents
 
-- **Continue, don't restart** (`delegate §Continue`): after every fix, the loop's agent re-checks changed slices in Loop A and audits the whole slice set in Loop B. Loop A runs repros and Loop B rates code, so they get separate agents, except a Tier S PR whose diff is under ~300 lines, where one agent runs both.
-- **A long list of Loop B findings** goes to one implementer in its own worktree, taking the slices one after the other (one per slice only when they don't fit one context). Review its diff before cherry-picking; cherry-pick onto the PR branch, run the full gates and the lanes the changes touch, then continue the Loop A verifier with the commits.
-- **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices), each slice with its own loop agents.
+- **Continue, don't restart** (`delegate §Continue`): after every fix, the slice's Loop A verifier re-checks what changed and its Loop B agent re-audits the slice. Loop A and Loop B get separate agents, except a Tier S PR whose diff is under ~300 lines, where one agent runs both.
+- **A long list of Loop B findings** goes to the slice's implementer in its own worktree. Review its diff before cherry-picking; cherry-pick onto the PR branch, run the full gates and the lanes the changes touch, then continue the Loop A verifier with the commits.
+- **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices); each slice gets its own loop agents: a Loop A verifier, a Loop B agent and an implementer.
 - **What they read:** the head's code in full at the brief's pinned SHAs. A finality graph is only an index.
 - **A new loop agent,** given the last report, once its context passes about 100k tokens. A changed decision in `decisions/*.md` goes to the running agent.
 - **A maintainer's commits are owner code** (`code §Owner code and authority`).
@@ -51,4 +51,4 @@ When a feature PR also fixes the base code it builds on:
 
 ### Evidence blocks
 
-Just enough to prove each step ran: one collapsed block per step above, plus an "Approach" block (the candidates and ratings, linking a gist of `approach.md`), its runs newest first, each naming the head it ran on. Each says in plain sentences what ran and what came of it ("I rated every file and function with its reason and re-rated until nothing worth changing was left"), names a finding that changed the PR, and links the full output in a gist a person can read: how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
+Just enough to prove each step ran: one collapsed block per step above, plus an "Approach" block (the candidates and ratings, linking a gist of `approach.md`), its runs newest first, each naming the head it ran on. Each says in plain sentences what ran and what came of it, names a finding that changed the PR, and links the full output in a gist a person can read: how many passes ran and what each found, then the commits, what stays below the bar and why, then one line per item, grouped by area. Claim only what ran on that head.
