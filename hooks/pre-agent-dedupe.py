@@ -95,7 +95,7 @@ if not register:
                          + '\n'.join(busy) + "\nContinue that agent with a message, or wait for it to finish; a replacement goes in a fresh worktree.\n")
         sys.exit(2)
 # A brief that writes or reviews code, docs or a post (any role but research or test) for a repo whose maintainers' notes exist
-# (delegate §Brief) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
+# (delegate step 3) names the project file, so the agent reads them: by owner/repo, or by a path in that repo's checkout. A memory-refresh
 # brief reads only the session log.
 if not register and ti.get('role') not in ('research', 'test') and 'memory-refresh' not in gate_text:
     notes = {os.path.relpath(f, os.path.expanduser('~/.mergeworthy/projects'))[:-3].lower(): f

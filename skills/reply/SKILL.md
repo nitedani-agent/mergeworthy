@@ -19,7 +19,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
    Open: §Kinds of comment
 5. **A decision question or a design point:** `design` steps 1–3 before any answer. Anything else: do the work it asks (code through an implementer, then `merging` step 1).
    Open: `design`; `delegate/implementer.md`
-6. **Answer through `post`,** as a new comment, because edits don't notify ("Done in <sha>" for done work). Positions about code, commits or results come after reading them; what the drafter checks gets none (`delegate/drafter.md`). Beyond this answer and the wait ping, a question gets no further comments from you; later changes are edits.
+6. **Answer through `post`,** as a new comment, because edits don't notify ("Done in <sha>" for done work). Give the drafter a position only on code, commits or results you have read; put the rest under its `To check` line (`delegate/drafter.md`). Beyond this answer and the wait ping, a question gets no further comments from you; later changes are edits.
    Open: `post` steps 1–5 · Record: the gate file · Hook: pre-bash-guard
 7. **Same step:** clear the owed line; put every "OK?" you asked and every promise into `proposals-open.md`; Tier M: a ledger row; Tier L: the umbrella and its Decisions comment through `post`. After a burst of maintainer comments, check the PR: no comment is the last word without a change, an answer or a reaction.
    Open: `task §Files`; `task §Umbrella` · Record: the owed line, proposals-open.md · Hook: stop-lint, gate-pass (PROMISED)
