@@ -25,7 +25,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Open: §Umbrella · Record: umbrella.txt · Hook: post-lint `--kind tracker`; the watcher's `### TRACKER STALE`
 8. **Memory.** Work that spans a compaction or a day: `memory-prep init <work folder> <T3 thread id>` once, from your checkout (the id from `t3_thread_list`; skip outside T3 Code). At each start and compaction the `session-memory` hook prints `memory.md`'s Standing part (rulings, ruled out, superseded, still intended), and, when it is behind this session's log, an order to refresh it before resuming; stop-lint's hourly repeat runs beside your work.
    Record: memory.md · Hook: session-memory, stop-lint
-9. **Go to the deliverable's skill:** a change → `pull-request`; a design question or proposal → `design`; a comment to answer → `reply`; a review of someone else's PR → `review`; an issue → `open-issue`; docs alone → `docs`; a plain answer or research (Tier 0) → answer it by `writing §Reports to the user`. Each agent and PR you start names the critical-path item it unblocks (`delegate §Brief`).
+9. **Go to the deliverable's skill:** a change → `pull-request`; a design question or proposal → `design`; a comment to answer → `reply`; a review of someone else's PR → `review`; an issue → `open-issue`; docs alone → `docs`; a plain answer or research (Tier 0) → answer it by `writing §Reports to the user`. Each agent and PR you start names the critical-path item it unblocks (`delegate` step 3).
    Hook: pre-skill-gate
 10. **Finish:** the final report walks scope.md's checkboxes.
    Open: `writing §Reports to the user`

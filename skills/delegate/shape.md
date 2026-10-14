@@ -13,7 +13,7 @@ Dispositions, one list:
 - **KEEP:** checked and worth its price.
 
 ```
-You shape <slice> of <PR>: git diff <base> <head> restricted to <file list>, in <worktree>; everything in it, tests included.
+You shape <PR>: `git diff <base> <head>`, in <worktree>; everything in it, tests included. Reading order, slice by slice: <the slices' file lists, or none>.
 The project file: <project file path>. The invariants and settled picks: <decisions/*.md>; keep them intact.
 Evidence: <the verifier's and reviewer's reports>.
 Read with git at the pinned SHAs; run specs only in your own worktree under <work folder>, removed when done; don't build or run <shared apps>.
