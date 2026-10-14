@@ -738,7 +738,7 @@ cp "$T/drafts/lf/review-ticket.md" "$T/drafts/lf/review-brief.md"
 check "a review brief kept in drafts/ is not itself a draft needing post-lint" 0 "$(launch "Execute $T/drafts/lf/review-brief.md")"
 python3 "$R/bin/agent-job" done "$T/drafts/lf/review-brief.md" >/dev/null
 printf 'thread' > "$T/drafts/lf/thread-context.md"
-printf 'Check %s against %s; write CLEAN or findings to %s/drafts/lf/reply.review.out.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/thread-context.md" "$T" > "$T/drafts/lf/check-r1.md"
+printf 'Check %s against %s by skills/writing/SKILL.md; write CLEAN or findings to %s/drafts/lf/reply.review.out.\n' "$T/drafts/lf/reply.md" "$T/drafts/lf/thread-context.md" "$T" > "$T/drafts/lf/check-r1.md"
 check "a review naming <name>.review.out checks only <name>.md, not the thread record beside it" 0 "$(launch "Execute $T/drafts/lf/check-r1.md")"
 python3 "$R/bin/agent-job" done "$T/drafts/lf/check-r1.md" >/dev/null
 printf 'x' >> "$T/drafts/lf/reply.md"
