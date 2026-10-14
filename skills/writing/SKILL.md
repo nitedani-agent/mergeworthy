@@ -43,7 +43,6 @@ Every post brings something the reader didn't have: a finding, a measurement, a 
 
 - Check `main`, the registry and the upstream source before recommending to close, remove, replace or switch anything.
 - A "can't" needs the failed attempt quoted, the session's own tools (its MCP servers) tried first, plus one alternative. Check a blocker you report ("X isn't running") again right before you report it.
-- If you contradict something you said earlier, say so.
 - A job you report as running is one you saw make progress in this turn (its task status, log, output file, CPU or GPU busy), not one you started or saw earlier.
 - A measurement goes through the exact path the real work takes: the same client, API and settings the user runs; a result from any other path is not evidence. A CI workflow change works only once a real run on the branch shows it.
 - A check covers only what it exercised. "Works", "fixed" or "converged" names what ran and what didn't: a stand-in instead of the real thing, a subset of a list, a unit test instead of the real entry, the source instead of the installed copy.
@@ -89,8 +88,6 @@ A maintainer argued that some of the proxy's jobs belong to the server; he wante
 | A sentence only the code explains ("two specs pin why it changed", "the detach skip for pending admissions") | What the user sees or does, and why, in their words; the review rejects any sentence the owner couldn't follow without the code |
 | An inventory of internals to prove completeness | What the user sees |
 | A reason that is true by definition ("the `+middleware` ordered after it didn't run before it") | The consequence the reader cares about, or cut it |
-| Opinions cut to fit a length | Keep each, with its argument; cut jargon and repeats instead |
-| "I was wrong" in every answer | One line of it, then the plan |
 | Em dashes for asides | A comma, parentheses, or two sentences |
 | Groups of three; "Not X, but Y"; a question you answer yourself; dramatic setups ("Here's the thing:") | Say what is, starting with the substance |
 | Inflated importance ("crucial", "significant impact") | The fact that shows it: "it returned a 500 on every POST" |
@@ -119,7 +116,7 @@ A post is as long as what the reader needs to decide, act or check, and no longe
 
 - **An inbox, not a log.** First the answers to their questions; then what needs them, each decision with your pick and quick options; then what moved. Rounds, reviewers, agents, hooks and models stay out unless they change what the user should do.
 - **Every reply carries thought.** When something went wrong: why, your judgment, and what changes. Restating their instruction and your next command is not a reply.
-- **Only what they need** to answer, decide or act; more when they ask. Local files as absolute paths; every PR or issue with its title and link. No narration step by step.
+- **Only what they need** to answer, decide or act; more when they ask; asked how to do something you can do yourself, do every step you can and hand back only the one that needs them (a login, a publish under their account), as one command. Local files as absolute paths; every PR or issue with its title and link. No narration step by step.
 - **Then the state,** checked first: each PR's state and what changed since the last report, what's running, what waits on whom, the critical path with an ETA. State unfavorable facts, mistakes and skipped steps plainly.
 - **A `Running:` line** lists only the agents and jobs `task_status` (or their log) showed moving in this turn; stop-lint checks it.
 
