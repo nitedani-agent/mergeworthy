@@ -22,10 +22,13 @@ if cid:
     if register:
         seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
 text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'description', 'title', 'workspaceStrategy'))
-tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
+# a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
+mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
+tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b', text))
+                  if not t.startswith(mw)})
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
 # Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
-gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t) and not os.path.realpath(t).startswith(os.path.realpath(os.path.expanduser('~/.mergeworthy')) + os.sep))
+gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
     # The gate names a review's output after its draft (`<name>.review.out` for `<name>.md`): when it does, that draft is
     # the one reviewed, and the files beside it (thread record, brief, parent) are not drafts
