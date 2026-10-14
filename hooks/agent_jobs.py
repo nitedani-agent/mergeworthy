@@ -10,7 +10,8 @@ import glob, json, os, re, time
 JOBS = os.path.expanduser('~/.claude/agent-jobs')
 REPORTED = os.path.expanduser('~/.claude/agent-jobs-reported')  # <job file>-<transcript mtime>: reported once per finish
 LAUNCH = re.compile(rb'"name": ?"(Agent|Task|mcp__[^"]*(delegate_task|t3_thread_launch))"')  # pre-agent-dedupe's matcher
-QUIET, LONG, OPEN = 180, 660, 24 * 3600  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
+QUIET, LONG, OPEN = 180, 660, 24 * 3600
+CODEX = '~/.codex/sessions/*/*/*/rollout-*.jsonl'  # T3 Code's Codex agents  # OPEN: pre-agent-dedupe's window, after which a job no longer counts
 
 def jobs(now=None):
     """(file name, job) for each open job: registered in the last day and not released."""
@@ -31,6 +32,9 @@ def first_prompt(path):
             for i, line in zip(range(50), fh):
                 try: o = json.loads(line)
                 except ValueError: continue
+                if isinstance(o, dict) and o.get('type') == 'response_item' and (o.get('payload') or {}).get('role') == 'user':
+                    _first[path] += ' '.join(b.get('text', '') for b in o['payload'].get('content') or [] if isinstance(b, dict)) + '\n'
+                    continue
                 if isinstance(o, dict) and o.get('type') == 'user' and not o.get('isMeta'):
                     c = (o.get('message') or {}).get('content')
                     t = c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c or [] if isinstance(b, dict) and b.get('type') == 'text')
@@ -51,7 +55,7 @@ def transcript(job):
     if os.path.exists(_hit.get(k) or '/nonexistent'):
         return _hit[k]
     root = os.path.expanduser('~/.claude/projects')
-    for p in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl'):
+    for p in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl') + glob.glob(os.path.expanduser(CODEX)):
         try:
             if os.path.getmtime(p) >= job['started'] - 60 and p != job.get('transcript') and all(n in first_prompt(p) for n in ns):
                 _hit[k] = p
@@ -80,6 +84,8 @@ def pending(path):
         for line in reversed(fh.read().splitlines()):
             try: o = json.loads(line)
             except ValueError: continue
+            if isinstance(o, dict) and o.get('type') == 'event_msg':
+                return (o.get('payload') or {}).get('type') not in ('task_complete', 'turn_aborted')
             if isinstance(o, dict) and o.get('type') in ('user', 'assistant'):
                 c = (o.get('message') or {}).get('content')
                 return o['type'] == 'assistant' and any(isinstance(b, dict) and b.get('type') == 'tool_use' for b in c or [] if not isinstance(c, str))

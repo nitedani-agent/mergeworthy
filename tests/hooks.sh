@@ -678,8 +678,19 @@ EOF2
 reg "Execute $T/jobs/quiet-ticket.md exactly"; child_log "$JD/quiet.jsonl" "Execute $T/jobs/quiet-ticket.md exactly" 5 text
 reg "Execute $T/jobs/busy-ticket.md exactly"; child_log "$JD/busy.jsonl" "Execute $T/jobs/busy-ticket.md exactly" 0 text
 reg "Execute $T/jobs/tool-ticket.md exactly"; child_log "$JD/tool.jsonl" "Execute $T/jobs/tool-ticket.md exactly" 5 tool
+codex_log() { # file brief minutes-ago last-event: a T3 Code Codex agent's transcript
+  mkdir -p "$HOME/.codex/sessions/2026/10/14"; python3 -c 'import json,sys; f,b,last=sys.argv[1],sys.argv[2],sys.argv[3]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+w({"type":"session_meta","payload":{"originator":"T3 Code"}})
+w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions"}]}})
+w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":b}]}})
+w({"type":"event_msg","payload":{"type":last}})' "$HOME/.codex/sessions/2026/10/14/$1" "$2" "$4"
+  touch -d "$3 minutes ago" "$HOME/.codex/sessions/2026/10/14/$1"; }
+reg "Execute $T/jobs/codex-done.md exactly"; codex_log rollout-done.jsonl "Execute $T/jobs/codex-done.md exactly" 5 task_complete
+reg "Execute $T/jobs/codex-run.md exactly"; codex_log rollout-run.jsonl "Execute $T/jobs/codex-run.md exactly" 5 agent_message
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "jobs/" in open(f).read()]'  # launched an hour ago
 done_events > "$T/ev1"; done_events > "$T/ev2"
+check "AGENT DONE for a Codex agent once its task completes, not while it runs" "1 0" "$(grep -c "AGENT DONE $T/jobs/codex-done.md" "$T/ev1") $(grep -c codex-run "$T/ev1")"
+python3 "$R/bin/agent-job" done "$T/jobs/codex-done.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/codex-run.md" >/dev/null
 check "AGENT DONE for the quiet agent's job, once; not for an active one or one in a running tool call" "1 0 0 0" "$(grep -c "^### AGENT DONE $T/jobs/quiet-ticket.md: read its result (task_status / its report), then agent-job done $T/jobs/quiet-ticket.md$" "$T/ev1") $(cat "$T/ev2" | wc -l) $(grep -c busy-ticket "$T/ev1") $(grep -c tool-ticket "$T/ev1")"
 sj() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
