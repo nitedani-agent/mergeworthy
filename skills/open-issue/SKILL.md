@@ -9,7 +9,7 @@ One finding a newcomer can find, reproduce and judge. An umbrella issue is `task
 
 ## Steps
 
-0. **Should this be a PR?** An obvious fix for a defect that blocks your work usually is.
+0. **Should this be a PR?** An obvious fix for a defect that blocks your work usually is: then stop here and run `pull-request`.
    Open: `task §Dispositions`
 1. **Already filed or fixed?** An existing issue gets your finding as a comment, not a twin; a fix already on `<base>` gets no issue.
    Run: `gh issue list --state all --search "<keyword>"`; `git log --oneline origin/<base> -- <files>`

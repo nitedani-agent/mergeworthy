@@ -17,7 +17,7 @@ Takes a design to a shape the maintainer agreed to, before any PR converges. Ent
    Open: `delegate/designer.md`; `code §Deep modules` · Record: `<work folder>/decisions/<name>.md` · Hook: pre-design-gate (Tier M/L: no code before it)
 5. **Prototype to prove the invariants end to end:** a real browser, request counts, timing, byte comparisons, dev, prod and static hosting.
 6. **Adversarial review of the prototype:** how does it fail? When two rounds each find a new case breaking the same rule, stop patching cases: restate them as one rule, walk every setup through it yourself, then ask again.
-   Open: `delegate §Reviewers`; `delegate/reviewer.md` · Record: its file
+   Open: `delegate §Reviewers`; `delegate/reviewer.md` · Record: `<work folder>/drafts/<thread>/<name>.adversarial.md`
 7. **Keep the thread map:** `<work folder>/maps/<owner>-<repo>-<N>.md`, your own file: linked threads and PRs, every invariant agreed (with the link) or open, and where it is heading. A decision blocks only the part it decides: start everything else now. Drifted over three or more rounds of proposals, each reply answering only the latest idea, stuck with every option costing something ruled out, or asked for the ideal design: `finality` first. Then update the WIP comment from the map before replying.
    Open: §WIP comment; `finality` · Record: the map · Hook: pre-bash-guard (a third proposal on a thread waits for a map newer than the last one)
 8. **Propose** only when no invariant is broken: a walkthrough of what the user writes and what happens on each path, alternatives as code, numbered questions each with your pick.

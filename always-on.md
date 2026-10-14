@@ -17,11 +17,14 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 | A design question, designing an API, protocol or module, restructuring code, your own proposal | `mergeworthy:design` | goal, debate, design it twice, prototype, propose (9 steps) |
 | Reviewing a PR you didn't write, or any standalone review | `mergeworthy:review` | an independent reviewer, findings settled by runs (4 steps) |
 | Opening an issue | `mergeworthy:open-issue` | already filed?, reproduce, body, post (5 steps) |
-| Writing or changing docs a user reads: a page, a README, JSDoc, an `llms.txt` line | `mergeworthy:docs` | profile, placement, imitate, fresh reader (5 steps) |
+| Writing or changing docs a user reads: a page, a README, JSDoc, an `llms.txt` line | `mergeworthy:docs` | profile, placement, imitate, the docs reader (5 steps) |
 | Starting, continuing or checking a subagent; writing a brief | `mergeworthy:delegate` | one agent per job, model class, the brief, its result (7 steps) |
 | A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; the steward's tick | `mergeworthy:rules` | fix the instance, then the rule or the steward's inbox (6 steps) |
 | Posting or editing anything on GitHub (a step sends you here) | `mergeworthy:post` | draft, lint, review to `CLEAN`, re-check, post (5 steps) |
 | Converging a PR's head before it is ready (a step sends you here) | `mergeworthy:converge` | Loop A, Loop B, Loop A again, the fresh reader, gates (6 steps) |
+| Verifying a bug or a PR: does it break anything, reproduce-only | `mergeworthy:converge` | step 1 (Loop A), with `delegate/verifier.md` |
+| A shape pass: cut, reshape and rate a diff; a `### SHAPE STALE` event | `mergeworthy:converge` | step 2 (Loop B), with `delegate/shape.md` |
+| The fresh read of a PR before it is ready, as its maintainer | `mergeworthy:converge` | step 4, with `delegate/fresh-reader.md` |
 | Pushing, saying a PR is ready, merging | `mergeworthy:merging` | push, ready check, ready, merge (4 steps) |
 | Showing a behavior: a reproduction, a screenshot, a video, an upload | `mergeworthy:evidence` | browser, reproduce as a person, capture, upload (5 steps) |
 | Code drifted through many patches; a design thread drifted; stuck with every option costing something ruled out; asked for the ideal design | `mergeworthy:finality` | map, imagine, hunt, converge, close (7 steps) |
@@ -30,10 +33,12 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 
 ### Words every skill uses
 - **The main session** is the session the user talks to. It decides, briefs agents, approves and posts every word that goes out, and talks to the user; implementers do the edits, commits, builds, tests and browser work. A **subagent** does its brief and nothing else.
-- **The user** owns the goal and their own repos. A **maintainer** is whoever merges in a repo the user doesn't own; their requests are decisions. **Owner code** is a commit by a human account or without your environment's agent trailer: it is never removed or rewritten on an agent's reading alone (`code §Owner code and authority`).
+- **The user** owns the goal and their own repos. A **maintainer** is whoever merges in a repo the user doesn't own; their requests are decisions. **Owner code** is a commit by a human account, or without the agent trailer (the `Co-Authored-By:` line your harness adds to an agent's commits, e.g. `Co-Authored-By: Claude …`): it is never removed or rewritten on an agent's reading alone (`code §Owner code and authority`).
 - **The work folder** is `<task>-work/` next to the worktree, never `/tmp`. The watcher writes `events.log` there; you keep `scope.md`, the drafts and the owed lists there (`task §Files`).
 - **The project file** is `~/.mergeworthy/projects/<owner>/<repo>.md`: how one repo works and what its maintainers taught you. Every brief for work in that repo names it.
 - **Tier** is the size of the work (0, S, M, L: `task` step 2). The model an agent runs on is its **model class** (`delegate` step 2).
+- **The Monitor** is Claude Code's `Monitor` tool (load it with ToolSearch `select:Monitor`). To arm it, call it with the command `gh-watch-start` printed and `timeout_ms` 1800000; it wakes you on each line the watcher writes to `events.log`.
+- **The fresh reader** is a PR's last check, read as the maintainer who will merge it (`converge` step 4). Docs get the **docs reader** (`docs` step 4); a changed skill or rules file gets a **cold read** (`rules` step 4).
 - **The steward** is the one session named in `~/.mergeworthy/steward`; only it changes mergeworthy. Any other session writes a mergeworthy fix it owes as one line in the steward's `inbox.md` (`rules` step 2).
 
 ### Every session
@@ -44,6 +49,6 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 
 ### At session start and after compaction
 1. If the `session-memory` hook printed an order to refresh `memory.md`, follow it before anything else.
-2. Read `scope.md`'s Tier line and critical path; if there is none, run `task`.
+2. Read line 1 (the Tier) and the critical path of `<task>-work/scope.md`, the work folder next to your worktree (`ls ~/*-work` lists them); if there is none, run `task`.
 3. Read `events.log` past the line in `events.cursor`, re-arm the Monitor, and handle each event by `reply`.
-4. Open the skill of the step you were in again before acting.
+4. Open the skill and step that the critical path or the compaction summary names as in progress, before acting; if neither does, run `task` from step 1.

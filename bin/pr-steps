@@ -47,7 +47,7 @@ if [ "$step" = approach ]; then
   [ "$(printf '%s' "$rows" | grep -c .)" -ge 2 ] || { echo "$out lists fewer than two rated candidates: a table '| Candidate | Rating | Why |' with each candidate, not building it included, rated 0-10 with its reason" >&2; exit 1; }
   rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
-  [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 3); find a better candidate or stop" >&2; exit 1; }
+  [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
   echo "approach $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/approach."$key"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0

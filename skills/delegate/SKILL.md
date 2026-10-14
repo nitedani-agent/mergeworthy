@@ -9,7 +9,7 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 
 ## Steps
 
-1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user; only the main session starts agents. Stop an agent as soon as its question is settled.
+1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a skill's step itself requires (`finality`'s phases, one set of loop agents per slice); only the main session starts agents. Stop an agent as soon as its question is settled.
    Hook: pre-agent-dedupe
 2. **Model class and effort.**
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides · Hook: route.py
@@ -38,13 +38,13 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 
 Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache.
 - **Claude Code:** `SendMessage` to its agent id.
-- **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you. Review rounds are a new `delegate_task` each (§Reviewers).
+- **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you. Never for a review: each review round is a new `delegate_task` whose prompt carries the earlier findings and what changed (T3 Code's own rule; §Reviewers).
 - **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two run one job, keep the one with the most progress.
 
 ### Model class
 
-The main session runs on the strongest model class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
+The classes are model families, never versions: the strongest is the newest Opus your harness offers, the smallest with an effort setting the newest Haiku (`~/local-llm/hooks/route.py` refuses others where it runs). The main session runs on the strongest class: it plans, briefs, decides, spot-checks results and approves every word to a maintainer. Never a model the user excluded, nor a model version in a prompt, skill or memory.
 - **Root causes and choosing among approaches** (`pull-request` step 5): the main session's class at high effort; lower effort makes fewer tool calls, and the approach that read one more dependency file was half the code.
 - **Authors** (code, docs, PR bodies, replies, designs): the main session's class at high effort. **Judges** (verification, every `converge` loop agent, audits, exploration): at medium.
 - **The smallest class with an effort setting, at high effort,** only for work where nothing it writes ships: running gates, tests and a reproduction from a recipe, log mining, data processing and bookkeeping.

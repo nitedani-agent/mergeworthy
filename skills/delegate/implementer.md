@@ -20,7 +20,7 @@ For every item:
 - a removed, merged or moved test or guard gets a mutation probe (code §Tests).
 
 Run <quick gates> after every commit and <lanes for touched areas> before handing back (code §Gates).
-One commit per item or class; message: <style>; author: <login> <noreply email>; trailer: <trailer>.
+One commit per item or class; message: <style>; author: <login> <noreply email>; trailer: <the agent trailer, the `Co-Authored-By:` line your harness adds to agent commits>.
 Before handing back, run code §Checklist on your own diff and fix what it catches.
 
 Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`.

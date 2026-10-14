@@ -17,7 +17,7 @@ What is true of every diff. The implementer reads this before writing; whoever j
 ### Root cause
 
 Fix at the root; never document around a defect. A sentence telling users to work around the product ("order by seq when order matters", "may miss for 60 s") is a bug to fix, upstream included, unless the user explicitly accepts it.
-- A workaround for another project's bug ships only once that bug is filed there, with a one-line `TODO: remove once <issue or PR link> is released` at the workaround.
+- A workaround for another project's bug ships only once that bug is filed there (an issue, or the PR that fixes it), with a one-line `TODO: remove once <issue or PR link> is released` at the workaround.
 - These workarounds need the user's OK, with a written reason the root fix is impossible: parsing twice, encoding to dodge a transport, retry or reload loops, a second code path for old runtimes, silent fallbacks.
 - Unreleased, experimental or pre-1.0 code gets no compatibility code or shims (check `npm view <pkg> versions`). Losing something users can do on `main` is still a regression.
 - Before an upstream PR, find which side relies on behavior the other side doesn't promise (hook order, file layout). Fix that side first, ours included.

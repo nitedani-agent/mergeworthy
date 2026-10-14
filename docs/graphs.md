@@ -7,20 +7,20 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | Skill | Hands over to |
 |---|---|
 | `code` | `delegate` |
-| `converge` | `design`, `finality`, `delegate`, `code`, `writing`, `pull-request`, `task`, `merging`, `post` |
-| `delegate` | `writing` |
+| `converge` | `design`, `finality`, `delegate`, `code`, `writing`, `pull-request`, `task`, `post`, `merging` |
+| `delegate` | `finality`, `writing` |
 | `design` | `pull-request`, `delegate`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
 | `evidence` | `post` |
 | `finality` | `delegate`, `code`, `post`, `design`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
-| `open-issue` | `task`, `evidence`, `writing`, `post` |
+| `open-issue` | `pull-request`, `task`, `evidence`, `writing`, `post` |
 | `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task` |
 | `pull-request` | `post`, `evidence`, `design`, `finality`, `delegate`, `code`, `docs`, `converge`, `merging`, `task`, `writing`, `reply` |
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `delegate`, `task` |
-| `task` | `post`, `pull-request`, `design`, `review`, `open-issue`, `docs`, `delegate`, `writing` |
+| `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
 | `writing` | nothing |
 
 ## Any multi-step or GitHub task, first; an `/ai` or `/agent` command
@@ -36,11 +36,12 @@ flowchart TB
   s0 -.-> r1[["post"]]
   s0 -.-> r2[["pull-request"]]
   s0 -.-> r3[["design"]]
-  s0 -.-> r4[["review"]]
-  s0 -.-> r5[["open-issue"]]
-  s0 -.-> r6[["docs"]]
-  s0 -.-> r7[["delegate"]]
+  s0 -.-> r4[["reply"]]
+  s0 -.-> r5[["review"]]
+  s0 -.-> r6[["open-issue"]]
+  s0 -.-> r7[["docs"]]
   s0 -.-> r8[["writing"]]
+  s0 -.-> r9[["delegate"]]
   start --> g0
 ```
 
@@ -166,17 +167,18 @@ flowchart TB
     s4["4. Post it"]
     s3 --> s4
   end
-  s0 -.-> r1[["task"]]
-  s2 -.-> r2[["evidence"]]
-  s3 -.-> r3[["writing"]]
-  s4 -.-> r4[["post"]]
-  s4 -.-> r5[["evidence"]]
+  s0 -.-> r1[["pull-request"]]
+  s0 -.-> r2[["task"]]
+  s2 -.-> r3[["evidence"]]
+  s3 -.-> r4[["writing"]]
+  s4 -.-> r5[["post"]]
+  s4 -.-> r6[["evidence"]]
   start --> g0
 ```
 
 ## Writing or changing docs a user reads: a page, a README, JSDoc, an `llms.txt` line
 
-Opens `mergeworthy:docs` (profile, placement, imitate, fresh reader (5 steps)).
+Opens `mergeworthy:docs` (profile, placement, imitate, the docs reader (5 steps)).
 
 ```mermaid
 flowchart TB
@@ -187,7 +189,7 @@ flowchart TB
     s0 --> s1
     s2["3. Draft by imitation"]
     s1 --> s2
-    s3["4. A fresh reader"]
+    s3["4. The docs reader"]
     s2 --> s3
     s4["5. Gates"]
     s3 --> s4
@@ -220,7 +222,8 @@ flowchart TB
     s6["7. Relay the result to the<br/>user and act …"]
     s5 --> s6
   end
-  s6 -.-> r1[["writing"]]
+  s0 -.-> r1[["finality"]]
+  s6 -.-> r2[["writing"]]
   start --> g0
 ```
 
@@ -307,10 +310,125 @@ flowchart TB
   s4 -.-> r8[["pull-request"]]
   s4 -.-> r9[["task"]]
   s4 -.-> r10[["delegate"]]
-  s5 -.-> r11[["merging"]]
-  s5 -.-> r12[["post"]]
-  s5 -.-> r13[["finality"]]
-  s5 -.-> r14[["code"]]
+  s4 -.-> r11[["post"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
+  start --> g0
+```
+
+## Verifying a bug or a PR: does it break anything, reproduce-only
+
+Opens `mergeworthy:converge` (step 1 (Loop A), with `delegate/verifier.md`).
+
+```mermaid
+flowchart TB
+  start(["Verifying a bug or a PR:<br/>does it break anything,<br/>reproduce-only"])
+  subgraph g0["Steps"]
+    s0["0. The shape is agreed and<br/>the area is …"]
+    s1["1. Loop A"]
+    s0 --> s1
+    s2["2. Loop B"]
+    s1 --> s2
+    s3["3. Loop A again"]
+    s2 --> s3
+    s4["4. The fresh reader"]
+    s3 --> s4
+    s5["5. Gates and body"]
+    s4 --> s5
+  end
+  s0 -.-> r1[["design"]]
+  s0 -.-> r2[["finality"]]
+  s1 -.-> r3[["delegate"]]
+  s2 -.-> r4[["code"]]
+  s2 -.-> r5[["writing"]]
+  s2 -.-> r6[["delegate"]]
+  s3 -.-> r7[["delegate"]]
+  s4 -.-> r8[["pull-request"]]
+  s4 -.-> r9[["task"]]
+  s4 -.-> r10[["delegate"]]
+  s4 -.-> r11[["post"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
+  start --> g0
+```
+
+## A shape pass: cut, reshape and rate a diff; a `### SHAPE STALE` event
+
+Opens `mergeworthy:converge` (step 2 (Loop B), with `delegate/shape.md`).
+
+```mermaid
+flowchart TB
+  start(["A shape pass: cut,<br/>reshape and rate a diff;<br/>a ### SHAPE STALE event"])
+  subgraph g0["Steps"]
+    s0["0. The shape is agreed and<br/>the area is …"]
+    s1["1. Loop A"]
+    s0 --> s1
+    s2["2. Loop B"]
+    s1 --> s2
+    s3["3. Loop A again"]
+    s2 --> s3
+    s4["4. The fresh reader"]
+    s3 --> s4
+    s5["5. Gates and body"]
+    s4 --> s5
+  end
+  s0 -.-> r1[["design"]]
+  s0 -.-> r2[["finality"]]
+  s1 -.-> r3[["delegate"]]
+  s2 -.-> r4[["code"]]
+  s2 -.-> r5[["writing"]]
+  s2 -.-> r6[["delegate"]]
+  s3 -.-> r7[["delegate"]]
+  s4 -.-> r8[["pull-request"]]
+  s4 -.-> r9[["task"]]
+  s4 -.-> r10[["delegate"]]
+  s4 -.-> r11[["post"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
+  start --> g0
+```
+
+## The fresh read of a PR before it is ready, as its maintainer
+
+Opens `mergeworthy:converge` (step 4, with `delegate/fresh-reader.md`).
+
+```mermaid
+flowchart TB
+  start(["The fresh read of a PR<br/>before it is ready, as<br/>its maintainer"])
+  subgraph g0["Steps"]
+    s0["0. The shape is agreed and<br/>the area is …"]
+    s1["1. Loop A"]
+    s0 --> s1
+    s2["2. Loop B"]
+    s1 --> s2
+    s3["3. Loop A again"]
+    s2 --> s3
+    s4["4. The fresh reader"]
+    s3 --> s4
+    s5["5. Gates and body"]
+    s4 --> s5
+  end
+  s0 -.-> r1[["design"]]
+  s0 -.-> r2[["finality"]]
+  s1 -.-> r3[["delegate"]]
+  s2 -.-> r4[["code"]]
+  s2 -.-> r5[["writing"]]
+  s2 -.-> r6[["delegate"]]
+  s3 -.-> r7[["delegate"]]
+  s4 -.-> r8[["pull-request"]]
+  s4 -.-> r9[["task"]]
+  s4 -.-> r10[["delegate"]]
+  s4 -.-> r11[["post"]]
+  s5 -.-> r12[["merging"]]
+  s5 -.-> r13[["post"]]
+  s5 -.-> r14[["finality"]]
+  s5 -.-> r15[["code"]]
   start --> g0
 ```
 

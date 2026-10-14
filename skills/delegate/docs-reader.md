@@ -1,4 +1,4 @@
-# Docs-reader brief (a fresh reader of a docs change)
+# Docs-reader brief (the docs reader of a docs change)
 
 Standards: `~/.mergeworthy/current/skills/writing/SKILL.md` §Machine-written. Include `delegate/agent.md`.
 

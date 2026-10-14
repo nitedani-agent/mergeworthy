@@ -15,7 +15,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
    Open: §Events · Hook: the watcher
 3. **A comment that takes more than ~15 minutes to answer:** post a holding reply first through `post`'s fast form, carrying what you've found so far and when the answer comes, and make its owed line `holding: <URL> <ETA>`; while a drafter works, `drafting: <comment URL> <ETA>`. Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    Open: `post` · Record: the line in `replies-owed.md` · Hook: stop-lint
-4. **Decide what it asks,** yourself, not an agent: an instruction, a question about your work's quality, a decision question, an acknowledgement, a 👍 or 👎, "I don't understand", a bot's finding (§Kinds of comment). An instruction on a ready PR: under 80 lines, do it and carry the pass (`converge §Batching`); over, a holding reply with the pipeline's ETA.
+4. **Decide what it asks,** yourself, not an agent: an instruction, a question about your work's quality, a decision question, an acknowledgement, a 👍 or 👎, "I don't understand", a bot's finding (§Kinds of comment). An instruction on a ready PR: 80 lines or fewer and adding no behavior, do it and carry the pass (`converge §Batching`); otherwise a holding reply with the pipeline's ETA.
    Open: §Kinds of comment
 5. **A decision question or a design point:** `design` steps 1–3 before any answer. Anything else: do the work it asks (code through an implementer, then `merging` step 1).
    Open: `design`; `delegate/implementer.md`
@@ -23,7 +23,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
    Open: `post` steps 1–5 · Record: the gate file · Hook: pre-bash-guard
 7. **Same step:** clear the owed line; put every "OK?" you asked and every promise into `proposals-open.md`; Tier M: a ledger row; Tier L: the umbrella and its Decisions comment through `post`. After a burst of maintainer comments, check the PR: no comment is the last word without a change, an answer or a reaction.
    Open: `task §Files`; `task §Umbrella` · Record: the owed line, proposals-open.md · Hook: stop-lint, gate-pass (PROMISED)
-8. **Before the turn ends,** name the first open critical-path item and move it (`task §Drive`). Once per session, `schedule_task` a check every 3 hours bound to this thread, its prompt naming the goal, not only the owed lists: a wakeup that only confirms nothing waits on you has stalled.
+8. **Before the turn ends,** name the first open critical-path item and move it (`task §Drive`). Once per session, schedule a check every 3 hours (T3 Code: `schedule_task`, bound to this thread; elsewhere Claude Code's `CronCreate`), its prompt naming the goal, not only the owed lists: a wakeup that only confirms nothing waits on you has stalled.
    Open: `task §Drive`; §Wait ping · Record: the scheduled task · Hook: stop-lint
 
 ### Events
@@ -40,7 +40,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
 | `### TRACKER STALE` | `task §Umbrella`, through `post --kind tracker` |
 | `### SHAPE STALE` | `converge` step 2 on the whole diff, before the next "Done" reply |
 | `### AGENT DONE <ticket>` | `delegate` step 6 |
-| `### FOLLOW-UP` | the steward's: `rules` step 6 |
+| `### FOLLOW-UP` | the steward runs `rules` step 6. Another session gets it only while no steward is declared in `~/.mergeworthy/steward`, and then runs `rules` step 6 itself (its step 2 doesn't apply). |
 | `### AGENT COMMAND`, `### UNROUTED /agent` | the user typing: `task` |
 | `### NEW ISSUE`, `### NEW PR` (a repo watched whole: `owner/repo all`) | answer it like a comment you owe (steps 3–7) |
 

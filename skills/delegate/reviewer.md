@@ -4,7 +4,7 @@ Standards: `~/.mergeworthy/current/skills/code/SKILL.md` (§Owner code and autho
 
 The main session fills it (`review` step 2, `converge` steps 2 and 4, `design` step 6) and starts the reviewer `delegate §Reviewers` names. Not the author, not in the author's context.
 
-**Cold-read variant** (`rules` step 4): replace the charter with "Read <file> as an agent that has never seen this repo. List every sentence you can't act on: an undefined term, a pointer you can't resolve, an actor or file not named. Write `<file>:<line> — the sentence — what's unclear — a rewrite` to <out>."
+**Cold-read variant** (`rules` step 4): use this instead of the code block below: "Read <file> as an agent that has never seen this repo. List every sentence you can't act on: an undefined term, a pointer you can't resolve, an actor or file not named. Write `<file>:<line> — the sentence — what's unclear — a rewrite` to <out>."
 
 ```
 You are reviewing a change you did not write: <PR or artifact>, head <SHA>.

@@ -11,7 +11,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
 
 1. **Read the task and every link in it,** recursively: issues, PRs, review comments, commits, CI. Pull the default branch. Look for open PRs and other sessions' work folders on the same thing.
    Run: `gh issue view`, `gh pr list --state all --search "<keyword>"`, `ls ~/*-work`
-2. **Triage.** Write `Tier: <0|S|M|L>, because <signals>` as line 1 of `<work folder>/scope.md`, and in your first report. Count every PR and decision maker the work has had so far, not only today's ask. Re-triage when the deliverables or open decisions change, and say so.
+2. **Triage.** Write `Tier: <0|S|M|L>, because <signals>` as line 1 of `<work folder>/scope.md`, and in your first report. Count every PR, repo and decision maker the work has had so far, not only today's ask: two or more repos or decision makers make it Tier L. Re-triage when the deliverables or open decisions change, and say so.
    Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
 3. **Scope.** Copy every ask and link of the task into scope.md as checkboxes, at the start and whenever the user adds one; below them the critical path: the open items between now and the goal shipping, in order. Dropping or deferring any item needs the user's OK first, never after.
    Open: §Scope · Record: scope.md
@@ -19,13 +19,13 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Open: §Project file; §Repo study · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
 5. **The watcher.** Unless the plugin's `watcher` option is `off` (§Files): `gh-watch-start <work folder> <owner/repo>`, then arm the Monitor it prints with `timeout_ms` 1800000. Every thread you open or post in joins it (the hooks add it).
    Record: `threads.txt`, `repos.txt` · Hook: pre-bash-guard (no issue or PR in a repo no watcher covers), stop-lint (no live Monitor after a post)
-6. **Prior art and precedent.** Tier M or L, or any new API: research into `<work folder>/prior-art.md` (at least 10 searches and 20 pages read, every project the user names in full, peers and upstream at pinned versions); use their approach where it fits. Before a release, a migration or any repo routine: `<work folder>/precedent.md` from its last 5 instances (commit messages, bump types, tags, commands, order), followed exactly; any difference is a question with a recommendation.
+6. **Prior art and precedent.** Tier M or L, or any new API: research into `<work folder>/prior-art.md` (at least 10 searches and 20 pages read, every project the user names in full, peers and upstream at pinned versions); use their approach where it fits. Before a release, a migration, or any repo task done at least 5 times before (a version bump, a changelog, a dependency update): `<work folder>/precedent.md` from its last 5 instances (commit messages, bump types, tags, commands, order), followed exactly; any difference is a question with a recommendation.
    Record: prior-art.md, precedent.md · Hook: pre-design-gate (Tier M/L: no code before prior-art.md)
 7. **Tier L: the umbrella issue** and its Decisions comment, before the first PR, through `post` with `--kind tracker`; write `owner/repo N` to `<work folder>/umbrella.txt`.
    Open: §Umbrella · Record: umbrella.txt · Hook: post-lint `--kind tracker`; the watcher's `### TRACKER STALE`
 8. **Memory.** Work that spans a compaction or a day: `memory-prep init <work folder> <T3 thread id>` once, from your checkout (the id from `t3_thread_list`; skip outside T3 Code). At each start and compaction the `session-memory` hook prints the Standing part of `memory.md` (rulings, ruled out, superseded, still intended), and an order to refresh it when it covers less of this session's log than exists.
    Record: memory.md · Hook: session-memory, stop-lint (repeats the order hourly)
-9. **Go to the deliverable's skill:** a change → `pull-request`; a design → `design`; a review or an answer → `review`; an issue → `open-issue`; docs alone → `docs`. Each agent and PR you start names the critical-path item it unblocks (`delegate §Brief`).
+9. **Go to the deliverable's skill:** a change → `pull-request`; a design question or proposal → `design`; a comment to answer → `reply`; a review of someone else's PR → `review`; an issue → `open-issue`; docs alone → `docs`; a plain answer or research (Tier 0) → answer it by `writing §Reports to the user`. Each agent and PR you start names the critical-path item it unblocks (`delegate §Brief`).
    Hook: pre-skill-gate
 10. **Finish:** the final report walks scope.md's checkboxes.
    Open: `writing §Reports to the user`
@@ -91,7 +91,7 @@ An issue titled `Tracking: <goal>`, plus one live **Decisions comment** on it, b
 
 ### Dispositions
 
-Exactly one disposition per defect you find, in or out of scope: fixed in this change, a PR opened now (on the umbrella if there is one), or an issue (`open-issue`) only when there's no umbrella and the defect is unrelated. "Mentioned" is never a disposition.
+Exactly one disposition per defect you find, in or out of scope: fixed in this change, a PR opened now (on the umbrella if there is one), or an issue (`open-issue`) only when there's no umbrella and the defect is unrelated. A maintainer's product decision (`code §Owner code and authority`) always gets its own decision issue, linked from the umbrella if there is one. "Mentioned" is never a disposition.
 - **"A separate PR" means started now,** alongside. A PR that replaces another closes the old one, with a link, in the same step.
 - **Upstream:** find the fix, decide where it belongs, and open the PR; file an issue only when you can't find a fix, and nudge nobody about one that blocks nothing.
 - **The same defect in a sibling** (another adapter, another call site) is fixed in this change, a public API change included, and the PR states that change.
