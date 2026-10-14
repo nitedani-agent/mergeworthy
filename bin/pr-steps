@@ -10,10 +10,10 @@ case "$step" in preflight|approach|verify|shape|loopb|refactor|reverify|fresh|ga
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
-# A branch whose latest approach record has no `contract: 2` field started its pipeline before the shape pass and the
-# maintainer's fresh read: it finishes under that contract (loopb and refactor, a fresh report without a Maintainer line).
+# A branch whose latest approach record has no `contract: 2` field was started by a session on v1's skills (before the shape
+# pass and the maintainer's fresh read): it finishes under that contract (loopb and refactor, a fresh report without a Maintainer line).
 old_pipeline() { [ -s ~/.claude/pr-steps/approach."$key" ] && ! tail -n1 ~/.claude/pr-steps/approach."$key" | grep -q ' contract: 2$'; }
-case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2). Only a branch whose latest approach record predates the shape pass (no contract: 2) still records them." >&2; exit 1; };; esac
+case "$step" in loopb|refactor) old_pipeline || { echo "pr-steps shape replaces loopb and refactor: record Loop B's shape report (mergeworthy:converge step 2). Only a branch whose approach a session on v1's skills recorded (no contract: 2) still records them." >&2; exit 1; };; esac
 # pr-steps preflight <app URL> [Chrome flags] | <PNG the session's browser MCP took just now> | 'none, because <why>':
 # before any code, the app runs and browser control loads it (pull-request, Check you can finish before you start)
 if [ "$step" = preflight ]; then
@@ -51,7 +51,10 @@ if [ "$step" = approach ]; then
   rating=$(printf '%s\n' "$rows" | awk -F'\t' -v c="$(printf '%s' "$chosen" | tr 'A-Z' 'a-z')" '$1==c {print $2; exit}')
   [ -n "$rating" ] || { echo "Chosen '$chosen' is not a row of the candidates table" >&2; exit 1; }
   [ "$rating" -ge 7 ] || { echo "the chosen approach is rated $rating: 6 or below is not ready to build (pull-request step 5); find a better candidate or stop" >&2; exit 1; }
-  echo "approach $(realpath "$out") $(date -u +%FT%TZ) contract: 2" >> ~/.claude/pr-steps/approach."$key"
+  # the contract is the one this session's loaded skills follow (session-start's record): a session on v1's catalog, or one
+  # with no record, still records loopb and refactor, so its branch gets no `contract: 2`
+  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
+  echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> ~/.claude/pr-steps/approach."$key"
   echo "recorded approach for branch $(git symbolic-ref --short -q HEAD || echo HEAD)"
   exit 0
 fi

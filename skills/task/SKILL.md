@@ -13,7 +13,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Run: `gh issue view`, `gh pr list --state all --search "<keyword>"`, `ls ~/*-work`
 2. **Triage.** Write `Tier: <0|S|M|L>, because <signals>` as line 1 of `<work folder>/scope.md`, and in your first report. Count every PR and repo the work has had so far, not only today's ask: two or more independently maintained repos make it Tier L. Re-triage when the deliverables or open decisions change, and say so.
    Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
-3. **Scope.** Each ask and link, later ones too, is a scope.md checkbox; then the critical path: the goal's open items, in order. Dropping or deferring one, also when a later instruction seems to replace it, needs the user's OK first: ask in one line whether that item holds.
+3. **Scope.** Write each ask and link as a scope.md checkbox, at the start and whenever the user adds one; under them, the critical path: the goal's open items, in order. Dropping or deferring one, also when a later instruction seems to replace it, needs the user's OK first: ask in one line whether that item holds.
    Open: §Scope · Record: scope.md
 4. **The project file.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing: run the repo study now (§Repo study), and say so in your report.
    Open: §Project file; §Repo study · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
@@ -51,7 +51,7 @@ The tier changes the records, never the steps: every PR runs `converge`.
 
 The work folder (`<task>-work/` next to the worktree) holds, each with the step that writes it:
 - `scope.md` (steps 2–3); `ledger.md`, Tier M: one row per event (time | unit | event | head SHA | result): each pass, round, fix with its commits, gate run with its exit code, push and CI result; answer every status question from it, skipped steps included.
-- `drafts/<thread>/` (`post` step 1); `maps/`, `decisions/` (`design`); `prior-art.md`, `precedent.md` (step 6); `memory.md` (step 8).
+- `drafts/<thread>/` (`post` step 1); `maps/`, `decisions/` (settled decisions only), `design/` (`design`); `prior-art.md`, `precedent.md` (step 6); `memory.md` (step 8).
 - The watcher's files: `events.log` and your `events.cursor` (`reply` step 1), `threads.txt`, `repos.txt`, `umbrella.txt`, and `waiting-on.txt`: each thing a PR of yours waits on, as `<owner/repo#N> -> <dependent>: <what to do>`, also in that PR's notes table.
 - **The owed lists,** each cleared only by the thing named:
   - `replies-owed.md`: every comment you answer (the watcher writes it). Cleared by `done: <reply URL> <what changed>`; a holding reply makes it `holding: <reply URL> <ETA as an ISO time>`; while a drafter works, `drafting: <comment URL> <ETA>`.

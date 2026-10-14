@@ -9,7 +9,7 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 
 ## Steps
 
-1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a step's own text names to run together (`finality` steps 2–3: the mappers, the branch agents; `converge`: one set of loop agents per slice); an implementer landing findings counts toward the 3; only the main session starts agents. Stop an agent as soon as its question is settled.
+1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a step's own text names to run together (`finality` steps 2–3: the mappers, the branch agents; `converge`: one verifier per slice set; loop agents per slice only when the slices don't fit one context); an implementer landing findings counts toward the 3; only the main session starts agents. Stop an agent as soon as its question is settled.
    Hook: pre-agent-dedupe
 2. **Model class and effort.**
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides · Hook: route.py
@@ -36,10 +36,10 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 
 ### Continue
 
-Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache.
+Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache. Except the fresh reader (`converge` step 4): always a new agent.
 - **Claude Code:** `SendMessage` to its agent id.
 - **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you.
-- **A review round in T3 Code** (a reviewer's, a post review's, the fresh reader's, the shape pass's re-rating): a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send` (T3 Code's own rule). That counts as continuing the same reviewer. Elsewhere a review round continues its agent like any other.
+- **A review round in T3 Code** (a reviewer's, a post review's, the shape pass's re-rating): a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send` (T3 Code's own rule). That counts as continuing the same reviewer. Elsewhere a review round continues its agent like any other.
 - **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two run one job, keep the one with the most progress.
 

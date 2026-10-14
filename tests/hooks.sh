@@ -779,13 +779,17 @@ check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
-# a branch whose latest approach record has no `contract: 2` started before the shape pass: it finishes under the old records
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; prs approach "$T/apo.md" >/dev/null
+# a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
+mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
+printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
-check "a new approach record carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+check "an approach recorded by a session on the graph catalog carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
 check "BLOCK: a new-contract branch can't record loopb or refactor" "1 1" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md")"
-sed -i 's/ contract: 2$//' "$APF"
+CLAUDE_CODE_SESSION_ID=s-none prs approach "$T/apo.md" >/dev/null
+check "an approach recorded by a session with no catalog record has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
+CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
+check "an approach recorded by a session on v1's catalog has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"
 check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
 C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2"; git -C "$G" add f2; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
@@ -796,7 +800,7 @@ cp "$T/pass.md" "$T/pass-e.md"; prs refactor "$T/pass-e.md" >/dev/null
 printf 'w\n' > "$G/f4"; git -C "$G" add f4; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m f
 printf 'carries the pass of %s: one line\n' "$E" > "$T/carry4.md"
 check "BLOCK: an old head with a refactor pass but no loopb record can't be carried as shape" 1 "$(prs shape "$T/carry4.md")"
-prs approach "$T/apo.md" >/dev/null
+CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 check "BLOCK: the branch reused with a new approach is new-contract again" 1 "$(prs loopb "$T/olb.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
@@ -899,7 +903,9 @@ check "BLOCK: Tier M edit with no prior art or decision" 2 "$(gate Edit "{\"file
 check "BLOCK: Tier M implementation agent with no decision" 2 "$(gate mcp__t3-code__delegate_task '{"role":"implementation"}')"
 check "a research agent passes" 0 "$(gate mcp__t3-code__delegate_task '{"role":"research"}')"
 check "an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$D-work/prior-art.md\"}")"
-touch "$D-work/prior-art.md"; mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
+touch "$D-work/prior-art.md"; mkdir -p "$D-work/design"; touch "$D-work/design/x.debate.md" "$D-work/design/x.review.md"
+check "BLOCK: Tier M edit with only the design debate and review records" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
 check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 # ---------- pre-skill-gate: an action waits for the skills its always-on row names, opened since the last compaction ----------
 sg_tr() { # <transcript> <event>...: skill:<input.skill> | typed:<name> | compact | text
