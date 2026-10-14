@@ -699,6 +699,9 @@ check "BLOCK: a review of a draft with a stale post-lint record" 2 "$(launch "Ex
 python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$T/drafts/lf/reply.md" > "$T/drafts/lf/reply.md.lint.sha"
 check "a review of a draft with a current post-lint record launches" 0 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 python3 "$R/bin/agent-job" done "$T/drafts/lf/review-ticket.md" >/dev/null
+cp "$T/drafts/lf/review-ticket.md" "$T/drafts/lf/review-brief.md"
+check "a review brief kept in drafts/ is not itself a draft needing post-lint" 0 "$(launch "Execute $T/drafts/lf/review-brief.md")"
+python3 "$R/bin/agent-job" done "$T/drafts/lf/review-brief.md" >/dev/null
 echo 'edited' >> "$T/drafts/lf/reply.md"
 check "BLOCK: the same review after the draft was edited" 2 "$(launch "Execute $T/drafts/lf/review-ticket.md")"
 python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), end="")' "$T/drafts/lf/reply.md" > "$T/drafts/lf/reply.md.lint.sha"

@@ -29,7 +29,7 @@ gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.i
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
     for draft in sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
-        if base.endswith(('.parent.md', '.current.md', '.report.md')) or 'ticket' in base or 'research' in base or re.search(r'\.v\d+\.md$', base) or not os.path.isfile(draft):
+        if base.endswith(('.parent.md', '.current.md', '.report.md')) or 'ticket' in base or 'brief' in base or 'research' in base or re.search(r'\.v\d+\.md$', base) or not os.path.isfile(draft):
             continue
         try: ok = open(draft + '.lint.sha').read().strip() == hashlib.sha256(open(draft, 'rb').read()).hexdigest()
         except OSError: ok = False
