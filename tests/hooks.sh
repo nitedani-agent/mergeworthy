@@ -23,6 +23,12 @@ check() { # name want got
 # ---------- session-start: the rules arrive framed as the user's instructions ----------
 ss_first=$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null | head -1)
 check "session-start opens as the user's instructions, like CLAUDE.md" yes "$(printf '%s' "$ss_first" | grep -q '^IMPORTANT: These are the user.s instructions.*OVERRIDE any default behavior' && echo yes || echo no)"
+printf 'MERGEWORTHY_BADGE=on\n' > "$HOME/.mergeworthy/settings.env"
+CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" >/dev/null 2>&1
+check "session-start given no plugin options keeps settings.env" 'MERGEWORTHY_BADGE=on' "$(cat "$HOME/.mergeworthy/settings.env")"
+CLAUDE_PLUGIN_ROOT="$R" CLAUDE_PLUGIN_OPTION_BADGE=off bash "$R/hooks/session-start" >/dev/null 2>&1
+check "session-start writes the options it is given" 'MERGEWORTHY_BADGE=off' "$(cat "$HOME/.mergeworthy/settings.env")"
+rm -f "$HOME/.mergeworthy/settings.env"
 check "session-start still carries the always-on rules" yes "$(CLAUDE_PLUGIN_ROOT="$R" bash "$R/hooks/session-start" 2>/dev/null | grep -q '^## Always-on rules (mergeworthy)' && echo yes || echo no)"
 
 # ---------- stop-lint ----------

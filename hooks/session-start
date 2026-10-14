@@ -14,5 +14,7 @@ IMPORTANT: These are the user's instructions for every session (the mergeworthy 
 
 FRAME
 cat "$CLAUDE_PLUGIN_ROOT/always-on.md"
-# The plugin's options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>; scripts run from Bash read this file instead
-env | sed -n 's/^CLAUDE_PLUGIN_OPTION_\([A-Z_]*\)=/MERGEWORTHY_\1=/p' > ~/.mergeworthy/settings.env
+# The plugin's options reach hooks as CLAUDE_PLUGIN_OPTION_<KEY>; scripts run from Bash read this file instead.
+# A run given no options (a manual or test run) leaves the file as it is
+opts=$(env | sed -n 's/^CLAUDE_PLUGIN_OPTION_\([A-Z_]*\)=/MERGEWORTHY_\1=/p')
+[ -n "$opts" ] && printf '%s\n' "$opts" > ~/.mergeworthy/settings.env
