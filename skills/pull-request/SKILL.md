@@ -58,11 +58,13 @@ Closes #N
 
 **1.** <what to look at and what it proves>
 
-![alt](/abs/path/01-name.png)
+| What | Before (<base>) | After (this PR) |
+|---|---|---|
+| <the step> | ![](/abs/path/01-base.png) | ![](/abs/path/01-head.png) |
 ```
 
 - `Closes #N` only if the change fixes what the issue reported; otherwise `Refs #N`, leave the issue open, and comment your findings there.
-- **What you should see** is the review: numbered items, each an image, video or request and response (`evidence` step 4) outside any `<details>`, in sequence: open on the defect, close on the fix, and between them what your change could have broken and didn't. Non-UI changes show real requests and responses; hot paths, transports and streams a `main`/head benchmark table.
+- **What you should see** is the review: numbered items, each a before/after pair (`evidence` step 4: screenshots in a table, videos as two paragraphs) or a request and response, outside any `<details>`, in sequence: the defect's pair first, then what your change could have broken and didn't, each showing base and head the same. Non-UI changes show real requests and responses; hot paths, transports and streams a `main`/head benchmark table.
 - The evidence blocks of `converge §Evidence blocks` come after it.
 
 ### Inline comments

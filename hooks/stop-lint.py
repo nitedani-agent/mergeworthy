@@ -104,6 +104,32 @@ if running and not child:
               "Your Running list wasn't read from T3 since the user's last message.", "Read task_status for each agent you list "
               "and list only the ones still working (mergeworthy:writing §Reports to the user).", file=sys.stderr)
         sys.exit(2)
+# A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready)
+DONE = r"(?<!not )(?<!nem )\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
+if not child and re.search(DONE, own.strip()[:300], re.I):
+    import subprocess, urllib.parse
+    def api(cmd):
+        try: return json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout or 'null')
+        except (OSError, ValueError, subprocess.SubprocessError): return None
+    unfinished = []
+    for host, path, n in list(dict.fromkeys(re.findall(r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)', last)))[:10]:
+        url = f'https://{host}/{path}/{"pull" if host == "github.com" else "-/merge_requests"}/{n}'
+        if host == 'github.com':
+            pr = api(['gh', 'api', f'repos/{path}/pulls/{n}'])
+            if not isinstance(pr, dict) or pr.get('state') != 'open': continue
+            runs = api(['gh', 'api', f'repos/{path}/commits/{pr["head"]["sha"]}/check-runs']) or {}
+            red = [r.get('name') for r in runs.get('check_runs', []) if r.get('conclusion') not in ('success', 'skipped', 'neutral')]
+            why = (['draft'] if pr.get('draft') else []) + ([f"checks not green: {', '.join(red[:3])}"] if red else [])
+        else:
+            mr = api(['glab', 'api', '--hostname', host, f'projects/{urllib.parse.quote(path, safe="")}/merge_requests/{n}'])
+            if not isinstance(mr, dict) or mr.get('state') != 'opened': continue
+            ci = (mr.get('head_pipeline') or {}).get('status') or 'no pipeline'
+            why = (['draft'] if mr.get('draft') else []) + ([f'pipeline {ci}'] if ci != 'success' else [])
+        if why: unfinished.append(f"{url} ({', '.join(why)})")
+    if unfinished:
+        print("Your message opens by calling the work done, but these PRs/MRs it links aren't: " + '; '.join(unfinished) +
+              ". Say what is left on each instead (the converge gates, green CI, ready), and do it (mergeworthy:merging, Ready).", file=sys.stderr)
+        sys.exit(2)
 own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
 cwd_d = d.get('cwd') or ''

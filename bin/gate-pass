@@ -33,7 +33,8 @@ hs="${MERGEWORTHY_HOME:-$HOME/.mergeworthy}/harness-shown/${repo%%/*}"
 installed=$(git -C "${MERGEWORTHY_SRC:-$HOME/.claude/plugins/marketplaces/mergeworthy}" rev-parse --short=7 HEAD 2>/dev/null || true)
 shown=$(cat "$hs" 2>/dev/null | head -c 40 | tr -d '[:space:]' || true)
 case "$kind" in reply|comment|proposal)
-  if [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && [ "$shown" != "$installed" ]; then
+  # once per draft: a second gate-pass on the same draft (after a re-review) keeps the line it already has
+  if [ -n "$repo" ] && [ -f "$hs" ] && [ -n "$installed" ] && [ "$shown" != "$installed" ] && ! grep -q '^Harness changes since my last note: ' "$d"; then
     ref=$(mktemp); touch -r "$d" "$ref"  # gate-pass's own line is not an edit after the review: the draft keeps its time
     printf '\nHarness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/%s...%s>\n' "$shown" "$installed" >> "$d"
     touch -r "$ref" "$d"; rm -f "$ref"

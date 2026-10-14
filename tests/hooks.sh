@@ -337,6 +337,9 @@ check "a link to the WIP comment isn't read as a model" 0 "$(elint '*Opus 5.5 (h
 qlint() { printf '%s' "$1" > "$T/quick.md"; python3 "$R/bin/post-lint" "$T/quick.md" --kind reply --parent none 2>&1 | grep -c 'defers work'; }
 check "BLOCK: I'll do the fix after it" 1 "$(qlint $'Neither blocks Vike. So I\'ll do the Universal Middleware fix after it.\n')"
 check "BLOCK: I'll send it later" 1 "$(qlint $'I\'ll send the PR later.\n')"
+printf 'Why not removing the stub?\n' > "$T/sp.parent.md"; printf 'Done in abc1234: the stub is gone, and the tests run against real Vike.\n' > "$T/sp.md"
+python3 -c 'print("Done in abc1234. " + "The tests now start the dev server and check each case on its own. " * 8)' > "$T/sl.md"; cp "$T/sp.parent.md" "$T/sl.parent.md"
+check "a short answer to a one-line question passes; a long one is flagged, naming the cap" "0 1" "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/sp.md" --kind reply >/dev/null 2>&1; echo $?) $(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/sl.md" --kind reply 2>&1 | grep -c 'answering a 5-word comment (cap 80)')"
 check "naming what it waits on passes" 0 "$(qlint $'I\'ll switch the adapters once vikejs/vike#3594 is released.\n')"
 
 # ---------- gate-pass: a reply in a repo whose maintainers asked to see mergeworthy's changes links them ----------
@@ -348,6 +351,8 @@ hg() { printf 'Agreed, option A it is.\n' > "$GD/r.md"; touch -d '+1 minute' "$G
 check "gate-pass of an inline comment adds no line and records nothing" "0 0 $h1" "$(hg acme/x inline) $(grep -c 'Harness changes' "$GD/r.md") $(cat "$HOME/.mergeworthy/harness-shown/acme")"
 check "gate-pass appends the compare link after the review, gates the draft with it, and records the installed commit" "0 1 yes $h3" "$(hg acme/x) $(grep -cxF "Harness changes since my last note: <https://github.com/nitedani/mergeworthy/compare/$h1...$h3>" "$GD/r.md") $([ "$(sha256sum "$GD/r.md" | cut -d' ' -f1)" = "$(head -1 "$GD/r.md.gate")" ] && echo yes) $(cat "$HOME/.mergeworthy/harness-shown/acme")"
 check "gating that draft again passes post-lint with the line, and adds none" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >"$T/gp.out" 2>&1; echo $?) $(grep -c 'Harness changes' "$GD/r.md")"
+echo "$h1" > "$HOME/.mergeworthy/harness-shown/acme"  # a gate-pass that appended the line, then failed before recording it
+check "a draft that already has the line gets no second one" "0 1" "$(MERGEWORTHY_SRC="$S" MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --repo acme/x --parent none >/dev/null 2>&1; echo $?) $(grep -c '^Harness changes since my last note: ' "$GD/r.md")"
 check "the next reply, nothing new since, gets no line; another owner's repo none" "0 0 0 0" "$(hg acme/x) $(grep -c 'Harness changes' "$GD/r.md") $(hg other/x) $(grep -c 'Harness changes' "$GD/r.md")"
 
 check "a badge followed on its line by an italic model line passes, model names included" 0 "$(printf '%s\n\nFixed the bug.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"><img src="https://github.com/openai.png" width="20" height="20" alt="Codex"> *Opus 5.5 (medium effort) wrote this; a second Opus 5.5 (high effort) reviewed it; GPT-6.1-Sol (Codex, high effort) reviewed it.*' > "$T/ml.md"; MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/ml.md" --kind reply --parent none >/dev/null 2>&1; echo $?)"
@@ -360,6 +365,8 @@ check "a limitation imposed by an outside system passes" 0 "$(llint 'Receipts om
 dtlint() { printf '| Note | Kind | Blocks merge | Next |\n|---|---|---|---|\n| Bump srvx minor or patch | %s | no | nothing |\n' "$2" > "$T/dt.md"; python3 "$R/bin/post-lint" "$T/dt.md" --kind "$1" --parent none 2>&1 | grep -c 'decision as a table row'; }
 for k in pr proposal reply; do check "a decision-needed row in a $k is flagged" 1 "$(dtlint $k 'decision needed')"; done
 check "a not-a-regression row passes" 0 "$(dtlint pr 'not a regression')"
+bal() { printf '%b' "$1" > "$T/ba.md"; python3 "$R/bin/post-lint" "$T/ba.md" --kind pr --parent none 2>&1 | grep -c 'not in a before/after pair'; }
+check "a PR body's screenshot outside a table, or in a table with no before/after columns, is flagged; the badge isn't media; videos pair under Before/After labels" "1 1 0 0 0 1" "$(bal 'The picker works.\n\n![after](a.png)\n') $(bal '| What | Shot |\n|---|---|\n| picker | ![](a.png) |\n') $(bal '| What | Before (main) | After (this PR) |\n|---|---|---|\n| picker | ![](b.png) | ![](a.png) |\n') $(bal '<img src="https://github.com/claude.png" width="20"> *Opus wrote this.*\n\nFixes the picker.\n') $(bal '**Before (main)**\n\n![](b.mp4)\n\n**After (this PR)**\n\n![](a.mp4)\n') $(bal 'The flow:\n\n![](a.mp4)\n')"
 dblint() { printf '%s' "$1" > "$T/db.md"; python3 "$R/bin/post-lint" "$T/db.md" --kind pr --parent none 2>&1 | grep -c 'decision block'; }
 check "a decision block in words only is flagged" 1 "$(dblint $'### Decision: who runs after a 401\n\nEither every middleware runs, or only post-handler ones. I picked the second because six servers do it.\n')"
 check "a decision block with code but no lettered options is flagged" 1 "$(dblint $'### Decision: who runs after a 401\n\n```js\napply(app, [auth, log])\n```\n\nI picked skipping log because six servers do it.\n')"
@@ -740,6 +747,27 @@ rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; 
 rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
+# stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
+cat > "$T/bin/glab" <<'EOF2'
+#!/usr/bin/env bash
+[ "$1" = api ] && [ "$2" = --hostname ] || exit 1
+f="$FX/$(printf '%s' "$4" | tr '/?&=' '____')"; [ -f "$f" ] && cat "$f" || exit 1
+EOF2
+chmod +x "$T/bin/glab"
+echo '{"state":"open","draft":false,"head":{"sha":"h1"}}' > "$FX/repos_o_r_pulls_7"
+echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h1_check-runs"
+echo '{"state":"opened","draft":true,"head_pipeline":{"status":"failed"}}' > "$FX/projects_g%2Fp_merge_requests_96"
+tr_file 'The work is done: https://github.com/o/r/pull/7 and https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a done message linking a draft MR with a failed pipeline, naming it and not the green PR" "2 1 0" "$(stop "$T") $(grep -c 'merge_requests/96 (draft, pipeline failed)' "$T/err") $(grep -c 'pull/7' "$T/err")"
+tr_file 'A #184 munkája elkészült: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: the same in Hungarian" 2 "$(stop "$T")"
+tr_file 'The work is done: https://github.com/o/r/pull/7'
+check "a done message whose linked PR is ready and green passes" 0 "$(stop "$T")"
+tr_file 'It is not done: https://gitlab.com/g/p/-/merge_requests/96 still needs green CI.'
+check "a message saying it is not done passes" 0 "$(stop "$T")"
+echo '{"check_runs":[{"name":"test","conclusion":null}]}' > "$FX/repos_o_r_commits_h1_check-runs"
+tr_file 'All done, https://github.com/o/r/pull/7 is ready for review.'
+check "BLOCK: a PR whose checks are still running" 2 "$(stop "$T")"
 check "agent-job lists jobs with the id file present" 0 "$(python3 "$R/bin/agent-job" list >/dev/null 2>&1; echo $?)"
 # a gate review starts only on a draft that passed post-lint in its current form
 mkdir -p "$T/drafts/lf"; printf 'Fixed in abc1234.\n' > "$T/drafts/lf/reply.md"
