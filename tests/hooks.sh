@@ -776,6 +776,7 @@ check "a reviewer's report in drafts/ is not a draft" 0 "$(launch "Execute $T/dr
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
+printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying what it lacks" 1 "$(cd "$G" && bash "$R/bin/pr-steps" verify "$T/blank.md" 2>&1 | grep -c 'does not end with a line NO BUGS')"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "needs the ✅ coverage list")"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nFIX src/a.ts:3 dead branch\n' > "$T/open.md"
