@@ -24,7 +24,8 @@ if cid:
 text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'description', 'title', 'workspaceStrategy'))
 tickets = sorted(set(re.findall(r'(/[^\s`\'"]+\.md)\b', text)))
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
-gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t))
+# Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
+gate_text = text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t) and not os.path.realpath(t).startswith(os.path.realpath(os.path.expanduser('~/.mergeworthy')) + os.sep))
 if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
     for draft in sorted(set(re.findall(r'(/[^\s`\'"()]*/drafts/[^\s`\'"()]+\.md)\b', gate_text))):
         base = os.path.basename(draft)
@@ -82,7 +83,7 @@ if not register:
     busy = []
     for w in wts:
         pids = [f'{e} ({c})' for e, cwd, c in procs if cwd == w or cwd.startswith(w + '/')]
-        named = [f'{f} (written {age}s ago)' for f, age, b in logs if w.encode() in b]
+        named = [f'{f} (written {age}s ago)' for f, age, b in logs if re.search(re.escape(w.encode()) + rb'(?![\w.-])', b)]  # the path itself, not a longer sibling
         if pids or named:
             busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['transcripts naming it: ' + ', '.join(named)] if named else [])))
     if busy:

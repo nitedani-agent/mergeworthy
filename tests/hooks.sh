@@ -587,6 +587,8 @@ ag() { # cwd task [role]
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"
 check "a brief pinned to the worktree's live head passes" 0 "$(ag "$OC" "Fix it again in $T/gw at $NEW, base $OLD")"
+mkdir -p "$HOME/.mergeworthy/projects/o"; echo "- a lesson from $OLD" > "$HOME/.mergeworthy/projects/o/gwnotes.md"
+check "a project notes file the brief names is read, not pinned: its history SHAs block nothing" 0 "$(ag "$OC" "Fix it in $T/gw; notes $HOME/.mergeworthy/projects/o/gwnotes.md")"
 check "the user's own checkout is read at any commit" 0 "$(ag "$OC" "Read $T/gr at $MAINOLD once more")"
 echo 'TanStack Start client CSS: answered here.' > "$MR/css-research.md"
 check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS' research)"
@@ -614,6 +616,9 @@ kill $APID; wait $APID 2>/dev/null
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/agent.jsonl"
 check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AD/agent.jsonl" "$T/err")"
 check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AD/agent.jsonl")"
+echo "{\"cwd\":\"$T/aw-r\"}" > "$AD/sibling.jsonl"; touch -d '10 minutes ago' "$AD/agent.jsonl"
+check "a transcript naming a longer sibling path ($T/aw-r) doesn't make the worktree busy" 0 "$(alive "Run e2e in $T/aw yet again")"
+rm -f "$AD/sibling.jsonl"; touch "$AD/agent.jsonl"
 touch -d '10 minutes ago' "$AD/agent.jsonl"
 check "a worktree with no process and only an old transcript passes" 0 "$(alive "Run e2e in $T/aw again")"
 # a finished agent is reported: the watcher's AGENT DONE once per finish, and stop-lint while its job is open
