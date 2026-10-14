@@ -180,7 +180,7 @@ if not child and not paused:
         cov = mf.covered(root)
         if (not cov or time.time() - datetime.datetime.fromisoformat(cov.replace('Z', '+00:00')).timestamp() > 7200) and mf.behind(root):
             open(stamp, 'w').close()
-            print(mf.order(root), file=sys.stderr)
+            print(mf.order(root, live=True), file=sys.stderr)
             sys.exit(2)
 # An agent this session launched has finished (its transcript went quiet) and its job is still open: its result is unread
 if not child and d.get('session_id'):

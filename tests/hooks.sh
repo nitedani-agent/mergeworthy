@@ -570,7 +570,7 @@ check "each SessionStart output with a real-sized memory.md stays under 9,000 by
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Please pause the work"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Paused."}]}}))' > "$T/tr.jsonl"
 check "the user's pause holds the refresh order too" "0 no" "$(stop "$OC") $([ -e "$MR/.memory-order-repeated" ] && echo yes || echo no)"
 tr_file "Done."
-check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, then not within the hour" "2 1 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR" "$T/err") $(stop "$OC")"
+check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, running beside the work, then not within the hour" "2 1 0 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR.*keep working meanwhile" "$T/err") $(grep -c "without starting other work" "$T/err") $(stop "$OC")"
 rm "$MR/.memory-order-repeated"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task. Fix it."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' > "$T/tr.jsonl"
 check "a delegated sub-agent in the orchestrator's checkout never gets the order" 0 "$(stop "$OC")"

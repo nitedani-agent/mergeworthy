@@ -145,7 +145,7 @@ Run every PR through bug verification, code review and a fresh read on the final
     - Log and artifact names include a unique pass ID; never overwrite another pass's file.
     - The owed lists (`replies-owed.md` and `proposals-open.md` of 1.5, `questions-owed.md` of 1.1.4) live in the artifact root, which is also the watch dir.
 - **`memory.md` in the artifact root** holds what the built-in compaction summary loses: its Standing part (rulings in force, ruled out, superseded, still intended) is carried until replaced, its Recent part covers the last 24 hours. Run `memory-prep init <artifact root> <your T3 thread id>` once from your checkout when the work spans a compaction or a day (Tier L: before the first PR).
-    - At each start and compaction the `session-memory` hook injects the Standing digest, and orders a refresh when the file is behind your session log (`stop-lint` repeats the order hourly): follow it before resuming.
+    - At each start and compaction the `session-memory` hook injects the Standing digest, and orders a refresh when the file is behind your session log; `stop-lint` repeats it hourly, run beside your work.
 - **Tier S:** the PR body is the record of what the loops found, true of the final head. Add `scope.md` (with the critical-path and feature list) and a short `ledger.md` for process records (review, refactor, the 1.7 Ready list).
 - **Tier M:** keep these files:
     - `ledger.md`: one row per event (time | unit | event | head SHA | result). Events are each pass, round, fix with its commits, gate or lane run with its exit status, push, and CI result. Head it with the ordered work and passes still owed (1.1.1). Answer every status and convergence question from the ledger, skipped steps included.

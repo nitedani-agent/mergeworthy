@@ -96,12 +96,17 @@ def behind(root):
     since = os.path.getmtime(path(root)) - 60 if cov else time.time() - 86400  # the first run covers the last 24 hours
     return any(last_ts(p) > cov for p in thread_logs(root, since))
 
-def order(root):
-    """The order to refresh memory.md, given at session start and repeated by stop-lint while it stays behind."""
-    return (f"IMPORTANT: {path(root)} is behind your session log. If you are a delegated sub-agent, ignore this. Before resuming: "
-            f"run `memory-prep prep {root}`; start ONE Haiku at high effort (T3 Code: delegate_task, mode async) on the brief file it names; "
-            f"wait for its completion without starting other work and without reading its report; then run `memory-prep digest {root}`, "
-            "read it, and resume.")
+def order(root, live=False):
+    """The order to refresh memory.md: at session start it waits, since the context was just summarized; repeated by stop-lint
+    in a live session, whose context is whole, it runs beside the work."""
+    wait = ("wait for its completion without starting other work and without reading its report; then run "
+            f"`memory-prep digest {root}`, read it, and resume.")
+    side = (f"keep working meanwhile (your context is intact), without reading its report; when it completes, run "
+            f"`memory-prep digest {root}` and read it.")
+    return (f"IMPORTANT: {path(root)} is behind your session log. If you are a delegated sub-agent, ignore this. "
+            + ("" if live else "Before resuming: ")
+            + f"run `memory-prep prep {root}`; start ONE Haiku at high effort (T3 Code: delegate_task, mode async) on the brief file it names; "
+            + (side if live else wait))
 
 def section(text, heading):
     m = re.search(r'^#+ *' + re.escape(heading) + r'[^\n]*\n(.*?)(?=^#+ |\Z)', text, re.M | re.S | re.I)
