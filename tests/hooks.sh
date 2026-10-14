@@ -776,11 +776,11 @@ check "a reviewer's report in drafts/ is not a draft" 0 "$(launch "Execute $T/dr
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
-check "BLOCK: a fix log recorded as the shape pass" 1 "$(prs shape "$T/fixlog.md")"
+check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "needs the ✅ coverage list")"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nFIX src/a.ts:3 dead branch\n' > "$T/open.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n✅ express vike()\nCLEAN\n' > "$T/copied.md"
-check "BLOCK: a re-rating that copies earlier ratings is not a pass" 1 "$(prs shape "$T/copied.md")"
+check "BLOCK: a re-rating that copies earlier ratings is not a pass, quoting the copied cell" "1 1" "$(prs shape "$T/copied.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/copied.md" 2>&1 | grep -c "rating is copied")"
 check "BLOCK: a pass with findings left, not ending CLEAN" 1 "$(prs shape "$T/open.md")"
 check "a pass with ratings and the ✅ list, ending CLEAN, records" 0 "$(prs shape "$T/pass.md")"
 check "pr-steps loopb and refactor are gone, pointing at shape" "1 1" "$(prs loopb "$T/pass.md") $(prs refactor "$T/pass.md")"

@@ -21,7 +21,7 @@ if [ "$step" = preflight ]; then
   case "$out" in
     "none, because "?*) proof=$out ;;
     http://*|https://*)
-      shift; chrome=${CHROME:-$(command -v google-chrome chromium chromium-browser | head -n1)}
+      shift; chrome=${CHROME:-$(command -v google-chrome chromium chromium-browser | head -n1 || true)}
       [ -n "$chrome" ] || { echo "no Chrome on PATH: screenshot the app with the session's browser MCP, then pr-steps preflight <that PNG>" >&2; exit 1; }
       profile=$(mktemp -d); trap 'rm -rf "$profile"' EXIT
       unset PULSE_SERVER  # WSLg hands its audio server to Chrome: the page would play on the user's speakers
@@ -85,7 +85,9 @@ case "$step" in
       [ "$step" = refactor ] ||
       [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent (mergeworthy:converge step 2)" >&2; exit 1; }
     else
-      carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}')
+      carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true)
+      copied=$(grep -Eio '\| *([0-9]+ *)?= *\||unchanged since' "$out" | head -n1 || true)
+      [ -n "$carried" ] || [ -z "$copied" ] || { echo "$out is not a shape pass: a row's rating is copied ('$copied'); rate every file and function afresh as old ⇒ new, with the reason in your own words (mergeworthy delegate/shape.md)" >&2; exit 1; }
       [ -n "$carried" ] || { echo "$out is not a shape pass: it needs the ✅ coverage list and old ⇒ new ratings (mergeworthy delegate/shape.md), or 'carries the pass of <sha>' for a small follow-up" >&2; exit 1; }
       full=$(git rev-parse "$carried")
       rec=~/.claude/pr-steps/"$full"
