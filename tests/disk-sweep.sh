@@ -62,7 +62,7 @@ check "a second sweep while one runs is refused" "1 1" "$(flock "$HOME/.mergewor
 python3 "$R/bin/disk-sweep" --delete > "$T/run.out" 2>&1; rc=$?
 LOG="$HOME/.mergeworthy/disk-sweep.log"
 check "under a temp HOME the sweep exits 0, prints only that Docker is skipped and calls no docker" "0 1 0" "$rc $(wc -l < "$T/run.out") $(wc -l < "$DOCKER_LOG")"
-check "a clean, pushed, idle worktree is kept with its ignored .env; its node_modules is removed and logged" "kept kept removed 1" "$(there "$WF/clean") $(there "$WF/clean/.env") $(there "$WF/clean/node_modules") $(grep -c "^[^ ]* [0-9][0-9]* $WF/clean/node_modules c-ignored$" "$LOG")"
+check "a clean, pushed, idle worktree is kept with its ignored .env; its node_modules is removed, logged before and after" "kept kept removed deleting|deleted|" "$(there "$WF/clean") $(there "$WF/clean/.env") $(there "$WF/clean/node_modules") $(grep "^[^ ]* [0-9][0-9]* $WF/clean/node_modules c-ignored " "$LOG" | cut -d' ' -f5 | tr '\n' '|')"
 check "a worktree with a file changed in 24 hours is kept, with its node_modules" "kept kept" "$(there "$WF/recent") $(there "$WF/recent/node_modules")"
 check "a worktree a process works in keeps its node_modules" kept "$(there "$WF/proc/node_modules")"
 check "a worktree an open agent job names a path inside of keeps its node_modules" kept "$(there "$WF/job/node_modules")"
@@ -100,6 +100,12 @@ mkdir -p "$T/late/node_modules"; echo x > "$T/late/node_modules/x"; age "$T/late
 bash -c "cd '$T/late/node_modules' && exec sleep 600" & LPID=$!; sleep 0.2
 dsm 'm.DRY = False; p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/late/node_modules"
 check "a candidate a process started working in after the sweep's start is kept" kept "$(there "$T/late/node_modules")"
+
+# a sweep killed in the middle of a deletion
+mkdir -p "$T/killed/node_modules"; echo x > "$T/killed/node_modules/x"; age "$T/killed"
+dsm 'm.DRY = False; m.shutil.rmtree = lambda p: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
+check "a sweep killed while deleting leaves the deletion's intent in the log" "137 1" "$? $(grep -c "^[^ ]* [0-9][0-9]* $T/killed/node_modules c-ignored deleting$" "$LOG")"
+
 kill "$SPID" "$WPID" "$LPID"; wait "$SPID" "$WPID" "$LPID" 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

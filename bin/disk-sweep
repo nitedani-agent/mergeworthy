@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """disk-sweep [--delete]: with --delete, deletes what can be rebuilt, under the work folders (~/*-work/), ~/.t3/worktrees/
-and Docker, and appends one line per deletion (`<iso time> <bytes> <path or docker object> <rule>`) to
-~/.mergeworthy/disk-sweep.log; without it, a dry run prints those lines and deletes nothing. It never follows a symlink or leaves a
+and Docker, and appends `<iso time> <bytes> <path or docker object> <rule> deleting` to ~/.mergeworthy/disk-sweep.log before
+each deletion and the same line ending `deleted` or `failed` after it (a Docker prune: `deleted` once it succeeded); without it,
+a dry run prints those lines without the last word and deletes nothing. It never follows a symlink or leaves a
 root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
 "Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate with a file changed inside it in 24 hours, or one a
 process works in or holds a file open in right before its deletion, is kept.
@@ -22,13 +23,13 @@ BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-k
 STATE = os.path.join(HOME, '.mergeworthy')
 
 
-def record(nbytes, what, rule):
+def record(nbytes, what, rule, state):
     line = f"{datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} {nbytes} {what} {rule}"
     if DRY:
         print(line, flush=True)
     else:
         with open(os.path.join(STATE, 'disk-sweep.log'), 'a') as f:
-            f.write(line + '\n')
+            f.write(f'{line} {state}\n')
 
 
 def git(repo, *args):
@@ -110,12 +111,14 @@ def delete(path, dev, rule):
     if not DRY:
         if in_use(path):  # a process may have started using it since the sweep's start
             return
+        record(nbytes, path, rule, 'deleting')
         try:
             shutil.rmtree(path)
         except OSError as e:
             print(f'disk-sweep: {path}: {e}', file=sys.stderr)
+            record(nbytes, path, rule, 'failed')
             return
-    record(nbytes, path, rule)
+    record(nbytes, path, rule, 'deleted')
 
 
 CWDS = []
@@ -201,7 +204,7 @@ def prune_docker(account_home):
     failed = 0
     for what in ('image', 'builder'):  # no containers: until= is their creation time, so a stack stopped a minute ago would go
         if DRY:
-            record('?', f'docker:{what}', 'd-docker')
+            record('?', f'docker:{what}', 'd-docker', 'deleted')
             continue
         r = subprocess.run(['docker', what, 'prune', '-f', '--filter', 'until=24h'], capture_output=True, text=True)
         if r.returncode:
@@ -209,7 +212,7 @@ def prune_docker(account_home):
             failed = 1
             continue
         m = re.search(r'Total(?: reclaimed space)?:\s*([\d.]+)\s*([kKMGT]?)B', r.stdout)
-        record(int(float(m[1]) * 1000 ** ' KMGT'.index(m[2].upper() or ' ')) if m else 0, f'docker:{what}', 'd-docker')
+        record(int(float(m[1]) * 1000 ** ' KMGT'.index(m[2].upper() or ' ')) if m else 0, f'docker:{what}', 'd-docker', 'deleted')
     return failed
 
 
