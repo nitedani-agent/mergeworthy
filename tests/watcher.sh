@@ -539,12 +539,14 @@ check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy
 got=$(py '
 calls = []
 m.subprocess.Popen = lambda cmd, **k: calls.append((cmd, k["stdout"].name))
+m.main_dir = lambda: m.HERE; m.sweep_disk({}); imported = len(calls)
+m.DAEMON = True
 m.main_dir = lambda: "/elsewhere"; state = {}; m.sweep_disk(state); a = len(calls)
 m.main_dir = lambda: m.HERE; m.sweep_disk(state); m.sweep_disk(state); b = len(calls)
 state["sweep_at"] -= 3600; m.sweep_disk(state)
-print(a, b, len(calls), calls[0][0][:5], os.path.basename(calls[0][0][5]), calls[0][0][6:], os.path.basename(calls[0][1]))
+print(imported, a, b, len(calls), calls[0][0][:5], os.path.basename(calls[0][0][5]), calls[0][0][6:], os.path.basename(calls[0][1]))
 ')
-check "disk-sweep --delete runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out" "0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep ['--delete'] disk-sweep.out" "$got"
+check "disk-sweep --delete runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out; never from an imported module (a test)" "0 0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep ['--delete'] disk-sweep.out" "$got"
 
 # the daemon's tick starts it: once an hour, from the main dir only, the hour kept in the state file across ticks
 got=$(py '
@@ -554,6 +556,7 @@ m.STATE = os.path.join(m.HERE, "tick-state.json")
 for name in ("follow_update", "steward_line", "poll_account", "read_reactions", "retire_if_done", "shared_pass", "scan_gitlab", "agent_jobs_pass", "announce"):
     setattr(m, name, lambda *a, **k: None)
 m.read_threads = lambda: []; m.plan = lambda *a: []; m.scan = lambda *a: (True, [])
+m.DAEMON = True
 m.main_dir = lambda: m.HERE; m.tick(); m.tick(); a = len(calls)
 st = json.load(open(m.STATE)); st["sweep_at"] = st.get("sweep_at", 0) - 3600; json.dump(st, open(m.STATE, "w"))
 m.main_dir = lambda: "/elsewhere"; m.tick(); b = len(calls)

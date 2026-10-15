@@ -427,13 +427,14 @@ def log_stats(state):
 
 
 SWEEP = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'bin', 'disk-sweep')
+DAEMON = False  # main()'s loop sets it: a test or a manual run that calls tick() never starts a deleting sweep
 
 
 def sweep_disk(state):
     """Once an hour, from main_dir's daemon alone: bin/disk-sweep in the background at the lowest priority, so polling never
     waits on it; its output goes to disk-sweep.out (not events.log: nothing in it is for the session)."""
     now = time.time()
-    if ONCE or sys.platform != 'linux' or main_dir() != HERE or now - state.get('sweep_at', 0) < 3600:  # it reads /proc; ionice is Linux's
+    if not DAEMON or sys.platform != 'linux' or main_dir() != HERE or now - state.get('sweep_at', 0) < 3600:  # it reads /proc; ionice is Linux's
         return
     state['sweep_at'] = now
     with open(os.path.join(HERE, 'disk-sweep.out'), 'w') as out:
@@ -1784,6 +1785,8 @@ def main():
         run_scan(everything=True)
         shared_pass(force=True)
         return
+    global DAEMON
+    DAEMON = True
     while True:
         tick()
         time.sleep(10)

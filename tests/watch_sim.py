@@ -1,8 +1,8 @@
 """A stand-in GitHub, for tests of the watcher's API budget (tests/watch-budget.py).
 
 FakeGitHub answers what the watcher asks, with ETags, 304s, rate-limit headers and the limit itself, and logs every request.
-Shim() puts it under `subprocess.run` (the `gh` commands) and `http.client.HTTPSConnection` (the kept-alive GETs), so the
-same watcher code runs on it unchanged. Sim is a clock and a scheduler: each daemon runs main() in a thread that is
+Shim() puts it under `subprocess.run` (the `gh` commands) and `http.client.HTTPSConnection` (the kept-alive GETs), and starts
+no process for `subprocess.Popen` (the hourly disk-sweep), so the same watcher code runs on it unchanged. Sim is a clock and a scheduler: each daemon runs main() in a thread that is
 parked in time.sleep, and the sim wakes one at a time in order of simulated time, so a run is deterministic.
 """
 import datetime, hashlib, heapq, json, random, re, subprocess, threading, traceback, types, urllib.parse
@@ -337,13 +337,13 @@ class Headers(dict):
 
 
 class Shim:
-    """Patches subprocess.run and http.client.HTTPSConnection to answer from FakeGitHub; use as a context manager."""
+    """Patches subprocess.run and http.client.HTTPSConnection to answer from FakeGitHub, and subprocess.Popen to start nothing; use as a context manager."""
     def __init__(self, gh):
         self.gh = gh
 
     def __enter__(self):
         gh = self.gh
-        self.run, self.conn = subprocess.run, http.client.HTTPSConnection
+        self.run, self.conn, self.popen = subprocess.run, http.client.HTTPSConnection, subprocess.Popen
         def run(argv, *a, **k):
             return gh_cli(gh, argv) if argv and argv[0] == 'gh' else Reply(returncode=0, stdout='', stderr='')
         class Conn:
@@ -354,11 +354,11 @@ class Shim:
             def getresponse(self):
                 status, hdr, body = self.r
                 return Reply(status=status, headers=Headers(hdr), getheaders=lambda: list(hdr.items()), read=lambda: body.encode())
-        subprocess.run, http.client.HTTPSConnection = run, Conn
+        subprocess.run, http.client.HTTPSConnection, subprocess.Popen = run, Conn, lambda *a, **k: Reply(pid=0)
         return self
 
     def __exit__(self, *e):
-        subprocess.run, http.client.HTTPSConnection = self.run, self.conn
+        subprocess.run, http.client.HTTPSConnection, subprocess.Popen = self.run, self.conn, self.popen
 
 
 def clock_for(sim, daemon=None):
