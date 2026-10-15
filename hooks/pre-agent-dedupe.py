@@ -158,8 +158,10 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
     stale = []
     for r in sorted(named) if authors else ():
         sec = re.search(r'^## Who decides\n(.*?)(?=^## |\Z)', open(notes[r], errors='replace').read(), re.M | re.S)
-        study = re.search(r'(~?/\S+\.study\.md)', sec[1]) if sec else None
-        first = open(os.path.expanduser(study[1]), errors='replace').readline() if study and os.path.isfile(os.path.expanduser(study[1])) else ''
+        # a link relative to the project file counts too (`[r.study.md](r.study.md)`)
+        cands = [os.path.join(os.path.dirname(notes[r]), os.path.expanduser(c)) for c in re.findall(r'[^\s()\[\]`]+\.study\.md', sec[1])] if sec else []
+        study = next((c for c in cands if os.path.isfile(c)), None)
+        first = open(study, errors='replace').readline() if study else ''
         dated = re.match(r'Studied:\s*(\d{4}-\d{2}-\d{2})', first)
         if not dated or (datetime.date.today() - datetime.date.fromisoformat(dated[1])).days > 30:
             stale.append(notes[r])
