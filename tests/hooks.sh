@@ -460,6 +460,12 @@ P=$(for n in $(seq 1 20); do printf '%s ' "$WHY"; done)
 printf 'Done in abc1234567.\n\n| %s | Old ⇒ new |\n|---|---|\n| `a.ts` | 7 ⇒ 9 |\n' "$P" > "$T/tk4.md"; printf 'Done in abc1234567.\n\n| Item | Old ⇒ new | Why |\n|---|---|---|\n| `a.ts` | 7 ⇒ 9 | %s |\n' "$P" > "$T/tk5.md"
 printf 'Done in abc1234567. I rated every file.\n\n```\n| a.ts | 7 ⇒ 9 |\n```\n' > "$T/tk6.md"; printf 'Done in abc1234567. I rated every file.\n\n<!--\n| a.ts | 7 ⇒ 9 |\n-->\n' > "$T/tk7.md"
 check "BLOCK: 440 words in a rated table's header, or in a rated row's reason, count past 45 a cell; a row in code or a comment excuses no 'rated every'" "1 1 1 1" "$(tk tk4 'words > 300') $(tk tk5 'words > 300') $(tk tk6 "process in the thread: 'rated every'") $(tk tk7 "process in the thread: 'rated every'")"
+# cells split as GitHub renders them (an escaped \| stays inside its cell), a header exempt up to 45 words in all, and an item the pass added rated new ⇒ N
+ESC=$(for n in $(seq 1 16); do printf '%s \\| ' "$WHY"; done); WIDE=$(for n in $(seq 1 18); do printf '| %s ' "$WHY"; done)
+printf 'Done in abc1234567.\n\n| Item | Old ⇒ new | Why |\n|---|---|---|\n| `a.ts` | 7 ⇒ 9 | %s |\n' "$ESC" > "$T/tk8.md"
+{ printf 'Done in abc1234567.\n\n%s|\n' "$WIDE"; printf '|---%.0s' $(seq 1 18); printf '|\n| `a.ts` | 7 ⇒ 9 |\n'; } > "$T/tk9.md"
+{ printf 'Done in abc1234567. I rated every file.\n\n| Item | Old ⇒ new | Why |\n|---|---|---|\n'; for n in $(seq 1 20); do echo "| \`f$n.ts\` | new ⇒ 9 | The pass added this file to hold one step the loader did before, now named. |"; done; } > "$T/tk10.md"
+check "BLOCK: 350 words behind escaped pipes in one reason cell, or an 18-cell header, count; 20 added items rated new ⇒ 9 are rated rows" "1 1 0" "$(tk tk8 'words > 300') $(tk tk9 'words > 300') $(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/tk10.md" --kind reply --parent "$T/tk.parent.md" >/dev/null 2>&1; echo $?)"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"
@@ -1010,6 +1016,9 @@ check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1
 # a ratings report in the form a session wrote for #3609 (one rating per item, a summary of the changed ones, no ✅ list) is told all it lacks
 printf '## Files\n\n| # | File | Rating | Reason |\n|---|---|---|---|\n| 1 | `docs/headings.ts` | 9 | One entry, last. |\n| 8 | `packages/vike/package.json` | 6 | Refactor 1. |\n\n## Summary\n\n| Item | Old => new | Commit |\n|---|---|---|\n| File 8 `packages/vike/package.json` | 6 => 9 | f3e4b44bd4 |\n\nGates on f3e4b44bd4:\n- `pnpm run test:types` -> exit 0\n' > "$T/ratings.md"
 check "BLOCK: a ratings report with no ✅ list, standards or CLEAN, naming each, and how a pass that changes nothing records" "1 1" "$(prs shape "$T/ratings.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/ratings.md" 2>&1 | grep -c "lacks the ✅ coverage list, '## Standards read', a last line CLEAN (mergeworthy delegate/shape.md). A pass that changes nothing is one too: it rates each item N ⇒ N and records on the unchanged head")"
+printf '| `loader.ts` | new ⇒ 9 | abc | one step per hook |\n✅ loader.ts\nCLEAN\n' > "$T/newpass.md"; std "$T/newpass.md"
+GN="$T/prsn"; mkdir -p "$GN"; git -C "$GN" init -q; git -C "$GN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+check "a pass rating only items it added (new ⇒ 9) records" 0 "$(cd "$GN" && bash "$R/bin/pr-steps" shape "$T/newpass.md" >/dev/null 2>&1; echo $?)"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"; std "$T/pass.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nFIX src/a.ts:3 dead branch\n' > "$T/open.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n✅ express vike()\nCLEAN\n' > "$T/copied.md"

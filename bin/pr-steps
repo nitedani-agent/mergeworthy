@@ -76,7 +76,7 @@ fi
 # A shape record is the pass's lists (the ✅ coverage list and old ⇒ new ratings) ending CLEAN, or a small follow-up that
 # carries an earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
-is_pass() { grep -q '✅' "$1" && grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
   c=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true); [ -n "$c" ] || return 1
@@ -128,7 +128,7 @@ EOF
       carried=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true)
       copied=$(grep -Eio '\| *([0-9]+ *)?= *\||unchanged since' "$out" | head -n1 || true)
       [ -n "$carried" ] || [ -z "$copied" ] || { echo "$out is not a shape pass: a row's rating is copied ('$copied'); rate every file and function afresh as old ⇒ new, with the reason in your own words (mergeworthy delegate/shape.md)" >&2; exit 1; }
-      lacks=$(grep -q '✅' "$out" || printf 'the ✅ coverage list, '; grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$out" || printf 'old ⇒ new ratings, '
+      lacks=$(grep -q '✅' "$out" || printf 'the ✅ coverage list, '; grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$out" || printf 'old ⇒ new ratings, '
               grep -q '^## Standards read' "$out" || printf "'## Standards read', "; [ "$last" = CLEAN ] || printf 'a last line CLEAN, ')
       [ -n "$carried" ] || { echo "$out is not a shape pass: it lacks ${lacks%, } (mergeworthy delegate/shape.md). A pass that changes nothing is one too: it rates each item N ⇒ N and records on the unchanged head. A small follow-up with no maintainer's refactor ask after the pass it carries says 'carries the pass of <sha>' instead" >&2; exit 1; }
       full=$(git rev-parse "$carried")

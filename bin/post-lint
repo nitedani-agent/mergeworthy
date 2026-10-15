@@ -26,19 +26,21 @@ path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 kind = {'comment': 'reply'}.get(kind, kind)
 _repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the language only: the other repo checks keep needing --repo
 W = post_words.words(_repo)  # the words the checks look for, in the repo's language
-RATED = re.compile(r'^\s*\|.*[0-9]+ *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`)
+RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
 FENCED = r'^(?P<f>```|~~~)[^\n]*\n[\s\S]*?^(?P=f)[^\n]*$'
 VISIBLE = lambda s: re.sub(FENCED, '', re.sub(r'<!--[\s\S]*?-->', '', s), flags=re.M)  # what GitHub renders as text, not code
 BOUND = 45  # words per cell of a rated row or its header that count toward no cap: the longest rating reason in #3609's result is 45
+def cells(l):  # a table line's cells as GitHub splits them: an escaped \| stays inside its cell
+    return re.split(r'(?<!\\)\|', re.sub(r'(?<!\\)\|\s*$', '', re.sub(r'^\s*\|', '', l.rstrip('\n'))))
 def rating_rows(t):
     """The line numbers of table t's rows that rate an item: an old ⇒ new row, or a commit-review row whose Rating cell holds N/10."""
     lines = t.splitlines()
-    head = [c.strip() for c in lines[0].strip().strip('|').split('|')]
+    head = [c.strip() for c in cells(lines[0])]
     col = head.index('Rating') if REVIEWED.match(lines[0].lstrip()) else None
     rows = {i for i, l in enumerate(lines) if RATED.match(l) or col is not None and i and
-            re.search(r'\b\d+(?:\.\d+)?/10\b', (l.strip().strip('|').split('|') + [''] * len(head))[col])}
+            re.search(r'\b\d+(?:\.\d+)?/10\b', (cells(l) + [''] * len(head))[col])}
     return rows
 def unrated(s):
     """(s, n): each rated row outside fenced code, and the first line of its table, cut to the words past BOUND in each cell, as a
@@ -49,8 +51,9 @@ def unrated(s):
         if m.group('f'): return m.group(0)  # fenced code
         t = m.group(0); r = rating_rows(t); n += len(r)
         cell = lambda c: re.findall(WORD, re.sub(r'https?://\S+', 'URL', re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', c)))  # words as counted below
-        over = lambda l: ' '.join(w for c in l.strip().strip('|').split('|') for w in cell(c)[BOUND:])
-        return ''.join(over(l) + '\n' if i in r or r and i == 0 else l for i, l in enumerate(t.splitlines(True)))
+        over = lambda l: ' '.join(w for c in cells(l) for w in cell(c)[BOUND:])
+        head = lambda l: ' '.join(cell(l.replace('|', ' '))[BOUND:])  # a header is exempt up to BOUND words in all
+        return ''.join((over(l) if i in r else head(l)) + '\n' if i in r or r and i == 0 else l for i, l in enumerate(t.splitlines(True)))
     return re.sub(FENCED + '|' + TABLE, rest, s, flags=re.M), n
 WORD = r"[A-Za-z0-9][\w'’-]*"
 draft = '--draft' in args
@@ -97,14 +100,14 @@ prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 # A PR body counts, outside its evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long cell
 # (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
 # cell (unrated()), and a code line of six or more words with no flag, path, code symbol or `->` that isn't mostly numbers
-cells, (unrated_prose, n_rated) = [], unrated(prose)
+long_cells, (unrated_prose, n_rated) = [], unrated(prose)
 for l in re.findall(r'^\s*\|(.*)$', unrated_prose, flags=re.M):
-    row = l.rstrip().rstrip('|').split('|')
+    row = cells('|' + l)
     if not re.fullmatch(r'[\s:|-]*', l):  # a separator row
-        cells += [c for c in row if len(row) == 1 or len([w for w in re.findall(WORD, c) if w != 'CODE' and not w[0].isdigit()]) > 15]
+        long_cells += [c for c in row if len(row) == 1 or len([w for w in re.findall(WORD, c) if w != 'CODE' and not w[0].isdigit()]) > 15]
 lines = [l for l in code.split('\n') if len(w := re.findall(WORD, l)) >= 6 and not re.search(r"[^\w\s,.;:'’\"()%-]|->|(^|\s)-", l)
          and sum(x[0].isdigit() for x in w) * 4 < len(w)]
-counted = re.sub(r'^\s*\|.*$', '', unrated_prose, flags=re.M) + '\n' + '\n'.join(cells + lines)   # table rows: their prose cells only
+counted = re.sub(r'^\s*\|.*$', '', unrated_prose, flags=re.M) + '\n' + '\n'.join(long_cells + lines)   # table rows: their prose cells only
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
