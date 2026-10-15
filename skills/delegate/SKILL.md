@@ -5,7 +5,7 @@ description: "Starting, continuing or checking a subagent, writing a brief, and 
 
 # Delegate
 
-The main session decides and briefs; a subagent does the work in its brief. Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, with `agent.md` included in every one.
+Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, with `agent.md` included in every one.
 
 ## Steps
 
@@ -30,7 +30,6 @@ The main session decides and briefs; a subagent does the work in its brief. Each
 - **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `test` or `review`. A research brief adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one whose topic is already written up in an unchecked file.
 - **Never put in** your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The exception is a previous round's report, given to an agent that re-rates it. A maintainer's ask goes in quoted whole: an either/or stays an either/or; the implementer reads the code each option touches and recommends one, saying why, and the main session decides before it lands.
 - **Give paths and the question,** never pasted files or long histories.
-- **What it returns:** the result with evidence (`path:line`, or the command and its exit code) and a `not_checked` list, in a final message of at most 15 lines; the rest goes in a file the brief names.
 - **One run is one agent with one prompt.** Group roles reading one artifact in one loop, in order, each writing its own file. Split only for context limits or independence: authors never review themselves, and fresh readers haven't seen the fixes.
 
 ### Continue
