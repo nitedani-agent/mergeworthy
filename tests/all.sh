@@ -11,5 +11,6 @@ bash tests/watcher.sh .
 python3 tests/watch-budget.py .
 python3 tests/watch-cadence.py .
 bash tests/loc-breakdown.sh .
+bash tests/disk-sweep.sh .
 bash tests/review-context.sh .
 bash tests/netns.sh .
