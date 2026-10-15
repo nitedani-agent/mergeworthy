@@ -587,6 +587,18 @@ PY=$(python3 -c 'import sys; print(sys.executable)')  # a pyenv shim would stay 
 python3 "$R/bin/agent-job" done "$T/lwork/brief.md" > "$T/aj.out"
 check "agent-job done lists the process left in the job's worktree with its port, the one in its brief's folder, not one elsewhere, and kills none" "1 1 0 0" "$(grep -c "^  $LPID listening on 127.0.0.1:[0-9]*: $PY -c import socket" "$T/aj.out") $(grep -c "^  $WPID: sleep 600 (in $T/lwork)" "$T/aj.out") $(grep -c "^  $OPID" "$T/aj.out") $(kill $LPID $WPID $OPID; echo $?)"
 wait $LPID $WPID $OPID 2>/dev/null
+# at most 3 agents open at once per session
+cap_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:40]}}))' "$1" "$2"; }
+cap() { cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; local rc=$?; [ $rc = 0 ] && cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc; }
+check "BLOCK: a fourth agent open at once in one session, naming the three" "0 0 0 2 3" "$(cap capS 'Execute /tmp/x/cap1.md') $(cap capS 'Execute /tmp/x/cap2.md') $(cap capS 'Execute /tmp/x/cap3.md') $(cap capS 'Execute /tmp/x/cap4.md') $(grep -c '^/tmp/x/cap[123].md' "$T/err")"
+check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
+python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
+check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
+mkdir -p "$HOME/.claude/projects/-cap"; python3 -c 'import json,sys; w=lambda o: print(json.dumps(o)); w({"type":"user","message":{"content":"Execute /tmp/x/cap2.md"}}); w({"type":"assistant","message":{"content":[{"type":"text","text":"Report written."}]}})' > "$HOME/.claude/projects/-cap/cap2.jsonl"
+touch -d '5 minutes ago' "$HOME/.claude/projects/-cap/cap2.jsonl"
+check "BLOCK: a job whose agent finished (its transcript quiet) no longer counts; the fourth open one still blocks" "0 2" "$(cap capS 'Execute /tmp/x/cap6.md') $(cap capS 'Execute /tmp/x/cap7.md')"
+for k in cap2 cap3 cap4 cap5 cap6 mem-lines; do python3 "$R/bin/agent-job" done "/tmp/x/$k.md" >/dev/null; done; rm -r "$HOME/.claude/projects/-cap"
 # ---------- the memory file: session-memory injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"

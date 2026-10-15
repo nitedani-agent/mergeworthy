@@ -206,4 +206,14 @@ elif os.path.exists(f):
             "Continue it with a message instead of starting another. Only when its task is terminal and you have read its result, "
             f"release the job with `agent-job done {shlex.quote(key[:200])}`, then launch.\n")
         sys.exit(2)
+# At most 3 agents at a time per session (delegate step 1): a job is open until released or its agent finished; a memory refresh doesn't count
+if not register and d.get('session_id') and 'memory-refresh' not in gate_text:
+    import agent_jobs
+    live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
+            and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
+    if len(live) >= 3:
+        sys.stderr.write(f"BLOCKED: this session already has {len(live)} agents open, and the limit is 3 at a time (mergeworthy:delegate step 1):\n"
+                         + '\n'.join(f"{j['key'][:160]} (started {int((time.time() - j['started']) / 60)} min ago)" for j in live)
+                         + "\nContinue one with a message, or wait for one to finish, read its result and release it with `agent-job done <key>`.\n")
+        sys.exit(2)
 sys.exit(0)
