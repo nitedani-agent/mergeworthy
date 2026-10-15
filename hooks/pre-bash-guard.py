@@ -266,6 +266,8 @@ def check(t, has_cd):
             p in ('grep', 'rg') and any(re.fullmatch(r'-\w*[clqL]\w*|--count|--quiet|--files-with-matches', x) for x in a)):
         block("that file holds credentials, and printing it puts them in the transcript. Check a setting without its value "
               "(`grep -c '^//registry' <file>`, `npm config get registry`), or ask the user")
+    if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a):
+        block("never pgrep -f: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':
