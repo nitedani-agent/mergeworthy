@@ -199,11 +199,11 @@ def check_shape_shown(repo, num, texts, head=None, live=True):
         block(f"the shape pass on {on} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
 
 def shape_pass(sha, seen=()):
-    """(commit, its shape report) of the pass that stands for sha: sha's own, or, through each `carries the pass of <sha>` record, the
-    pass it carries; (None, None) without one."""
+    """(commit, its shape report) of the pass that stands for sha: the head's latest shape record, or, through each `carries the pass of
+    <sha>` record, the pass it carries; (None, None) without one."""
     rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
     if sha in seen or not os.path.isfile(rec): return None, None
-    for k, f, *_ in (l.split() for l in open(rec) if len(l.split()) >= 2):
+    for k, f, *_ in reversed([l.split() for l in open(rec) if len(l.split()) >= 2]):
         if k != 'shape' or not os.path.isfile(f): continue
         c = re.search(r'carries the pass of ([0-9a-f]{7,40})', open(f, errors='replace').read())
         if not c: return sha, f
