@@ -178,6 +178,29 @@ if watcher_on and not paused and not child:
                   "line with 'done: <reply url> <what changed>' (mergeworthy:post step 5), or clear it with the reason no reply is owed.",
                   file=sys.stderr)
             sys.exit(2)
+# A promise posted with a time (`by 2026-10-12T17:30Z`, `by 18:00 UTC`, in its PROMISED line or its draft) is kept by then: past it,
+# a line still opening with PROMISED, not cleared by the commit or link that delivers it (task §Files), blocks the turn
+if watcher_on and not paused and not child:
+    import datetime, time
+    BY = re.compile(r'\b(?:by|before)\s+(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z)|(\d{1,2}):(\d{2})\s*(?:Z|UTC)\b)', re.I)
+    def due(text, written):
+        """The first promised time in text; a bare time of day is the first one after the draft was written."""
+        m = BY.search(text)
+        if not m: return None
+        if m[1]: return datetime.datetime.fromisoformat(m[1].replace('Z', '+00:00')).timestamp()
+        w = datetime.datetime.fromtimestamp(written, datetime.timezone.utc)
+        t = w.replace(hour=int(m[2]) % 24, minute=int(m[3]), second=0, microsecond=0)
+        return (t + datetime.timedelta(days=1) if t < w else t).timestamp()
+    for po in sorted(p for wd in own_dirs for p in glob.glob(os.path.join(wd, 'proposals-open.md')) + glob.glob(os.path.join(wd, '*', 'proposals-open.md'))):
+        for l in open(po, errors='replace'):
+            if not l.startswith('PROMISED'): continue
+            name = re.search(r'\(([^()\s]+\.md)[,)]', l)
+            drafts = [x for n in ([name[1]] if name else []) for x in glob.glob(os.path.join(os.path.dirname(po), 'drafts', n)) + glob.glob(os.path.join(os.path.dirname(po), 'drafts', '*', n))]
+            at = due(l, os.path.getmtime(drafts[0] if drafts else po)) or next((t for t in (due(open(x, errors='replace').read(), os.path.getmtime(x)) for x in drafts) if t), None)
+            if at and at < time.time():
+                print(f"A promise in {po} fell due at {datetime.datetime.fromtimestamp(at, datetime.timezone.utc):%Y-%m-%dT%H:%MZ} and isn't delivered: {l.strip()[:200]}. "
+                      "Deliver it now, or post (through the gate) why it's late and when it lands; then open the line with `DONE <commit or link>` (mergeworthy:task §Files).", file=sys.stderr)
+                sys.exit(2)
 # Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:rules step 6),
 # by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's
 if watcher_on and not paused and not child:

@@ -136,6 +136,7 @@ It blocks ending a turn when:
 - it ends with "want me to / should I / your call…" and no `GENUINE-FORK:` line;
 - you posted on GitHub and no live Monitor watches a watcher's `events.log` (a `claude -p` run's caller watches);
 - a work folder it worked in owes a reply;
+- a `PROMISED` line in its `proposals-open.md`, or a draft folder's there, is past the time it or its draft names (`by <ISO time>`, `by HH:MM UTC`) and doesn't yet open with `DONE <commit or link>`;
 - in a session that started T3 tasks, its `Running:` list wasn't read with `task_status` since the user's last message, or names a terminal task.
 - an agent it launched finished and its job is still open (`agent_jobs.py`);
 - a `FOLLOW-UP` or `MAINTAINER REVIEW` in the `events.log` of a dir it works in, or the steward's, has no verdict after 30 minutes (`rules` step 6);
