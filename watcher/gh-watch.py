@@ -19,6 +19,7 @@
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
+- Once an hour main_dir's daemon starts bin/disk-sweep in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
@@ -423,6 +424,20 @@ def log_stats(state):
         if not ONCE:
             with open(os.path.join(HERE, 'gh-watch-stats.log'), 'a') as f:
                 f.write(f"{iso(now)} counted requests a minute in the last hour: {hour:.1f} ({slow:.1f} of them 304 answers), in the last 24 hours: {rates(state['calls'], 1440)[0]:.1f}\n")
+
+
+SWEEP = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'bin', 'disk-sweep')
+
+
+def sweep_disk(state):
+    """Once an hour, from main_dir's daemon alone: bin/disk-sweep in the background at the lowest priority, so polling never
+    waits on it; its output goes to disk-sweep.out (not events.log: nothing in it is for the session)."""
+    now = time.time()
+    if ONCE or sys.platform != 'linux' or main_dir() != HERE or now - state.get('sweep_at', 0) < 3600:  # it reads /proc; ionice is Linux's
+        return
+    state['sweep_at'] = now
+    with open(os.path.join(HERE, 'disk-sweep.out'), 'w') as out:
+        subprocess.Popen(['nice', '-n', '19', 'ionice', '-c3', SWEEP], stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
 
 
 def save_state(s):
@@ -1702,6 +1717,7 @@ def tick():
                 poll_account(state, lvl)
                 ok, fulls = scan(state, plan(state, read_threads(), lvl))
                 log_stats(state)
+                sweep_disk(state)
                 save_state(state)
             read_reactions(fulls)
             if lvl <= RESERVE and time.time() - _retire_at[0] > 300:

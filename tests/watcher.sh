@@ -535,5 +535,16 @@ print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
 
+# disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
+got=$(py '
+calls = []
+m.subprocess.Popen = lambda cmd, **k: calls.append((cmd, k["stdout"].name))
+m.main_dir = lambda: "/elsewhere"; state = {}; m.sweep_disk(state); a = len(calls)
+m.main_dir = lambda: m.HERE; m.sweep_disk(state); m.sweep_disk(state); b = len(calls)
+state["sweep_at"] -= 3600; m.sweep_disk(state)
+print(a, b, len(calls), calls[0][0][:5], os.path.basename(calls[0][0][5]), os.path.basename(calls[0][1]))
+')
+check "disk-sweep runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out" "0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep disk-sweep.out" "$got"
+
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
