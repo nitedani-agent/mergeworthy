@@ -1344,5 +1344,19 @@ glreg 'glab mr create --draft --title x' 'https://gitlab.com/ns/sub/proj/-/merge
 glreg 'glab issue list' 'https://gitlab.com/ns/sub/proj/-/issues/13'
 check "post-bash-register: glab's new issue and MR join threads.txt, the repo line goes, a list adds nothing" "gitlab.com/ns/sub/proj 12|gitlab.com/ns/sub/proj !3|+" "$(tr '\n' '|' < "$GW/threads.txt")+$(cat "$GW/repos.txt")"
 kill "$GPID"
+# ---------- .githooks/pre-push: a pushed skill change names its cold read's record ----------
+git init -q --bare "$T/cr.git"; git init -q -b main "$T/cr"; mkdir -p "$T/cr/skills/a" "$T/crh"
+printf '#!/bin/sh\nexec "%s/.githooks/cold-read"\n' "$R" > "$T/crh/pre-push"; chmod +x "$T/crh/pre-push"
+git -C "$T/cr" config core.hooksPath "$T/crh"; git -C "$T/cr" remote add origin "$T/cr.git"
+echo a > "$T/cr/README"; git -C "$T/cr" add README; git -C "$T/cr" commit -qm base
+crpush() { git -C "$T/cr" push -q origin main > "$T/cr.out" 2>&1; echo $?; }
+echo one > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" add skills; git -C "$T/cr" commit -qm 'skill: one'
+echo two > "$T/cr/always-on.md"; git -C "$T/cr" add always-on.md; git -C "$T/cr" commit -qm 'rules: two' -m "Cold-read: $T/missing.md"
+check "BLOCK: a new branch's skill and always-on.md commits with no Cold-read trailer naming an existing file, naming both" "1 1 1 0" "$(crpush) $(grep -c 'skill: one' "$T/cr.out") $(grep -c 'rules: two' "$T/cr.out") $(grep -c ' base$' "$T/cr.out")"
+echo record > "$T/coldread.md"; echo three > "$T/cr/other"; git -C "$T/cr" add other; git -C "$T/cr" commit -qm later -m "Cold-read: $T/coldread.md"
+check "a later commit of the same push with the trailer covers them" 0 "$(crpush)"
+echo four > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: four' -m "Cold-read: $T/coldread.md"
+echo five > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: five'
+check "BLOCK: on a pushed branch, a skill commit after the last trailer, naming only it" "1 0 1" "$(crpush) $(grep -c 'skill: four' "$T/cr.out") $(grep -c 'skill: five' "$T/cr.out")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

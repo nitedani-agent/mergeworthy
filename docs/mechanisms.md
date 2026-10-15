@@ -176,6 +176,10 @@ Read-only commands pass.
 - a brief still holding a placeholder of a fenced template in `skills/delegate/` (`<the slice's risky edges>`), naming each and its template; one in backticks there (the agent's output form), the pasted `agent.md`'s and an HTML tag don't count;
 - in a main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph) all appear in a file under the work folder not named in a `Checked:` line.
 
+### `.githooks/pre-push` (this repo)
+
+Before `tests/all.sh`, it refuses a push in which a commit changing `skills/` or `always-on.md` has no `Cold-read: <path>` trailer naming an existing file (the cold read's record, `rules` step 4), in it or in a later commit of the push, naming each such commit.
+
 ### `netns-run`
 
 `netns-run <command...>` runs the command in a private network namespace (`unshare -rn`) with internet access through slirp4netns: ports inside are its own, DNS and HTTPS work, and the command's exit status comes back. It needs `slirp4netns` installed (`sudo apt install slirp4netns`).
