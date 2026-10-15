@@ -109,6 +109,7 @@ It blocks:
 - the same gated draft posted twice as new;
 - a post or edit on a thread whose draft folder has no `thread-context.md` for that thread recording its current latest human comment, or older than the draft's parent. `--kind tracker` drafts and new issues and PRs are exempt;
 - a third comment on a thread (`post §Thread rules`);
+- `gh pr create` or `gh pr edit` with a `--title` typed inline, not `"$(cat <work folder>/drafts/title.md)"`;
 - `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (`merging` step 1);

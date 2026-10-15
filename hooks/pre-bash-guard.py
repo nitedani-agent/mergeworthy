@@ -306,6 +306,11 @@ def check(t, has_cd):
                 head, missing = missing_steps(d)
                 if pr == 'ready' and missing:
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
+    if p == 'gh' and a[:1] == ['pr'] and a[1:2] in (['create'], ['edit']) and '--help' not in a and '-h' not in a:
+        # a title typed inline skips every reviewed file: it is drafted in a file, like the body
+        if any(not re.fullmatch(r'\$\(cat \S+\)', v) for v in opt(a[2:], ['--title', '-t'])):
+            block('the PR title is typed inline: write it to <work folder>/drafts/title.md in the repo\'s form (its last 10 merged titles) '
+                  'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
