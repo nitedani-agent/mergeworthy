@@ -1226,6 +1226,13 @@ rm -f "$FX/pr_view_current" "$FX/pr_view_feature"
 HIDR=$(gated sp-hid-r "Done in abc1234."$'\n\n<!--\n| `load()` | 7 ⇒ 9 | abc1234 |\n-->')
 CODR=$(gated sp-cod-r "Done in abc1234."$'\n\n```\n| `load()` | 7 ⇒ 9 | abc1234 |\n```')
 check "BLOCK: the pass's rows inside an HTML comment or fenced code don't show it" "1 1" "$(shown "gh pr comment 7 -R o/r --body-file $HIDR") $(shown "gh pr comment 7 -R o/r --body-file $CODR")"
+# while the ask waits on its pass, a holding reply goes out only once the session has promised the result in its watch dir's proposals-open.md
+oldpass; HOLD=$(gated sp-hold-r "I'm running the refactor pass on the whole PR now; the ratings and their commits follow by 15:00 UTC.")
+WR="$T/wr"; mkdir -p "$WR"; echo sess-r4 > "$WR/session"; echo "$WR" >> "$HOME/.claude/gh-watch-dirs.txt"
+hold() { printf '%s\n' "$1" > "$WR/proposals-open.md"; CLAUDE_CODE_SESSION_ID=sess-r4 asked "gh pr comment 7 -R o/r --body-file $HOLD"; }
+check "BLOCK: a holding reply with no PROMISED line, the block naming that way through" "1 1" "$(hold '') $(grep -c "To post before it .*'PROMISED o/r#7: the refactor pass's result by <time> (<draft>)'" "$T/err")"
+check "the session's open PROMISED line for the PR's refactor result lets it through; another PR's, or a cleared one, doesn't" "0 1 1" "$(hold "PROMISED o/r#7: the refactor pass's result by 15:00 UTC (sp-hold-r.md)") $(hold "PROMISED o/r#8: the refactor pass's result (x.md)") $(hold "DONE https://example.invalid/c PROMISED o/r#7: the refactor pass's result (sp-hold-r.md)")"
+rm -rf "$WR"; sed -i "\#^$WR\$#d" "$HOME/.claude/gh-watch-dirs.txt"
 rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
