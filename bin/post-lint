@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, decisions not shown as code and lettered options, questions without a recommendation, and a bare "Done" answering a question.
@@ -13,7 +13,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal] [--draft] [--repo owner/repo] [--parent <file>|none]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -23,9 +23,19 @@ if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 kind = {'comment': 'reply'}.get(kind, kind)
 draft = '--draft' in args
-if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
+if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
 text = open(path).read()
+if kind == 'title':  # a PR title (pull-request step 7): the squash subject and changelog line, one line, no badge
+    lines = [l for l in text.split('\n') if l.strip()]
+    bad = (["a title is one line"] if len(lines) != 1 else []) + \
+          (["no badge or HTML in a title"] if lines and '<' in lines[0] else []) + \
+          (["a title ends without a period"] if lines and lines[0].rstrip().endswith('.') else [])
+    for f in bad: print(f)
+    if not bad:
+        open(path + '.lint', 'w').write(' '.join(args[1:]))
+        open(path + '.lint.sha', 'w').write(hashlib.sha256(open(path, 'rb').read()).hexdigest())
+    sys.exit(1 if bad else 0)
 # An issue draft's first line may be its title ("Title: …"): the budget is for the body
 title = (re.match(r'\ATitle:\s*([^\n]*)\n', text) or [None, None])[1]
 text = re.sub(r'\ATitle:[^\n]*\n', '', text)
