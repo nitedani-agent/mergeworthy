@@ -576,6 +576,17 @@ printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
 check "agent-job done with the full key releases only that job" 1 "$(python3 "$R/bin/agent-job" done '/x/a.md /x/shared.md' >/dev/null; ls "$J"/aj*.json | wc -l)"
 rm -f "$J"/aj*.json
+# agent-job done lists what the agent may have left running where it worked, and kills nothing
+git init -q -b main "$T/lr"; git -C "$T/lr" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
+git -C "$T/lr" worktree add -q -b lw "$T/lw"; mkdir -p "$T/lw/app" "$T/lwork" "$T/lother"
+printf 'Goal: fix it.\nWork in %s.\n' "$T/lw" > "$T/lwork/brief.md"
+launch "Follow $T/lwork/brief.md exactly" >/dev/null
+PY=$(python3 -c 'import sys; print(sys.executable)')  # a pyenv shim would stay the parent of the listening process
+(cd "$T/lw/app" && exec "$PY" -c 'import socket,time; s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(); time.sleep(600)') & LPID=$!
+(cd "$T/lwork" && exec sleep 600) & WPID=$!; (cd "$T/lother" && exec sleep 600) & OPID=$!; sleep 0.5
+python3 "$R/bin/agent-job" done "$T/lwork/brief.md" > "$T/aj.out"
+check "agent-job done lists the process left in the job's worktree with its port, the one in its brief's folder, not one elsewhere, and kills none" "1 1 0 0" "$(grep -c "^  $LPID listening on 127.0.0.1:[0-9]*: $PY -c import socket" "$T/aj.out") $(grep -c "^  $WPID: sleep 600 (in $T/lwork)" "$T/aj.out") $(grep -c "^  $OPID" "$T/aj.out") $(kill $LPID $WPID $OPID; echo $?)"
+wait $LPID $WPID $OPID 2>/dev/null
 # ---------- the memory file: session-memory injects its Standing digest and says when it is behind; the guards read it ----------
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 OC="$T/orch"; MR="$T/mem"; LD="$HOME/.claude/projects/$(printf '%s' "$OC" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$OC" "$LD"

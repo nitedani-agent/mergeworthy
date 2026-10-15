@@ -63,6 +63,10 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 `memory-prep init <root> <T3 thread id>`, run from the main session's checkout, records it, its thread, its session and its session-log dir. `memory-prep prep <root>` extracts the user's prompts and the last text of each main session turn logged after `memory.md`'s `covered-until` position from the main session's own logs into `memory-new.txt`, and writes the brief sending one Haiku to `memory-refresh`. `memory-prep digest <root>` prints the Standing part, one line per item, capped at 7,500 characters.
 
+### `agent-job` (`delegate` step 6)
+
+`agent-job list` prints the open jobs `pre-agent-dedupe` registered; `agent-job done <key or ticket path>` releases one once its result is read. It then lists the processes whose cwd is in a linked worktree the job's brief names or in the folder holding its brief, with their PIDs, commands and the ports they listen on (`ss -ltnp`), and kills none.
+
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`design` step 7) and update the thread's WIP comment from it (`design §WIP comment`).

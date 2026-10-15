@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """agent-job list | done <key or ticket path>: the jobs pre-agent-dedupe registered. `done` releases a job after its agent's task
-is terminal and its result is read, so the same job can be launched again."""
-import glob, hashlib, json, os, sys, time
+is terminal and its result is read, so the same job can be launched again, and lists what the agent may have left running."""
+import glob, hashlib, json, os, re, subprocess, sys, time
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 if len(sys.argv) < 2 or sys.argv[1] not in ('list', 'done'):
     sys.exit('usage: agent-job list | done <key or ticket path>')
@@ -18,6 +18,35 @@ if not hit:
     sys.exit(f'agent-job: no registered job for {want!r} (agent-job list)')
 if len(hit) > 1:
     sys.exit(f'agent-job: {len(hit)} jobs hold {want!r}; release one by its full key from `agent-job list`')
+def leftovers(j):
+    """Processes whose cwd is in a linked worktree the job's brief names or in the folder holding its brief, with the ports
+    each listens on: what the agent may have left running (agent.md §Machine)."""
+    tickets = [p for p in j['key'].split() if p.startswith('/')]
+    text = j.get('brief', '') + ''.join(open(t, errors='replace').read() for t in tickets if os.path.isfile(t))
+    dirs = {os.path.dirname(t) for t in tickets if os.path.isdir(os.path.dirname(t))} - {os.path.expanduser('~'), '/'}
+    for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', text):
+        p = os.path.realpath(os.path.expanduser(p.rstrip('/.,:')))
+        while p != '/' and not os.path.exists(os.path.join(p, '.git')): p = os.path.dirname(p)
+        if os.path.isfile(os.path.join(p, '.git')): dirs.add(p)
+    mine, p = set(), os.getpid()
+    while p > 1:
+        mine.add(p)
+        try: p = int(open(f'/proc/{p}/stat').read().rsplit(')', 1)[1].split()[1])
+        except (OSError, IndexError, ValueError): break
+    ports = {}
+    for l in subprocess.run(['ss', '-ltnpH'], capture_output=True, text=True).stdout.splitlines():
+        for pid in re.findall(r'pid=(\d+)', l): ports.setdefault(int(pid), []).append(l.split()[3])
+    out = []
+    for e in sorted(int(e) for e in os.listdir('/proc') if e.isdigit()):
+        try: cwd = os.readlink(f'/proc/{e}/cwd'); cmd = open(f'/proc/{e}/cmdline').read().replace('\0', ' ').strip()
+        except OSError: continue
+        if e not in mine and any(cwd == d or cwd.startswith(d + '/') for d in dirs):
+            out.append(f"  {e}{' listening on ' + ', '.join(ports[e]) if e in ports else ''}: {cmd[:150]} (in {cwd})")
+    return out
 for f in hit:
+    j = dict(entries)[f]
     os.remove(os.path.join(jobs, f)); print('released', want)
     for m in glob.glob(os.path.expanduser(f'~/.claude/agent-jobs-reported/{f}-*')): os.remove(m)
+    left = leftovers(j)
+    if left:
+        print("still running where the agent worked; stop each one it started, by PID (agent.md §Machine), never another session's:\n" + '\n'.join(left))
