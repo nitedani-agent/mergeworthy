@@ -106,6 +106,14 @@ mkdir -p "$T/killed/node_modules"; echo x > "$T/killed/node_modules/x"; age "$T/
 dsm 'm.DRY = False; m.empty = lambda fd: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
 check "a sweep killed while deleting leaves the deletion's intent in the log" "137 1" "$? $(grep -c "^[^ ]* [0-9][0-9]* $T/killed/node_modules c-ignored deleting$" "$LOG")"
 
+# data a rebuild can't restore inside a candidate: a nested checkout with an unpushed commit and an edit, a .git file, an unreadable folder
+H3="$T/home3"; Y="$H3/y-work"; mkdir -p "$Y"; G init -q "$Y/outer"; echo build/ > "$Y/outer/.gitignore"; G -C "$Y/outer" add .gitignore; G -C "$Y/outer" commit -qm base
+G init -q "$Y/outer/build/checkout"; echo a > "$Y/outer/build/checkout/unique.txt"; G -C "$Y/outer/build/checkout" add unique.txt; G -C "$Y/outer/build/checkout" commit -qm local; echo b >> "$Y/outer/build/checkout/unique.txt"
+mkdir -p "$Y/loose/node_modules/pkg" "$Y/locked/node_modules/sub" "$Y/plain/node_modules"; echo 'gitdir: /elsewhere' > "$Y/loose/node_modules/pkg/.git"
+echo x > "$Y/locked/node_modules/sub/x"; echo y > "$Y/locked/node_modules/y"; echo x > "$Y/plain/node_modules/x"; age "$Y"; chmod 000 "$Y/locked/node_modules/sub"
+HOME="$H3" python3 "$R/bin/disk-sweep" --delete 2>/dev/null; chmod 755 "$Y/locked/node_modules/sub"
+check "a build folder holding a nested checkout, a node_modules holding a .git file or a folder it can't read are kept; a plain one goes" "kept kept kept removed" "$(there "$Y/outer/build/checkout/.git") $(there "$Y/loose/node_modules/pkg/.git") $(there "$Y/locked/node_modules/y") $(there "$Y/plain/node_modules")"
+
 # a repo swapped for a symlink, then for a real directory, after the sweep inspected its node_modules and before it deletes it
 swap() { mkdir -p "$T/$1/repo/node_modules" "$T/$1/outside/node_modules"; echo x > "$T/$1/repo/node_modules/x"; echo only > "$T/$1/outside/node_modules/only-copy.txt"; age "$T/$1"
   dsm 'rec = m.record

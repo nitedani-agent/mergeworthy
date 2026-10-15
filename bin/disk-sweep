@@ -4,7 +4,7 @@ and Docker, and appends `<iso time> <bytes> <path or docker object> <rule> delet
 each deletion and the same line ending `deleted` or `failed` after it (a Docker prune: `deleted` once it succeeded); without it,
 a dry run prints those lines without the last word and deletes nothing. It never follows a symlink or leaves a
 root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
-"Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate with a file changed inside it in 24 hours, or one a
+"Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate holding version-control data, a file changed in 24 hours or a folder it can't read, or one a
 process works in or holds a file open in right before its deletion, is kept.
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
@@ -19,6 +19,7 @@ if not os.path.isdir('/proc/self'):
 DRY = True
 HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
+VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
 STATE = os.path.join(HOME, '.mergeworthy')
 
@@ -42,8 +43,9 @@ def mention(path):
     return '(?:' + '|'.join(map(re.escape, forms)) + r')(?![\w.-])'
 
 
-def reclaim(path, dev):
-    """The bytes deleting path frees (an inode counts once every link to it is inside), or None when it reaches another filesystem."""
+def measure(path, dev):
+    """The bytes deleting path frees (an inode counts once every link to it is inside), or None when it must stay: it holds an
+    entry on another filesystem, version-control data (VCS), a file changed in the last 24 hours, or a folder it can't read."""
     st = os.lstat(path)
     if st.st_dev != dev:
         return None
@@ -52,12 +54,12 @@ def reclaim(path, dev):
         try:
             entries = list(os.scandir(stack.pop()))
         except OSError:
-            continue
+            return None
         for e in entries:
             st = e.stat(follow_symlinks=False)
-            if st.st_dev != dev:
-                return None
             d = e.is_dir(follow_symlinks=False)
+            if st.st_dev != dev or e.name in VCS or not d and st.st_mtime > NOW - DAY:
+                return None
             inodes.setdefault(st.st_ino, [1 if d else st.st_nlink, 0, st.st_blocks * 512])[1] += 1
             if d:
                 stack.append(e.path)
@@ -146,9 +148,9 @@ def remove(path, st):
 
 def delete(path, dev, rule):
     st = os.lstat(path)
-    if os.path.realpath(path) != path or changed(path, lambda rel: False):
+    if os.path.realpath(path) != path:
         return
-    nbytes = reclaim(path, dev)
+    nbytes = measure(path, dev)
     if nbytes is None:
         return
     if not DRY:
