@@ -993,6 +993,18 @@ check "pr-steps loopb and refactor are gone, pointing at shape" "1 1" "$(prs loo
 A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
 check "a small follow-up carries the earlier pass" 0 "$(prs shape "$T/carry.md")"
+# a maintainer's ask for a refactor pass (the watcher's ~/.claude/refactor-asks.txt) after the carried pass needs a real pass, not a carry
+printf 'y\n' > "$G/g"; git -C "$G" add g; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
+printf 'carries the pass of %s: one test line\n' "$A" > "$T/carry2.md"; cp "$T/carry2.md" "$T/carry3.md"
+echo "$(date -u -d '-1 day' +%FT%TZ) ${A:0:10} o/r#5 https://example.invalid/o/r/pull/5#issuecomment-1" > "$HOME/.claude/refactor-asks.txt"
+check "an ask older than the carried pass leaves the carry allowed" 0 "$(prs shape "$T/carry2.md")"
+echo "$(date -u -d '+1 minute' +%FT%TZ) 0123456789 o/r#6 https://example.invalid/o/r/pull/6#issuecomment-3" >> "$HOME/.claude/refactor-asks.txt"; cp "$T/carry2.md" "$T/carry4.md"
+check "an ask on another PR's branch (its head not in this history) leaves the carry allowed" 0 "$(prs shape "$T/carry4.md")"
+echo "$(date -u -d '+1 minute' +%FT%TZ) ${A:0:10} o/r#5 https://example.invalid/o/r/pull/5#issuecomment-2" >> "$HOME/.claude/refactor-asks.txt"
+check "BLOCK: an ask after the carried pass, on this branch: a carry is refused, naming the ask" "1 1" "$(prs shape "$T/carry3.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/carry3.md" 2>&1 | grep -c 'issuecomment-2 asks for a refactor pass')"
+printf '| express vike() | 8 ⇒ 9 | def | one step per hook |\n✅ express vike()\nCLEAN\n' > "$T/pass2.md"; std "$T/pass2.md"
+check "after the ask, a real pass records" 0 "$(prs shape "$T/pass2.md")"
+rm -f "$HOME/.claude/refactor-asks.txt"
 printf 'NO BUGS\n' > "$T/vA.md"; std "$T/vA.md"; G_A=$A; (cd "$G" && git checkout -q "$G_A" && bash "$R/bin/pr-steps" verify "$T/vA.md" >/dev/null 2>&1; git checkout -q -); 
 cp "$T/carry.md" "$T/carry-v.md"
 check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
