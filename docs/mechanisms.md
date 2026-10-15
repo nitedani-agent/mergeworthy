@@ -74,7 +74,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - **Where.** The work folders (`~/*-work/`), `~/.t3/worktrees/` and Docker. It never follows a symlink or leaves a root's filesystem, and one runs at a time. Idle means no file changed in 24 hours, folders git ignores aside; busy means a process works there or an open agent job names it.
 - **`a-worktree`:** a work folder's git worktree that is clean (untracked files count), idle and not busy, whose HEAD is on a remote branch and that no transcript of the last 24 hours names: `git worktree remove`, keeping the branch. T3 Code binds its threads to the worktrees in `~/.t3/worktrees/`, so none of those is removed.
 - **`c-ignored`:** in an idle repo or worktree that isn't busy, the folders git ignores named `node_modules`, `dist`, `build`, `.next`, `.vite`, `.turbo`, `.svelte-kit`, `coverage`, `test-results`, `playwright-report` or `.cache`. **`c-node_modules`:** outside any repo in a work folder, a `node_modules` whose folder is idle and not busy.
-- **`d-docker`:** stopped containers, dangling images and build cache older than 24 hours (`docker <kind> prune -f --filter until=24h`), never volumes. The bytes are what Docker reports, `?` in a dry run.
+- **`d-docker`:** dangling images and build cache older than 24 hours (`docker image prune` and `docker builder prune`, `-f --filter until=24h`). Never containers, whose `until` is their creation time, so a stack stopped a minute ago would go; never volumes. The bytes are what Docker reports, `?` in a dry run.
 - **`e-old-file`:** outside any repo in a work folder, `.webm`, `.mp4`, `.zip` and `.log` files over 10 MB unchanged for 7 days.
 
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)

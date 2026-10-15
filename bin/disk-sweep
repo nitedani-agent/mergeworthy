@@ -8,7 +8,7 @@ root's filesystem, and runs one at a time. "Idle" is no file changed in 24 hours
 - ~/.t3/worktrees: T3 Code binds its threads to these worktrees, so none is removed; only c applies there.
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
-- d-docker: stopped containers, dangling images and build cache older than 24 hours; never volumes. Its bytes are what
+- d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
   Docker reports, `?` in a dry run.
 - e-old-file: outside any repo in a work folder, *.webm, *.mp4, *.zip and *.log files over 10 MB unchanged for 7 days."""
 import datetime, fcntl, glob, mmap, os, re, shutil, subprocess, sys, time
@@ -225,7 +225,7 @@ def docker_answers():
 
 
 if docker_answers():
-    for what in ('container', 'image', 'builder'):
+    for what in ('image', 'builder'):  # no containers: until= is their creation time, so a stack stopped a minute ago would go
         if DRY:
             record('?', f'docker:{what}', 'd-docker')
             continue

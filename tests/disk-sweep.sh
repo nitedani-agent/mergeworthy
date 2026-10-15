@@ -11,8 +11,7 @@ cat > "$T/bin/docker" <<'EOF'
 # stub docker: records each call; the prunes report what they reclaimed as Docker prints it
 echo "$*" >> "$DOCKER_LOG"
 case "$1 $2" in
-  "container prune") echo 'Total reclaimed space: 1.5MB' ;;
-  "image prune") echo 'Total reclaimed space: 0B' ;;
+  "image prune") echo 'Total reclaimed space: 1.5MB' ;;
   "builder prune") printf 'ID\tRECLAIMABLE\tSIZE\nTotal:\t2GB\n' ;;
 esac
 EOF
@@ -49,7 +48,7 @@ sleep 0.2  # the sleep's cwd is set
 
 python3 "$R/bin/disk-sweep" > "$T/dry.out"; rc=$?
 check "without --delete it exits 0" 0 "$rc"
-check "without --delete it prints the clean worktree's removal and Docker's prunes with unknown sizes" "1 3" "$(grep -c " $WF/clean a-worktree$" "$T/dry.out") $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/dry.out")"
+check "without --delete it prints the clean worktree's removal and Docker's prunes with unknown sizes" "1 2" "$(grep -c " $WF/clean a-worktree$" "$T/dry.out") $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/dry.out")"
 check "without --delete it deletes nothing, writes no log, runs no prune" "kept kept kept kept no version" "$(there "$WF/clean") $(there "$WF/drafts/node_modules") $(there "$HOME/.t3/worktrees/p/t3wt/node_modules") $(there "$WF/rec/old.webm") $([ -e "$HOME/.mergeworthy/disk-sweep.log" ] && echo yes || echo no) $(tr '\n' ' ' < "$DOCKER_LOG" | xargs)"
 check "a second sweep while one runs is refused" "1 1" "$(flock "$HOME/.mergeworthy/disk-sweep.lock" python3 "$R/bin/disk-sweep" 2>"$T/lock.err" >/dev/null; echo $?) $(grep -c 'another sweep is running' "$T/lock.err")"
 : > "$DOCKER_LOG"
@@ -70,8 +69,8 @@ check "a tracked node_modules is kept" kept "$(there "$WF/tracked/node_modules")
 check "symlinks to outside the roots are not followed" "kept kept kept" "$(there "$T/outside/node_modules/x") $(there "$WF/link") $(there "$WF/dirty/node_modules")"
 check "node_modules outside repos: idle parent removed, recent parent kept" "removed kept" "$(there "$WF/drafts/node_modules") $(there "$WF/fresh/node_modules")"
 check "a work folder's .webm over 10 MB and 7 days old is removed; newer, smaller or inside a repo is kept" "removed kept kept kept" "$(there "$WF/rec/old.webm") $(there "$WF/rec/new.webm") $(there "$WF/rec/small.log") $(there "$WF/tracked/trace.zip")"
-check "Docker: version, then the three prunes, never volumes" "version|container prune -f --filter until=24h|image prune -f --filter until=24h|builder prune -f --filter until=24h|" "$(tr '\n' '|' < "$DOCKER_LOG")"
-check "Docker's reclaimed sizes are logged" "1500000 docker:container|0 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
+check "Docker: version, then the dangling-image and build-cache prunes; never containers or volumes" "version|image prune -f --filter until=24h|builder prune -f --filter until=24h|" "$(tr '\n' '|' < "$DOCKER_LOG")"
+check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
