@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""disk-sweep [--delete]: with --delete, deletes what can be rebuilt or is finished, under the work folders (~/*-work/), ~/.t3/worktrees/
+"""disk-sweep [--delete]: with --delete, deletes what can be rebuilt, under the work folders (~/*-work/), ~/.t3/worktrees/
 and Docker, and appends one line per deletion (`<iso time> <bytes> <path or docker object> <rule>`) to
 ~/.mergeworthy/disk-sweep.log; without it, a dry run prints those lines and deletes nothing. It never follows a symlink or leaves a
 root's filesystem, and runs one at a time. "Idle" is no file changed in 24 hours, folders git ignores excluded.
-- a-worktree: a work folder's git worktree, clean (untracked files count), its HEAD on a remote branch, idle, no process
-  working in it, no open agent job naming it, no transcript of the last 24 hours naming it: `git worktree remove`; the branch stays.
-- ~/.t3/worktrees: T3 Code binds its threads to these worktrees, so none is removed; only c applies there.
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
 - d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
-  Docker reports, `?` in a dry run.
-- e-old-file: outside any repo in a work folder, *.webm, *.mp4, *.zip and *.log files over 10 MB unchanged for 7 days."""
-import datetime, fcntl, glob, mmap, os, re, shutil, subprocess, sys, time
+  Docker reports, `?` in a dry run."""
+import datetime, fcntl, glob, os, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import agent_jobs
 
@@ -21,9 +17,8 @@ if not os.path.isdir('/proc/self'):
     sys.exit('disk-sweep: needs /proc to see which processes work where')
 DRY = sys.argv[1:] != ['--delete']
 HOME, NOW = os.path.expanduser('~'), time.time()
-DAY, WEEK, BIG = 86400, 7 * 86400, 10 * 2**20
+DAY = 86400
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
-OLD = ('.webm', '.mp4', '.zip', '.log')
 STATE = os.path.join(HOME, '.mergeworthy')
 os.makedirs(STATE, exist_ok=True)
 lock = open(os.path.join(STATE, 'disk-sweep.lock'), 'a')
@@ -98,10 +93,7 @@ def delete(path, dev, rule):
         return
     if not DRY:
         try:
-            if os.path.isdir(path) and not os.path.islink(path):
-                shutil.rmtree(path)
-            else:
-                os.remove(path)
+            shutil.rmtree(path)
         except OSError as e:
             print(f'disk-sweep: {path}: {e}', file=sys.stderr)
             return
@@ -128,23 +120,8 @@ def busy(path):
     return any(c == path or c.startswith(path + '/') for c in CWDS) or any(rx.search(t) for t in JOBS)
 
 
-def in_transcripts(paths):
-    """The paths a Claude Code transcript written in the last 24 hours names."""
-    rx, found = {p: re.compile(mention(p).encode()) for p in paths}, set()
-    root = os.path.join(HOME, '.claude', 'projects')
-    for t in glob.glob(f'{root}/*/*.jsonl') + glob.glob(f'{root}/*/*/subagents/*.jsonl'):
-        try:
-            if os.path.getmtime(t) < NOW - DAY or not os.path.getsize(t):
-                continue
-            with open(t, 'rb') as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as m:
-                found |= {p for p in paths if p not in found and rx[p].search(m)}
-        except OSError:
-            pass
-    return found
-
-
 def walk(root, work):
-    """root's filesystem, the repos under it and the node_modules folders outside them; e-old-file for a work folder's files outside repos."""
+    """root's filesystem, the repos under it and, in a work folder, the node_modules folders outside them."""
     dev, repos, loose, stack = os.lstat(root).st_dev, [], [], [root]
     while stack:
         d = stack.pop()
@@ -163,35 +140,11 @@ def walk(root, work):
                 stack.append(e.path)
             elif e.is_dir() and work:
                 loose.append(e.path)
-            elif work and e.is_file() and e.name.endswith(OLD) and st.st_size > BIG and st.st_mtime < NOW - WEEK:
-                delete(e.path, dev, 'e-old-file')
     return dev, repos, loose
-
-
-def ignored_build(repo, ignored, dev):
-    for rel in ignored:
-        p = os.path.join(repo, rel)
-        if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
-            delete(p, dev, 'c-ignored')
-
-
-def remove_worktree(path, dev):
-    nbytes = reclaim(path, dev)
-    common = git(path, 'rev-parse', '--path-format=absolute', '--git-common-dir').stdout.strip()
-    if nbytes is None or not common:
-        return
-    if not DRY:
-        r = subprocess.run(['git', '--git-dir', common, 'worktree', 'remove', path], capture_output=True, text=True)
-        if r.returncode:
-            print(f'disk-sweep: {path}: {r.stderr.strip()}', file=sys.stderr)
-            return
-        subprocess.run(['git', '--git-dir', common, 'worktree', 'prune'], capture_output=True)
-    record(nbytes, path, 'a-worktree')
 
 
 roots = [(r.rstrip('/'), True) for r in sorted(glob.glob(os.path.join(HOME, '*-work/')))]
 roots.append((os.path.join(HOME, '.t3', 'worktrees'), False))
-pending = []  # work folders' worktrees that pass every check of rule a but the transcripts'
 for root, work in roots:
     if os.path.islink(root) or not os.path.isdir(root):
         continue
@@ -201,21 +154,14 @@ for root, work in roots:
         ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
         if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
             continue
-        if work and os.path.isfile(os.path.join(repo, '.git')) and not git(repo, 'status', '--porcelain', '--untracked-files=normal').stdout \
-                and git(repo, 'branch', '-r', '--contains', 'HEAD').stdout.strip():
-            pending.append((repo, ignored, dev))
-        else:
-            ignored_build(repo, ignored, dev)
+        for rel in ignored:
+            p = os.path.join(repo, rel)
+            if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
+                delete(p, dev, 'c-ignored')
     for nm in loose:
         parent = os.path.dirname(nm)
         if not busy(parent) and not changed(parent, lambda rel: os.path.basename(rel) == 'node_modules' or os.path.lexists(os.path.join(parent, rel, '.git'))):
             delete(nm, dev, 'c-node_modules')
-named = in_transcripts([p for p, _, _ in pending])
-for repo, ignored, dev in pending:
-    if repo in named:
-        ignored_build(repo, ignored, dev)
-    else:
-        remove_worktree(repo, dev)
 
 def docker_answers():
     try:
