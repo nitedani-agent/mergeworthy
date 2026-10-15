@@ -162,11 +162,33 @@ direct=$(cd "$W" && python3 -c "$LOAD"'print(m.from_daemon(sys.argv[2], sys.argv
 byhand=$(cd "$W" && python3 -u gh-watch.py "$LOAD"'print(m.from_daemon(sys.argv[2], sys.argv[3]))' "$I/bin/disk-sweep" "$I" "$W"; true)
 check "from_daemon: the daemon's tree on the main watch dir yes; another main dir, another install, a sweep from another copy, a probe in the watch dir or its gh-watch.py run by hand no" "True False False|False|False|False" "$daemon|$copy|$direct|$byhand"
 
+# a dry run selects as a deleting run does: not a node_modules whose repo a process holds a file in, or starts working in while it runs
+H5="$T/home5"; D="$H5/d-work"; mkdir -p "$H5/.mergeworthy"
+for n in held during; do G init -q "$D/$n"; echo node_modules > "$D/$n/.gitignore"; G -C "$D/$n" add .gitignore; G -C "$D/$n" commit -qm base; mkdir -p "$D/$n/node_modules"; echo x > "$D/$n/node_modules/dep"; done; age "$D"
+HOME="$H5" dsm 'import subprocess
+d, started = os.path.join(m.HOME, "d-work"), []
+try:
+    started.append(subprocess.Popen([sys.executable, "-c", "import sys, time; f = open(sys.argv[1]); time.sleep(600)", d + "/held/node_modules/dep"], cwd="/"))
+    time = __import__("time"); time.sleep(0.3)
+    measure = m.measure
+    def measuring(path, dev):
+        if path == d + "/during/node_modules":
+            started.append(subprocess.Popen(["sleep", "600"], cwd=d + "/during"))
+        return measure(path, dev)
+    m.measure = measuring; m.sweep_files()
+finally:
+    for q in started:
+        q.kill(); q.wait()' > "$T/dry5.out"
+check "a dry run lists no node_modules whose repo a process holds a file in or started working in while it ran" 0 "$(grep -c "$D/" "$T/dry5.out")"
+
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
 F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"
 echo 'import subprocess; subprocess.Popen(["sh", "-c", "sleep 0.5; docker version"])' > "$F/docs/build-graphs.py"
 bash "$R/tests/all.sh" "$F" > /dev/null 2> "$T/allsh.err"
 check "tests/all.sh fails a suite whose child calls docker after the suite exited" "1 1" "$? $(grep -c 'called docker' "$T/allsh.err")"
+echo 'import subprocess; subprocess.Popen(["sh", "-c", "sleep 0.5; docker version"], start_new_session=True)' > "$F/docs/build-graphs.py"
+bash "$R/tests/all.sh" "$F" > /dev/null 2> "$T/allsh.err"
+check "tests/all.sh fails a suite whose child in a session of its own calls docker after the suite exited" "1 1" "$? $(grep -c 'called docker' "$T/allsh.err")"
 
 kill "$SPID" "$WPID"; wait "$SPID" "$WPID" 2>/dev/null
 rm -rf "$T"

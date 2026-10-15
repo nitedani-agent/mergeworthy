@@ -224,9 +224,9 @@ def delete(path, owner, dev, rule):
     nbytes = measure(path, dev)
     if nbytes is None:
         return
+    if busy(owner):  # a process or a job may have started in owner since its selection
+        return
     if not DRY:
-        if busy(owner):  # a process or a job may have started in owner since its selection
-            return
         if inside(path, ACCOUNT_HOME) and not from_daemon(INSTALLED, main_watch_dir()):
             print(f'disk-sweep: {path}: only the watcher daemon of the main watch dir deletes under {ACCOUNT_HOME}', file=sys.stderr)
             return
