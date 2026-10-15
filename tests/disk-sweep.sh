@@ -92,18 +92,31 @@ HOME="$H2" python3 "$R/bin/disk-sweep" --delete 2>/dev/null; rc=$?
 check "a worktree under a symlinked ~/.t3, a process working in it, keeps its node_modules" "0 kept" "$rc $(there "$T/t3real/worktrees/p/node_modules")"
 kill "$S2"; wait "$S2" 2>/dev/null
 mkdir -p "$T/t3real/worktrees/p/node_modules"; echo x > "$T/t3real/worktrees/p/node_modules/x"; age "$T/t3real"
-HOME="$H2" dsm 'm.DRY = False; p = os.path.join(m.HOME, ".t3/worktrees/p/node_modules"); m.delete(p, os.lstat(p).st_dev, "c-ignored")'
+HOME="$H2" dsm 'm.DRY = False; p = os.path.join(m.HOME, ".t3/worktrees/p/node_modules"); m.delete(p, os.path.dirname(p), os.lstat(p).st_dev, "c-ignored")'
 check "a candidate with a symlink on its path is not deleted" kept "$(there "$T/t3real/worktrees/p/node_modules")"
 
-# a process that starts working in a candidate after the sweep's start, before its deletion
-mkdir -p "$T/late/node_modules"; echo x > "$T/late/node_modules/x"; age "$T/late"
-bash -c "cd '$T/late/node_modules' && exec sleep 600" & LPID=$!; sleep 0.2
-dsm 'm.DRY = False; p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/late/node_modules"
-check "a candidate a process started working in after the sweep's start is kept" kept "$(there "$T/late/node_modules")"
+# a process and a job that appear in a candidate's repo after the sweep's start, and a process that starts there while it runs
+H4="$T/home4"; Z="$H4/z-work"; mkdir -p "$H4/.claude/agent-jobs" "$H4/.mergeworthy"
+for n in late job during; do G init -q "$Z/$n"; echo node_modules > "$Z/$n/.gitignore"; G -C "$Z/$n" add .gitignore; G -C "$Z/$n" commit -qm base; mkdir -p "$Z/$n/node_modules"; echo x > "$Z/$n/node_modules/x"; done; age "$Z"
+HOME="$H4" dsm 'import json, subprocess, time
+z, started = os.path.join(m.HOME, "z-work"), []
+try:
+    started.append(subprocess.Popen(["sleep", "600"], cwd=z + "/late"))
+    json.dump({"key": "impl late", "started": time.time(), "brief": "Work in " + z + "/job."}, open(m.HOME + "/.claude/agent-jobs/late.json", "w"))
+    measure = m.measure
+    def measuring(path, dev):
+        if path == z + "/during/node_modules":
+            started.append(subprocess.Popen(["sleep", "600"], cwd=z + "/during"))
+        return measure(path, dev)
+    m.measure = measuring; m.DRY = False; m.sweep_files()
+finally:
+    for q in started:
+        q.kill(); q.wait()'
+check "a repo a process started in, or a job named, after the sweep's start, or a process started in while it ran, keeps its node_modules" "kept kept kept" "$(there "$Z/late/node_modules") $(there "$Z/job/node_modules") $(there "$Z/during/node_modules")"
 
 # a sweep killed in the middle of a deletion
 mkdir -p "$T/killed/node_modules"; echo x > "$T/killed/node_modules/x"; age "$T/killed"
-dsm 'm.DRY = False; m.empty = lambda fd: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
+dsm 'm.DRY = False; m.empty = lambda fd: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.path.dirname(p), os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
 check "a sweep killed while deleting leaves the deletion's intent in the log" "137 1" "$? $(grep -c "^[^ ]* [0-9][0-9]* $T/killed/node_modules c-ignored deleting$" "$LOG")"
 
 # data a rebuild can't restore inside a candidate: a nested checkout with an unpushed commit and an edit, a .git file, an unreadable folder
@@ -122,7 +135,7 @@ def record(n, what, rule, state):
         os.rename(sys.argv[3] + "/repo", sys.argv[3] + "/repo-old")
         os.symlink(sys.argv[3] + "/outside", sys.argv[3] + "/repo") if sys.argv[4] == "symlink" else os.rename(sys.argv[3] + "/outside", sys.argv[3] + "/repo")
     rec(n, what, rule, state)
-m.record = record; m.DRY = False; p = sys.argv[3] + "/repo/node_modules"; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/$1" "$1" 2>/dev/null; }
+m.record = record; m.DRY = False; p = sys.argv[3] + "/repo/node_modules"; m.delete(p, os.path.dirname(p), os.lstat(p).st_dev, "c-ignored")' "$T/$1" "$1" 2>/dev/null; }
 swap symlink
 check "a repo swapped for a symlink to elsewhere before the deletion: neither node_modules is deleted" "kept kept" "$(there "$T/symlink/outside/node_modules/only-copy.txt") $(there "$T/symlink/repo-old/node_modules/x")"
 swap dir
@@ -134,6 +147,6 @@ echo 'import subprocess; subprocess.Popen(["sh", "-c", "sleep 0.5; docker versio
 bash "$R/tests/all.sh" "$F" > /dev/null 2> "$T/allsh.err"
 check "tests/all.sh fails a suite whose child calls docker after the suite exited" "1 1" "$? $(grep -c 'called docker' "$T/allsh.err")"
 
-kill "$SPID" "$WPID" "$LPID"; wait "$SPID" "$WPID" "$LPID" 2>/dev/null
+kill "$SPID" "$WPID"; wait "$SPID" "$WPID" 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

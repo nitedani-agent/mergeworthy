@@ -4,8 +4,8 @@ and Docker, and appends `<iso time> <bytes> <path or docker object> <rule> delet
 each deletion and the same line ending `deleted` or `failed` after it (a Docker prune: `deleted` once it succeeded); without it,
 a dry run prints those lines without the last word and deletes nothing. It never follows a symlink or leaves a
 root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
-"Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate holding version-control data, a file changed in 24 hours or a folder it can't read, or one a
-process works in or holds a file open in right before its deletion, is kept.
+"Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate holding version-control data, a file changed in 24 hours or a folder it can't read, or one whose repo
+or loose parent a process works in, holds a file open in or a job names right before its deletion, is kept.
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
 - d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
@@ -40,7 +40,7 @@ def git(repo, *args):
 def mention(path):
     """A regex for path, or a path inside it, as a brief or a transcript writes it: absolute or from ~."""
     forms = [path] + (['~' + path[len(HOME):]] if path.startswith(HOME + '/') else [])
-    return '(?:' + '|'.join(map(re.escape, forms)) + r')(?![\w.-])'
+    return '(?:' + '|'.join(map(re.escape, forms)) + r')(?![\w-]|\.[\w.-])'  # a sentence's full stop may follow it
 
 
 def measure(path, dev):
@@ -85,7 +85,7 @@ def changed(top, skip):
 
 
 def in_use(path):
-    """A process has its cwd or an open file inside path, read from /proc now."""
+    """A process has its cwd or an open file inside path, read from /proc now (the kernel's link targets hold no symlinks)."""
     for pid in filter(str.isdigit, os.listdir('/proc')):
         if int(pid) == os.getpid():
             continue
@@ -99,7 +99,7 @@ def in_use(path):
                 target = os.readlink(link)
             except OSError:
                 continue
-            if target.startswith('/') and (os.path.realpath(target) + '/').startswith(path + '/'):
+            if (target + '/').startswith(path + '/'):
                 return True
     return False
 
@@ -146,7 +146,32 @@ def remove(path, st):
         os.close(parent)
 
 
-def delete(path, dev, rule):
+_jobs = [None, []]
+
+
+def jobs_text():
+    """The key, brief and ticket files of each unfinished agent job, read again whenever the job folder's listing changes."""
+    try:
+        listing = sorted((f, os.stat(os.path.join(agent_jobs.JOBS, f)).st_mtime_ns) for f in os.listdir(agent_jobs.JOBS))
+    except OSError:
+        listing = []
+    if listing != _jobs[0]:
+        _jobs[0], _jobs[1] = listing, []
+        for _, j in agent_jobs.jobs():
+            if not agent_jobs.finished(j):
+                tickets = [p for p in j['key'].split() if p.startswith('/') and os.path.isfile(p)]
+                _jobs[1].append('\n'.join([j['key'], j.get('brief', '')] + [open(t, errors='replace').read() for t in tickets]))
+    return _jobs[1]
+
+
+def busy(path):
+    """A process works in path or holds a file open inside it, or an unfinished agent job names it or a path inside it."""
+    rx = re.compile(mention(path))
+    return in_use(path) or any(rx.search(t) for t in jobs_text())
+
+
+def delete(path, owner, dev, rule):
+    """Delete path, a candidate inside owner (its repo, or a loose node_modules' parent), unless it or owner must stay."""
     st = os.lstat(path)
     if os.path.realpath(path) != path:
         return
@@ -154,7 +179,7 @@ def delete(path, dev, rule):
     if nbytes is None:
         return
     if not DRY:
-        if in_use(path):  # a process may have started using it since the sweep's start
+        if busy(owner):  # a process or a job may have started in owner since its selection
             return
         record(nbytes, path, rule, 'deleting')
         try:
@@ -164,26 +189,6 @@ def delete(path, dev, rule):
             record(nbytes, path, rule, 'failed')
             return
     record(nbytes, path, rule, 'deleted')
-
-
-CWDS = []
-for pid in filter(str.isdigit, os.listdir('/proc')):
-    try:
-        if int(pid) != os.getpid():
-            CWDS.append(os.path.realpath(os.readlink(f'/proc/{pid}/cwd')))
-    except OSError:
-        pass
-JOBS = []
-for _, j in agent_jobs.jobs():
-    if not agent_jobs.finished(j):
-        tickets = [p for p in j['key'].split() if p.startswith('/') and os.path.isfile(p)]
-        JOBS.append('\n'.join([j['key'], j.get('brief', '')] + [open(t, errors='replace').read() for t in tickets]))
-
-
-def busy(path):
-    """A process works in path, or an open agent job names it or a path inside it."""
-    rx = re.compile(mention(path))
-    return any(c == path or c.startswith(path + '/') for c in CWDS) or any(rx.search(t) for t in JOBS)
 
 
 def walk(root, work):
@@ -224,11 +229,11 @@ def sweep_files():
             for rel in ignored:
                 p = os.path.join(repo, rel)
                 if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
-                    delete(p, dev, 'c-ignored')
+                    delete(p, repo, dev, 'c-ignored')
         for nm in loose:
             parent = os.path.dirname(nm)
             if not busy(parent) and not changed(parent, lambda rel: os.path.basename(rel) == 'node_modules' or os.path.lexists(os.path.join(parent, rel, '.git'))):
-                delete(nm, dev, 'c-node_modules')
+                delete(nm, parent, dev, 'c-node_modules')
 
 
 def docker_answers():
