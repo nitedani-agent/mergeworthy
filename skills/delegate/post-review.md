@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/writing/SKILL.md` (§Self-check is what you check). Include `delegate/agent.md`.
 
-The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** (a reply of a few claims: "Done in <sha>", a holding reply; a draft PR's first body; an edit of only a typo or a sha): only the Claims check, on those claims.
+The main session fills it at `post` step 3 and starts the reviewer `delegate §Reviewers` names. **Fast form** ("Done in <sha>", a holding reply, a draft PR's first body, a typo or sha edit): the Claims check on those claims, and Refactor result after a refactor ask.
 
 ```
 Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is posted on <owner/repo#N>.
@@ -10,7 +10,7 @@ The comment it answers: <name>.parent.md. The thread record: <abs>/drafts/<threa
 Check facts and noise, not word choice. Each finding: the sentence, what's wrong, what it should say.
 
 - Claims: every claim against the code (file:line or a command and its output), the thread and the evidence. Every attribution (who said, proposed or agreed what) against thread-context.md's permalinks.
-- Refactor result: after a maintainer's refactor ask, the post shows the table of the pass recorded since (<its report>), not an older one.
+- Refactor result: after a maintainer's refactor ask, the post shows the table of the newest pass recorded since (<its report>).
 - Noise:
   - every con or risk names who hits it today (a caller, repo or user), or is cut;
   - the shortest version that still answers is the verdict, its one reason, the next step; every sentence outside it the reader wouldn't miss is a finding (mechanism nobody asked for, a justification of a justification, a reason true by definition).
