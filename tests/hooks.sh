@@ -844,6 +844,7 @@ check "a reviewer's report in drafts/ is not a draft" 0 "$(launch "Execute $T/dr
 G="$T/prs"; mkdir -p "$G"; git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs() { (cd "$G" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
 printf '# Loop B fix log\nfixed the README\n' > "$T/fixlog.md"
+std() { for f in "$@"; do { echo '## Standards read'; bash "$R/bin/pr-steps" standards; echo '## Report'; cat "$f"; } > "$f.s" && mv "$f.s" "$f"; done; }
 printf '\n\n' > "$T/blank.md"; check "BLOCK: an output of blank lines, saying what it lacks" 1 "$(cd "$G" && bash "$R/bin/pr-steps" verify "$T/blank.md" 2>&1 | grep -c 'does not end with a line NO BUGS')"
 check "BLOCK: a fix log recorded as the shape pass, saying what a pass needs" "1 1" "$(prs shape "$T/fixlog.md") $(cd "$G" && bash "$R/bin/pr-steps" shape "$T/fixlog.md" 2>&1 | grep -c "needs the ✅ coverage list")"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"
@@ -856,7 +857,7 @@ check "pr-steps loopb and refactor are gone, pointing at shape" "1 1" "$(prs loo
 A=$(git -C "$G" rev-parse HEAD); printf 'x\n' > "$G/f"; git -C "$G" add f; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m b
 printf 'carries the pass of %s: one docs line\n' "$A" > "$T/carry.md"
 check "a small follow-up carries the earlier pass" 0 "$(prs shape "$T/carry.md")"
-printf 'NO BUGS\n' > "$T/vA.md"; G_A=$A; (cd "$G" && git checkout -q "$G_A" && bash "$R/bin/pr-steps" verify "$T/vA.md" >/dev/null 2>&1; git checkout -q -); 
+printf 'NO BUGS\n' > "$T/vA.md"; std "$T/vA.md"; G_A=$A; (cd "$G" && git checkout -q "$G_A" && bash "$R/bin/pr-steps" verify "$T/vA.md" >/dev/null 2>&1; git checkout -q -); 
 cp "$T/carry.md" "$T/carry-v.md"
 check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
 cp "$T/carry.md" "$T/carry-f.md"
@@ -875,7 +876,7 @@ CLAUDE_CODE_SESSION_ID=s-none prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session with no catalog record has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 CLAUDE_CODE_SESSION_ID=s-v1 prs approach "$T/apo.md" >/dev/null
 check "an approach recorded by a session on v1's catalog has no contract: 2" 0 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
-printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"
+printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/ofr.md"; std "$T/ofr.md"
 check "an old-contract branch still records loopb, refactor, and a fresh report without a Maintainer line" "0 0 0" "$(prs loopb "$T/olb.md") $(prs refactor "$T/pass.md") $(prs fresh "$T/ofr.md")"
 C=$(git -C "$G" rev-parse HEAD); printf 'y\n' > "$G/f2"; git -C "$G" add f2; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m d
 printf 'carries the pass of %s: one line\n' "$C" > "$T/carry3.md"
@@ -890,7 +891,7 @@ check "BLOCK: the branch reused with a new approach is new-contract again" 1 "$(
 # pr-steps verify and reverify: a reproduced behavior a verifier dropped as harmless waits for the main session's RULED line
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\n- a slow path: rarely slower, noise\nNO BUGS\n' > "$T/vr0.md"
 { head -n4 "$T/vr0.md"; echo 'RULED: abort leaks a listener: a real leak, fixed in its own PR'; echo 'NO BUGS'; } > "$T/vr1.md"
-sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"
+sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"; std "$T/vr0.md" "$T/vr1.md"
 check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it, in verify and reverify; with a later RULED line naming it, it records" "1 1 1 0" "$(prs verify "$T/vr0.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr0.md" 2>&1 | grep -c '^- \*\*abort leaks a listener\*\*: Not a regression') $(prs reverify "$T/vr2.md") $(prs verify "$T/vr1.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
@@ -900,7 +901,7 @@ prs3() { (cd "$G3" && bash "$R/bin/pr-steps" "$@" 2>"$T/prs3.err" >/dev/null; ec
 printf 'slice 1: no bug that counts\nNO BUGS\n' > "$T/vb0.md"
 printf 'slice 1\n## Bodies and streams\n- Cancellation: ok\n- Backpressure: ok\n- Cap: ok\n- Release: ok\n- Read once: ok\n- Ownership: ok\n- Failure: ok\n- Sources: ok\n## Done\nNO BUGS\n' > "$T/vb1.md"
 printf 'slice 1\n## Bodies and streams\n- Cancellation: ok\n- Backpressure: ok\n- Cap: ok\n- Release: ok\n- Read once: ok\n- Ownership: ok\n- Failure: ok\n- Sources: ok\n- Second copy: ok\nNO BUGS\n' > "$T/vb2.md"
-L='- %s: cancelled the reader mid-stream, source stopped\n'; printf "slice 1\n## Bodies and streams\n$L$L$L$L$L$L$L$L$L" Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy' > "$T/vb3.md"; echo NO BUGS >> "$T/vb3.md"
+L='- %s: cancelled the reader mid-stream, source stopped\n'; printf "slice 1\n## Bodies and streams\n$L$L$L$L$L$L$L$L$L" Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy' > "$T/vb3.md"; echo NO BUGS >> "$T/vb3.md"; std "$T/vb0.md" "$T/vb1.md" "$T/vb2.md" "$T/vb3.md"
 check "BLOCK: a body-touching diff's Loop A without the list, then without one item (named), then with one-word answers; with a probe per item, records" "1 1 1 1 0" "$(prs3 verify "$T/vb0.md") $(prs3 verify "$T/vb1.md") $(grep -c 'too short: Cancellation, .*Second copy$' "$T/prs3.err") $(prs3 verify "$T/vb2.md") $(prs3 verify "$T/vb3.md")"
 echo 'Response.prototype.text = f' > "$G3/a.ts"; git -C "$G3" -c user.name=t -c user.email=t@t commit -qam c
 check "BLOCK: a patch onto a built-in's prototype also needs the list" 1 "$(prs3 verify "$T/vb0.md")"
@@ -924,12 +925,12 @@ ready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command"
 check "BLOCK: gh pr ready with no step recorded" 2 "$(ready)"
 printf 'slice 1: no bug that counts\n' > "$T/v0.md"
 check "BLOCK: a Loop A output without NO BUGS" 1 "$(prs2 verify "$T/v0.md")"
-printf 'slice 1: no bug that counts\nNO BUGS\n' > "$T/v.md"; check "Loop A ending NO BUGS records" 0 "$(prs2 verify "$T/v.md")"
+printf 'slice 1: no bug that counts\nNO BUGS\n' > "$T/v.md"; cp "$T/v.md" "$T/v-nostd.md"; std "$T/v.md"; check "BLOCK: a Loop A file without '## Standards read', naming the missing sentence" "1 1" "$(prs2 verify "$T/v-nostd.md") $(cd "$G2" && bash "$R/bin/pr-steps" verify "$T/v-nostd.md" 2>&1 | grep -c '^Every fix passes it.$')"; check "Loop A ending NO BUGS records" 0 "$(prs2 verify "$T/v.md")"
 printf '| vike() | 5 ⇒ 8 | abc | why |\n✅ vike()\nnothing worth changing\nCLEAN\n' > "$T/rf.md"; check "Loop B's shape report records" 0 "$(prs2 shape "$T/rf.md")"
 printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; check "Loop A again, with no Loop B commits, records" 0 "$(prs2 reverify "$T/rv.md")"
-printf 'Maintainer: hi-ogawa\nCLEAN\n' > "$T/fr0.md"; check "BLOCK: a fresh read without MERGE AS IS: yes" 1 "$(prs2 fresh "$T/fr0.md")"
-printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/fr1.md"; check "BLOCK: a fresh read that names no maintainer" 1 "$(prs2 fresh "$T/fr1.md")"
-printf 'Maintainer: hi-ogawa\nMERGE AS IS: yes\nCLEAN\n' > "$T/fr.md"; check "the fresh reader's maintainer, merge-as-is and CLEAN record" 0 "$(prs2 fresh "$T/fr.md")"
+printf 'Maintainer: hi-ogawa\nCLEAN\n' > "$T/fr0.md"; std "$T/fr0.md"; check "BLOCK: a fresh read without MERGE AS IS: yes" 1 "$(prs2 fresh "$T/fr0.md")"
+printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/fr1.md"; std "$T/fr1.md"; check "BLOCK: a fresh read that names no maintainer" 1 "$(prs2 fresh "$T/fr1.md")"
+printf 'Maintainer: hi-ogawa\nMERGE AS IS: yes\nCLEAN\n' > "$T/fr.md"; std "$T/fr.md"; check "the fresh reader's maintainer, merge-as-is and CLEAN record" 0 "$(prs2 fresh "$T/fr.md")"
 printf 'pnpm test -> exit 0\npnpm lint -> exit 1\n' > "$T/g1.md"
 check "BLOCK: a gates log with a red gate" 1 "$(prs2 gates "$T/g1.md")"
 check "BLOCK: gh pr ready with four of five steps" 2 "$(ready)"

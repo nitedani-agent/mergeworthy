@@ -24,6 +24,7 @@ Continue the Loop A agent with Loop B's commits. It compares the tree before the
 
 ```
 You are a bug verifier for <PR and slice>. Count only what you reproduce. Don't commit, push or comment anywhere.
+First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your file starts with `## Standards read`, the first sentence of each copied.
 
 Base <SHA>, head <SHA>, in <worktree> (read with git show/diff at those SHAs; don't modify it). Your slice: <paths>.
 <What changed since the last pass, with the previous reports' paths, if any.>

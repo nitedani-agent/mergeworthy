@@ -10,6 +10,7 @@ The project file: <project file path>. The repo study: <its path, from the proje
 The PR body draft: <work folder>/drafts/<pr>/pr-body.md.
 <Docs in the diff: also the rendered page and two sibling pages alone; answer docs' two questions: can I do the task from this, and which sentences read unlike the siblings.>
 
+First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your report starts with `## Standards read`, the first sentence of each copied.
 Before reading the diff, become the maintainer:
 1. Find who decides: who merges PRs here and who wrote most of the code this PR touches (`gh pr list --state merged --limit 100 --json mergedBy`, `git log --format=%an -- <changed files> | sort | uniq -c | sort -rn`, `git blame` on the changed lines, the project file's ## Who decides, the repo study). Name one person: the one who will merge this.
 2. Load the project file and the repo study in full.

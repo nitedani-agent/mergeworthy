@@ -19,7 +19,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `pull-request` | `post`, `evidence`, `design`, `finality`, `delegate`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
-| `rules` | `task`, `delegate` |
+| `rules` | `task`, `delegate`, `reply` |
 | `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
 | `writing` | nothing |
 
@@ -251,8 +251,9 @@ flowchart TB
   end
   s1 -.-> r1[["task"]]
   s3 -.-> r2[["delegate"]]
-  s5 -.-> r3[["delegate"]]
-  s5 -.-> r4[["task"]]
+  s5 -.-> r3[["reply"]]
+  s5 -.-> r4[["delegate"]]
+  s5 -.-> r5[["task"]]
   start --> g0
 ```
 

@@ -4,6 +4,21 @@
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 set -euo pipefail
+# The first sentence of each code/SKILL.md section a checker's brief names: its file copies them under '## Standards read', proof it read them
+standards() { python3 - "$(dirname "$(realpath "$0")")/../skills/code/SKILL.md" <<'EOF'
+import re, sys
+s = open(sys.argv[1]).read()
+for name in ('Phantom gate', 'Docs are a claim', 'No regressions'):
+    body = re.search(r'^### ' + re.escape(name) + r'\n+(.+)', s, re.M).group(1)
+    print(re.match(r'.+?[.:](?=\s|$)', body).group(0))
+EOF
+}
+[ "${1:-}" = standards ] && { standards; exit 0; }
+read_standards() {
+  sec=$(awk '/^## Standards read/{f=1;next} /^## /{f=0} f' "$out" | tr -s ' \n' '  ')
+  miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
+  [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; mergeworthy delegate/verifier.md). Missing:" "$miss" >&2; exit 1; }
+}
 step=${1:?usage: pr-steps <preflight|approach|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
 case "$step" in preflight|approach|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
   *) echo "step must be preflight, approach, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
@@ -75,6 +90,7 @@ base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HE
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; }
+    [ "$step" = reverify ] || read_standards
     # A reproduced behavior dropped as harmless is the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
@@ -96,6 +112,7 @@ EOF
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)
+    read_standards
     grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
     grep -qx 'MERGE AS IS: yes' "$out" || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes" >&2; exit 1; }
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
