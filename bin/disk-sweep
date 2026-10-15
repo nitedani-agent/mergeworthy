@@ -6,26 +6,18 @@ root's filesystem, and runs one at a time. "Idle" is no file changed in 24 hours
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
 - d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
-  Docker reports, `?` in a dry run."""
-import datetime, fcntl, glob, os, re, shutil, subprocess, sys, time
+  Docker reports, `?` in a dry run. Only when HOME is the account's home: a run with another HOME is a test or a probe."""
+import datetime, fcntl, glob, os, pwd, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import agent_jobs
 
-if sys.argv[1:] not in ([], ['--delete']):
-    sys.exit('usage: disk-sweep [--delete]')
 if not os.path.isdir('/proc/self'):
     sys.exit('disk-sweep: needs /proc to see which processes work where')
-DRY = sys.argv[1:] != ['--delete']
+DRY = True
 HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
 STATE = os.path.join(HOME, '.mergeworthy')
-os.makedirs(STATE, exist_ok=True)
-lock = open(os.path.join(STATE, 'disk-sweep.lock'), 'a')
-try:
-    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-except OSError:
-    sys.exit('disk-sweep: another sweep is running')
 
 
 def record(nbytes, what, rule):
@@ -143,25 +135,27 @@ def walk(root, work):
     return dev, repos, loose
 
 
-roots = [(r.rstrip('/'), True) for r in sorted(glob.glob(os.path.join(HOME, '*-work/')))]
-roots.append((os.path.join(HOME, '.t3', 'worktrees'), False))
-for root, work in roots:
-    if os.path.islink(root) or not os.path.isdir(root):
-        continue
-    dev, repos, loose = walk(root, work)
-    for repo in repos:
-        listed = git(repo, 'ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory')
-        ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
-        if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
+def sweep_files():
+    roots = [(r.rstrip('/'), True) for r in sorted(glob.glob(os.path.join(HOME, '*-work/')))]
+    roots.append((os.path.join(HOME, '.t3', 'worktrees'), False))
+    for root, work in roots:
+        if os.path.islink(root) or not os.path.isdir(root):
             continue
-        for rel in ignored:
-            p = os.path.join(repo, rel)
-            if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
-                delete(p, dev, 'c-ignored')
-    for nm in loose:
-        parent = os.path.dirname(nm)
-        if not busy(parent) and not changed(parent, lambda rel: os.path.basename(rel) == 'node_modules' or os.path.lexists(os.path.join(parent, rel, '.git'))):
-            delete(nm, dev, 'c-node_modules')
+        dev, repos, loose = walk(root, work)
+        for repo in repos:
+            listed = git(repo, 'ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory')
+            ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
+            if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
+                continue
+            for rel in ignored:
+                p = os.path.join(repo, rel)
+                if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
+                    delete(p, dev, 'c-ignored')
+        for nm in loose:
+            parent = os.path.dirname(nm)
+            if not busy(parent) and not changed(parent, lambda rel: os.path.basename(rel) == 'node_modules' or os.path.lexists(os.path.join(parent, rel, '.git'))):
+                delete(nm, dev, 'c-node_modules')
+
 
 def docker_answers():
     try:
@@ -170,11 +164,43 @@ def docker_answers():
         return False
 
 
-if docker_answers():
+
+def prune_docker(account_home):
+    """d-docker, when HOME is account_home; 1 when a prune fails, else 0."""
+    if os.path.realpath(HOME) != os.path.realpath(account_home):
+        print(f'disk-sweep: HOME is {HOME}, not the account home {account_home}: Docker skipped', file=sys.stderr)
+        return 0
+    if not docker_answers():
+        return 0
+    failed = 0
     for what in ('image', 'builder'):  # no containers: until= is their creation time, so a stack stopped a minute ago would go
         if DRY:
             record('?', f'docker:{what}', 'd-docker')
             continue
-        out = subprocess.run(['docker', what, 'prune', '-f', '--filter', 'until=24h'], capture_output=True, text=True).stdout
-        m = re.search(r'Total(?: reclaimed space)?:\s*([\d.]+)\s*([kKMGT]?)B', out)
+        r = subprocess.run(['docker', what, 'prune', '-f', '--filter', 'until=24h'], capture_output=True, text=True)
+        if r.returncode:
+            print(f'disk-sweep: docker {what} prune exited {r.returncode}: {r.stderr.strip()}', file=sys.stderr)
+            failed = 1
+            continue
+        m = re.search(r'Total(?: reclaimed space)?:\s*([\d.]+)\s*([kKMGT]?)B', r.stdout)
         record(int(float(m[1]) * 1000 ** ' KMGT'.index(m[2].upper() or ' ')) if m else 0, f'docker:{what}', 'd-docker')
+    return failed
+
+
+def main():
+    global DRY
+    if sys.argv[1:] not in ([], ['--delete']):
+        sys.exit('usage: disk-sweep [--delete]')
+    DRY = sys.argv[1:] != ['--delete']
+    os.makedirs(STATE, exist_ok=True)
+    lock = open(os.path.join(STATE, 'disk-sweep.lock'), 'a')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit('disk-sweep: another sweep is running')
+    sweep_files()
+    sys.exit(prune_docker(pwd.getpwuid(os.getuid()).pw_dir))
+
+
+if __name__ == '__main__':
+    main()

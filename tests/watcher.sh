@@ -565,5 +565,25 @@ print(a, b, len(calls), bool(calls) and calls[0][-2:] == [m.SWEEP, "--delete"])
 ')
 check "tick starts disk-sweep --delete once an hour from the main dir, not from another" "1 1 2 True" "$got"
 
+# a probe that enters main() under a temp HOME: the sweep it starts runs no Docker prune, whatever docker is on PATH
+printf '#!/bin/sh\necho "$*" >> "%s"\n' "$T/docker.log" > "$T/bin/docker"; chmod +x "$T/bin/docker"; : > "$T/docker.log"
+got=$(py '
+started, popen = [], m.subprocess.Popen
+m.subprocess.Popen = lambda cmd, **k: started.append(popen(cmd, **k)) or started[-1]
+m.STATE = os.path.join(m.HERE, "main-state.json")
+for name in ("follow_update", "steward_line", "poll_account", "read_reactions", "retire_if_done", "shared_pass", "scan_gitlab", "agent_jobs_pass", "announce"):
+    setattr(m, name, lambda *a, **k: None)
+m.read_threads = lambda: []; m.plan = lambda *a: []; m.scan = lambda *a: (True, [])
+m.main_dir = lambda: m.HERE
+def stop(s): raise SystemExit
+m.time.sleep = stop
+try:
+    m.main()
+except SystemExit:
+    pass
+print(len(started), [p.wait() for p in started], open(os.path.join(m.HERE, "disk-sweep.out")).read().count("Docker"))
+')
+check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and runs no prune" "1 [0] 1 0" "$got $(grep -c prune "$T/docker.log")"
+
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
