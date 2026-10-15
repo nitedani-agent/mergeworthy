@@ -581,7 +581,7 @@ try:
     m.main()
 except SystemExit:
     pass
-print(len(started), [p.wait() for p in started], open(os.path.join(m.HERE, "disk-sweep.out")).read().count("Docker"))
+print(len(started), [p.wait() for p in started], open(os.path.join(m.HERE, "disk-sweep.out")).read().count("Docker skipped"))
 ')
 check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and runs no prune" "1 [0] 1 0" "$got $(grep -c prune "$T/docker.log")"
 
