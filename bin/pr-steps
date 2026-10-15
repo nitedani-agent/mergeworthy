@@ -74,6 +74,18 @@ if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && ca
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; }
+    # A reproduced behavior dropped as harmless is the main session's call: a later `RULED: <candidate>: <ruling>` line, its own
+    unruled=$(python3 - "$out" <<'EOF'
+import re, sys
+lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
+for i, l in enumerate(lines):
+    if re.search(r'not a regression|no documented usage|\brare\b|same as main', l, re.I) and not l.startswith('RULED:'):
+        name = re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
+        if not any(r.startswith('RULED:') and name in plain(r) for r in lines[i + 1:]):
+            print(l)
+EOF
+)
+    [ -z "$unruled" ] || { printf '%s\n' "a reproduced behavior dropped for this reason goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
     # A diff that touches bodies, buffers, streams or cancellation gets code §No regressions' list answered item by item
     base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
     if [ "$step" = verify ] && [ -n "$base" ] && git diff "$base" HEAD | grep -Eq '^\+.*(ReadableStream|WritableStream|TransformStream|arrayBuffer\(|\.bytes\(|\.body\b|bodyUsed|\btee\(|\.clone\(|AbortSignal|AbortController|ArrayBuffer|(Int|Uint|Float|BigInt|BigUint)[0-9]+Array|Buffer\.|defineProperty|prototype\.[A-Za-z_]+ *=)'; then
