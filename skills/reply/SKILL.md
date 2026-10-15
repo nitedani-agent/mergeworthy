@@ -5,7 +5,7 @@ description: "Woken by the Monitor, a `/ai` comment or a resume; a comment to an
 
 # Reply
 
-The watcher is a daemon that records GitHub events in `<work folder>/events.log` and adds 👀 to each comment you owe; the Monitor (`task` step 5) wakes you when it records one. You answer; agents only draft a reply or sort a follow-up. A maintainer's comment is handled like the user typing in this chat: highest priority, full effort. A `/ai` or `/agent` comment is the user typing: start it at once, in parallel with what's running, through `task`, and tell the user in chat.
+You answer; agents only draft a reply or sort a follow-up. A maintainer's comment is handled like the user typing in this chat: highest priority, full effort. A `/ai` or `/agent` comment is the user typing: start it at once, in parallel with what's running, through `task`, and tell the user in chat.
 
 ## Steps
 
@@ -46,7 +46,7 @@ The watcher is a daemon that records GitHub events in `<work folder>/events.log`
 
 ### Which comments
 
-Answer these, and nothing else (the watcher reports exactly these and records each in `replies-owed.md`):
+Answer these, and nothing else:
 - **On a thread you opened:** every human's comment (maintainer, contributor, the user) and every inline finding of a review bot (a bot's summary comments ask nothing). A bot's finding is a reviewer's finding: run its case first (`review` step 3), then reply with the fix's commit or the output that declines it.
 - **On a thread you only posted in:** a maintainer's comment (write access to the repo) or the user's.
 - **On a repo watched whole** (`owner/repo all` in `repos.txt`): every issue, PR and comment without the agent's badge.
