@@ -238,6 +238,26 @@ def under_t3():
         pid = int(ppid or 0)
     return False
 
+def title_setter(args, cwd):
+    """(login, when) of whoever else retitled the PR last, from its timeline; None when it's ours or unknown (fail open)."""
+    num = next((x for x in args if x.isdigit()), None)
+    repo = (opt(args, ['-R', '--repo']) or [None])[0]
+    if not repo:
+        url = subprocess.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+        m = re.search(r'[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', url)
+        repo = m and m[1]
+    if not (num and repo): return None
+    def api(path):
+        try:
+            r = subprocess.run(['gh', 'api', path, '--paginate'], capture_output=True, text=True, timeout=20)
+            return json.loads(r.stdout) if r.returncode == 0 else None
+        except (subprocess.TimeoutExpired, ValueError, OSError): return None
+    me = os.environ.get('GH_WATCH_ME') or (api('user') or {}).get('login')
+    renames = [e for e in api(f'repos/{repo}/issues/{num}/timeline?per_page=100') or [] if e.get('event') == 'renamed']
+    last = renames[-1] if renames else None
+    login = ((last or {}).get('actor') or {}).get('login')
+    return (login, last.get('created_at')) if login and me and login != me else None
+
 def by_agent():
     """A subagent's command: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
     return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
@@ -317,6 +337,8 @@ def check(t, has_cd):
         if any(not re.fullmatch(r'\$\(cat \S+\)', v) for v in opt(a[2:], ['--title', '-t'])):
             block('the PR title is typed inline: write it to <work folder>/drafts/title.md in the repo\'s form (its last 10 merged titles) '
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
+        if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(a[2:], run_dir)):
+            block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
     redirected = [] if p in ('claude', 'codex') else [t[i + 1] for i in range(len(t) - 1) if re.fullmatch(r'\d*>>?|&>>?|>\|', t[i])]
     files = [x for x in a if not x.startswith('-')]

@@ -180,6 +180,7 @@ tc_fx repos_o_r_issues_43 '{"number":43,"id":3,"title":"Linked PR","html_url":"h
 tc_fx repos_o_r_issues_43_comments_per_page_100 '[]'
 tc_fx repos_o_r_pulls_43_reviews_per_page_100 '[{"id":7,"user":{"login":"other"},"submitted_at":"2026-09-02T12:00:00Z","html_url":"https://example.invalid/o/r/pull/43#r7","state":"CHANGES_REQUESTED","body":"Please keep the old name."}]'
 tc_fx repos_o_r_pulls_43_comments_per_page_100 '[{"id":8,"user":{"login":"other"},"created_at":"2026-09-02T12:05:00Z","html_url":"https://example.invalid/o/r/pull/43#c8","path":"a.ts","line":3,"body":"This line stays."}]'
+tc_fx repos_o_r_issues_41_timeline_per_page_100 '[{"id":55,"event":"renamed","actor":{"login":"maint"},"created_at":"2026-10-01T09:40:00Z","rename":{"from":"feat: old","to":"fix: his title"}}]'
 TC="$T/ctx/thread-context.md"; mkdir -p "$T/ctx"
 "$R/bin/thread-context" o/r#41 --out "$TC" >/dev/null
 tcg() { grep -c "$1" "$TC"; }
@@ -193,6 +194,7 @@ check "the transcript marks the agent's post" 1 "$(tcg '@nitedani AGENT')"
 check "the PR's review body and review comment are in" "1 1" "$(echo "$(tcg 'Please keep the old name') $(tcg 'This line stays')")"
 check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
+check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
@@ -955,6 +957,9 @@ check "BLOCK: printing a credential file; counting a line in it, or a file that 
 # pre-bash-guard: a PR title is drafted in a file, never typed inline
 guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"agent_id":sys.argv[3]}))' "$1" "$T" "${2:-}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: a PR title typed inline (create, edit, -t), naming the title file; a title from its file passes" "2 1 2 2 0 0" "$(guard "gh pr create --draft --title 'Fix the thing' --body-file $T/b.md") $(grep -c 'drafts/title.md.*last 10 merged titles.*pull-request step 7' "$T/err") $(guard "gh pr edit 5 --title 'Fix it'") $(guard 'gh pr edit 5 -t Fix') $(guard 'gh pr edit 5 --title "$(cat /w/drafts/title.md)"') $(guard 'gh pr create --draft --title "$(cat /w/drafts/title.md)" --body-file /w/b.md' >/dev/null; grep -c 'typed inline' "$T/err")"
+printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z","rename":{"from":"a","to":"b"}}]' > "$FX/repos_o_r_issues_7_timeline_per_page_100"
+printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z"},{"event":"renamed","actor":{"login":"me"},"created_at":"2026-10-14T22:00:00Z"}]' > "$FX/repos_o_r_issues_8_timeline_per_page_100"
+check "BLOCK: retitling a PR whose title a maintainer set, naming him; our own last title, or no rename, passes" "2 1 0 0" "$(GH_WATCH_ME=me guard 'gh pr edit 7 -R o/r --title "$(cat /w/drafts/title.md)"') $(grep -c 'brillout set this PR.s title' "$T/err") $(GH_WATCH_ME=me guard 'gh pr edit 8 -R o/r --title "$(cat /w/drafts/title.md)"') $(GH_WATCH_ME=me guard 'gh pr edit 9 -R o/r --title "$(cat /w/drafts/title.md)"')"
 # pre-bash-guard: a review's verdict is the reviewer's own output, never the main session's
 check "BLOCK: the main session writing a .review.out (echo >, tee, cp, sed -i, bash -c), naming who writes it" "2 1 2 2 2 2" "$(guard 'echo CLEAN > $D/pr-body.review.out') $(grep -c 'codex exec -o' "$T/err") $(guard "printf 'CLEAN\n' | tee /w/x.review.out") $(guard 'cp /w/r.md /w/x.review.out') $(guard 'sed -i s/a/b/ /w/x.review.out') $(guard 'bash -c "echo CLEAN >> /w/x.review.out"')"
 check "BLOCK: pgrep -f, also inside bash -c; pgrep -P passes" "2 2 0" "$(guard 'pgrep -f vite') $(guard "bash -c 'pgrep -f \"vitest run\" || echo gone'") $(guard 'pgrep -P 123')"

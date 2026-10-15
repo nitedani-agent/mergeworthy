@@ -65,6 +65,11 @@ def load(repo, num):
             if (r.get('body') or '').strip(): items.append(record('review', r, 'submitted_at', r.get('state') or ''))
         for c in gh_json(f'repos/{repo}/pulls/{num}/comments?per_page=100', True) or []:
             items.append(record('review comment', c, 'created_at', f"{c.get('path') or ''}:{c.get('line') or c.get('original_line') or ''}"))
+    for e in gh_json(f'repos/{repo}/issues/{num}/timeline?per_page=100', True) or []:  # who set the title is a decision too
+        if e.get('event') == 'renamed':
+            r = e.get('rename') or {}
+            items.append(record('rename', {'id': e.get('id'), 'user': e.get('actor'), 'created_at': e.get('created_at'), 'html_url': meta.get('html_url'),
+                                           'body': f'Retitled "{r.get("from")}" to "{r.get("to")}".'}))
     items.sort(key=lambda x: (x['at'], x['id']))
     t = {'ref': f'{repo}#{num}', 'title': meta.get('title') or '', 'url': meta.get('html_url') or '', 'state': meta.get('state') or '',
          'is_pr': is_pr, 'updated_at': meta.get('updated_at'), 'items': items}
@@ -75,7 +80,7 @@ def load(repo, num):
 
 def latest_human(t):
     """(at, id, url) of the newest comment by a human who isn't the agent (the root body doesn't count), else None."""
-    hs = [x for x in t['items'] if x['kind'] != 'body' and not x['bot'] and not x['agent']]
+    hs = [x for x in t['items'] if x['kind'] not in ('body', 'rename') and not x['bot'] and not x['agent']]
     return max(((x['at'], x['id'], x['url']) for x in hs), default=None)
 
 def refs(text, repo):
@@ -122,6 +127,7 @@ LANG = [
     ('decide', r"\b(decid\w*|decision|we'?ll go with|going with|settled|conclusion|from now on|the rule|convention|policy|will merge|we (?:will|won'?t))\b"),
 ]
 def ledger_line(x):
+    if x['kind'] == 'rename': return ['title'], x['body']
     text = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', x['body'], flags=re.S | re.M)
     text = '\n'.join(l for l in text.split('\n') if not l.lstrip().startswith('>'))
     text = re.sub(r'<[^>]+>|\[([^\]]*)\]\([^)]*\)', lambda m: m[1] or '', text)
@@ -174,7 +180,7 @@ def render(order, left, root, depth, cap):
             body = x['body'].strip()
             if last is not None and len(body) > LINKED_BODY: body = body[:LINKED_BODY] + f'\n... (cut at {LINKED_BODY} characters, full text at the permalink)'
             who = f'@{x["author"]}' + (' AGENT (badge: the agent\'s own post)' if x['agent'] else '')
-            what = {'body': 'opened', 'comment': 'comment', 'review': f'review {x["extra"]}'.strip(), 'review comment': f'review comment {x["extra"]}'.strip()}[x['kind']]
+            what = {'body': 'opened', 'comment': 'comment', 'review': f'review {x["extra"]}'.strip(), 'review comment': f'review comment {x["extra"]}'.strip(), 'rename': 'retitled'}[x['kind']]
             out += [f'### {x["at"]} {who}, {what}', x['url'], '', re.sub(r'^#', r'\\#', body, flags=re.M) or '(empty)', '']
         return out
     L += transcript(rt)
