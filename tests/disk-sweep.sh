@@ -106,7 +106,7 @@ check "a repo a process started in, or a job named, after the sweep's start, or 
 
 # a sweep killed in the middle of a deletion
 mkdir -p "$T/killed/node_modules"; echo x > "$T/killed/node_modules/x"; age "$T/killed"
-dsm 'm.DRY = False; m.empty = lambda fd: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.path.dirname(p), os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
+dsm 'm.DRY = False; m.empty = lambda fd, path=None: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.path.dirname(p), os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
 check "a sweep killed while deleting leaves the deletion's intent in the log" "137 1" "$? $(grep -c "^[^ ]* [0-9][0-9]* $T/killed/node_modules c-ignored deleting$" "$LOG")"
 
 # data a rebuild can't restore inside a candidate: a nested checkout with an unpushed commit and an edit, a .git file, an unreadable folder
