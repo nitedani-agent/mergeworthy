@@ -225,6 +225,8 @@ if kind == 'reply' and words > 300 + extra:
 pr_budget = 300  # what's broken and what the PR changes need room; data tables, code and the collapsed evidence don't count
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
+    for t in re.findall(r'<summary>([^<]*)</summary>', prose):  # the evidence blocks are gone from prose: any summary left is counted
+        findings.append(f"the {t.strip()!r} block counts: a step's evidence block starts its <summary> with {', '.join(W['blocks'])} (converge §Evidence blocks)")
 # A draft PR's body says why it's a draft on a bold line right under the badge; a ready PR's body has no such line (mergeworthy:writing)
 STATE = post_words.state_line(W); _state = f"**{W['state'][0]}: {W['state'][1]}**"
 if kind == 'pr' and draft and not STATE.match(next((l.strip() for l in text.split('\n') if l.strip()), '')):
