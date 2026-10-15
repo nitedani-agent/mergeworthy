@@ -689,6 +689,8 @@ check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "R
 kill $APID; wait $APID 2>/dev/null
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/agent.jsonl"
 check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AD/agent.jsonl" "$T/err")"
+echo "Prototype report: worktree $T/aw, branch a." > "$T/aw-report.md"; printf 'Goal: e2e green.\nWork in %s.\n' "$T/aw" | tee "$T/aw-job.md" > "$T/aw-brief.md"
+check "a reference file the brief names whose text names the busy worktree passes; the brief file it says to follow, or named as a brief, blocks" "0 2 2" "$(alive "Summarize the prototype. Context: $T/aw-report.md (read first)") $(alive "Follow $T/aw-job.md exactly") $(alive "Topic: e2e. Its file: $T/aw-brief.md")"
 check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AD/agent.jsonl")"
 echo "{\"cwd\":\"$T/aw-r\"}" > "$AD/sibling.jsonl"; touch -d '10 minutes ago' "$AD/agent.jsonl"
 check "a transcript naming a longer sibling path ($T/aw-r) doesn't make the worktree busy" 0 "$(alive "Run e2e in $T/aw yet again")"

@@ -24,7 +24,8 @@ if cid:
 text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'description', 'title', 'workspaceStrategy'))
 # a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
 mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
-tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b', text))
+MD = r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b'
+tickets = sorted({t for t in (os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text))
                   if not t.startswith(mw)})
 # A gate review (names a review output `.out` and CLEAN) starts only on drafts that passed post-lint in their current form.
 # Reference files (project notes, installed skills) are read by the agent, not part of its brief: their history SHAs pin nothing
@@ -43,13 +44,19 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
         if not ok:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
+path_set = lambda t: {os.path.expanduser(p.rstrip('/.,:')) for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t)}
+paths = path_set(gate_text)
+# A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
+said = {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', text)
+        if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
+worktree_paths = path_set(text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t)
+                                                  and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
 # A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
 # commit) re-runs work on code that has moved on.
-paths = {os.path.expanduser(p.rstrip('/.,:')) for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', gate_text)}
 if not register:
     shas = set(re.findall(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b', gate_text))
     git = lambda wt, *a: subprocess.run(['git', '-C', wt, *a], capture_output=True, text=True)
-    for wt in sorted(paths if shas else ()):
+    for wt in sorted(worktree_paths if shas else ()):
         head = git(wt, 'rev-parse', 'HEAD').stdout.strip() if os.path.isfile(os.path.join(wt, '.git')) else ''
         if head and not any(head.startswith(x) for x in shas):
             old = [x for x in shas if git(wt, 'merge-base', '--is-ancestor', x, head).returncode == 0]
@@ -69,7 +76,7 @@ if not register:
                 return p if os.path.isfile(os.path.join(p, '.git')) else None
             p = os.path.dirname(p)
     own = linked(os.path.realpath(d.get('cwd') or '/'))
-    wts = sorted({w for w in (linked(os.path.realpath(p)) for p in paths) if w and w != own})
+    wts = sorted({w for w in (linked(os.path.realpath(p)) for p in worktree_paths) if w and w != own})
     anc, p = set(), os.getpid()
     while wts and p > 1:
         anc.add(p)
