@@ -146,7 +146,7 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
         sys.exit(2)
     words = [w.lower() for w in re.findall(r'[\w.-]{3,}', topic.group(1))]
     checked = ' '.join(re.findall(r'^\s*Checked:\s*(.+)$', gate_text, re.M))
-    hits = [p for p in memory_file.notes(root) if p not in checked and all(w in open(p, errors='replace').read().lower() for w in words)]
+    hits = [p for p in memory_file.notes(root) if p not in checked and os.path.abspath(p) not in tickets and all(w in open(p, errors='replace').read().lower() for w in words)]
     if hits:
         sys.stderr.write("BLOCKED: these files already cover the topic; read them first. If one answers it, use it; "
                          "if not, add `Checked: <file>` to the brief for each:\n" + '\n'.join(hits) + '\n')

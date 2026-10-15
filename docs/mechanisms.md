@@ -77,7 +77,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `fresh`: a `Maintainer: <login>` line, `MERGE AS IS: yes` and trailing `CLEAN` (`converge` step 4).
 - `shape`: Loop B's shape report: the ✅ list and old ⇒ new ratings ending `CLEAN`, or `carries the pass of <sha>` with ≤ 80 changed lines. Old heads' `loopb` and `refactor` records together count as one.
 - A new `approach` record ends with `contract: 2`. A branch whose latest approach record lacks it started before the shape pass and finishes under the old contract: `loopb` (trailing `CLEAN`) and `refactor` still record, a `fresh` report needs no `Maintainer:` line, and a `shape` record may carry an old head that has both a `loopb` ending `CLEAN` and a `refactor` pass.
-- `gates`: `<command> -> exit 0` lines.
+- `gates`: `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
 
 ## The watcher daemon: `watcher/gh-watch.py` (`reply`, `task` step 5)
@@ -93,6 +93,7 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
     - `### DEPENDENT of merged …`: a PR listed in `waiting-on.txt` merged;
     - `### AGENT DONE <ticket>`: an agent the session launched finished (`agent_jobs.py`: its transcript went quiet), once per finish until `agent-job done`; the dir is the one whose `session` file names the launcher, or whose `events.log` the launcher's transcript tails;
     - `### FOLLOW-UP`: for 60 days after one of your watched PRs merges, a commit by someone else (not a merge) that changes lines the PR changed, or renames or removes its files, and another person's PR that references it, each once, with its time. A commit touching several of your PRs is one line naming them all. While the steward's watcher runs, its dir gets these instead, plus a copy of each `MAINTAINER COMMITS`, which the PR's session still handles. A commit counts within 3 lines of the PR's lines at the merge. Bots' commits and hunks that only bump dependency versions don't count. Each session that receives one sorts it (`rules` step 6).
+    - `### MAINTAINER REVIEW`: a maintainer's review of your PR, other than a bare approval, once per review; it goes where a `FOLLOW-UP` goes, and each defect it names is sorted the same way (`rules` step 6).
 - **`/agent` commands.** Your comment, issue or PR starting with `/agent` on a thread no live dir lists is found in the watched repos' recent comments and issue lists, or by a search. It goes once to one dir's `events.log` as `### AGENT COMMAND`, and the thread joins that dir's `threads.txt`: the dir named by `/agent <folder name>`, else the one listing most threads linked to or from it, else one watching its repo whole, else the `--main` dir, as `### UNROUTED /agent`.
 - **Retiring.** It retires itself (service, launchd agent, cron lines) once every thread is merged or closed and `repos.txt` is empty.
 - **API budget.** All watchers share one account's 5,000 calls an hour through `~/.mergeworthy/shared-watch.json`. Below 1500 calls left, the jobs one daemon runs for all (finding `/agent` comments, `FOLLOW-UP`s) wait for the reset while each daemon reads its own threads; below 500, only GitHub's notifications feed and the threads it names are read; after a rate-limit answer every daemon waits and prints one `WATCH ERROR API budget: paused until <time>`.
@@ -132,7 +133,7 @@ It blocks ending a turn when:
 - a work folder it worked in owes a reply;
 - in a session that started T3 tasks, its `Running:` list wasn't read with `task_status` since the user's last message, or names a terminal task.
 - an agent it launched finished and its job is still open (`agent_jobs.py`);
-- a `FOLLOW-UP` in the `events.log` of a dir it works in, or the steward's, has no verdict after 30 minutes (`rules` step 6);
+- a `FOLLOW-UP` or `MAINTAINER REVIEW` in the `events.log` of a dir it works in, or the steward's, has no verdict after 30 minutes (`rules` step 6);
 - at most once an hour, `memory.md` is behind the session log and covers nothing from the last 2 hours: it repeats the refresh order, to run beside the work (`task` step 8).
 
 It skips its watcher checks and the refresh order while the user's last message says "pause". Each turn's first stop also gets a check-in: work to start, or anything waiting?

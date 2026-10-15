@@ -300,6 +300,20 @@ print(len(out), sum(l.startswith("### FOLLOW-UP") for l in open(os.path.join(sd,
 ')
 check "FOLLOW-UP: a declared steward whose watcher isn't running leaves them to the PR's dirs; while it runs, they go to its watch dir instead" "3 0 3" "$got"
 got=$(follow '
+sd = os.path.join(os.path.dirname(m.HERE), "stew2"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n"); open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
+mt = {"login": "magne", "assoc": "MEMBER"}
+m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED")
+m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED")
+m.maintainer_review("o/r#5", "me", "review", 72, mt, "<rv72>", "APPROVED")
+m.maintainer_review("o/r#5", "me", "review", 73, {"login": "rando", "assoc": "NONE"}, "<rv73>", "COMMENTED")
+m.maintainer_review("o/r#6", "other", "review", 74, mt, "<rv74>", "CHANGES_REQUESTED")
+m.maintainer_review("o/r#5", "me", "comment", 75, mt, "<c75>", "")
+os.remove(os.path.expanduser("~/.mergeworthy/steward"))
+print("|".join(l.split("  at ")[0] for l in open(os.path.join(sd, "events.log")).read().splitlines()))
+')
+check "MAINTAINER REVIEW: a maintainer's review of your PR goes to the steward once; an approval, a non-maintainer, another's PR and a comment don't" "### MAINTAINER REVIEW o/r#5: <rv71> by magne reviews your PR" "$got"
+got=$(follow '
 scan()
 n = len(calls); scan()
 print("calls on a due recheck without new commits: " + str(len(calls) - n))

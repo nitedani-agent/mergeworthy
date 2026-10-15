@@ -58,12 +58,16 @@ Every new public name gets a one-line "name → what it does in every case" chec
 ### No regressions
 
 Anything that works on `main` and fails on the head is a regression, experimental features included: fix it, never list it as a limitation. So is a cap our own design creates (a retry budget, one lock every writer shares) that makes realistic use fail: redesign so it succeeds. A real limit is imposed from outside, and its note names the source. So is every row of your own comparison where the head is worse than the run-to-run spread.
-- **Streams, transports and hot paths** are checked for health, not only output:
-  - cancellation travels both ways: a cancelling consumer or aborting client stops the source; a failing source fails the consumer, never hangs it;
-  - backpressure holds: read on demand;
-  - every buffer has a cap, including an unread `tee()` or `clone()` branch;
-  - listeners, timers and readers are released on every exit path, and what the code still needs is held by more than a listener;
-  - a stream is read once, or copied before its first read.
+- **Code that touches a body, a buffer, a stream or cancellation** (a request or response body, `ReadableStream`, `tee()` or `clone()`, an `ArrayBuffer` or typed array, `AbortSignal`, a property patched onto a built-in object) is checked against every item below, every time: by the implementer before each commit, and by the verifier. Each answers every item by its name under `## Bodies and streams`, one line each: `- <name>: <the probe run and what it showed>`, or `- <name>: not reached, because <reason>` (`pr-steps verify` refuses a first-pass report without them when the added lines name one of these; the list holds either way). A transport or hot path gets the same list; when unsure whether a diff touches one, it does.
+  - **Cancellation** travels both ways: a cancelling consumer or aborting client stops the source; a failing source fails the consumer, never hangs it.
+  - **Backpressure** holds: read on demand.
+  - **Cap:** every buffer has one, an unread `tee()` or `clone()` branch included, and nothing is copied per caller before the cap is checked (read the body from five callers in one request and count the copies made before the cap is checked: one).
+  - **Release:** listeners, timers and readers are released on every exit path, and an object the code still needs after a listener is removed is referenced from somewhere that outlives the listener.
+  - **Read once:** a stream is read once, or copied before its first read.
+  - **Ownership:** each reader gets bytes of its own; writing into one reader's bytes, or detaching its `ArrayBuffer` (`structuredClone(buf, {transfer: [buf]})`), leaves the next reader's bytes intact.
+  - **Failure:** a read that fails or is aborted leaves the object as before it (`bodyUsed`, `body`, `clone()`), with no failure cached.
+  - **Sources:** every place the bytes can come from on every host the code ships to (the project file's runtimes, else the package's `engines` and adapters): a body the host already read (`rawBody` on Google Cloud Functions), one already streamed, a null body, a runtime where `new Request(req)` takes the original's internal stream and so bypasses a patched getter (workerd: probe under `wrangler dev`).
+  - **Second copy:** load two copies of the library that both patch the shared object: the second recognizes the first's patch through a `Symbol.for(...)` marker and neither throws nor wraps twice, because the property was defined `configurable: true`.
 - Probe each on every runtime the code ships to: cancel mid-stream from each end, a body past runtime caps (Node: 1 GiB) into a slow consumer, listener counts after many requests. Deterministic probes (memory bound, listener or request count) become tests per §Tests; timing goes to the benchmark: `main` against the head before the PR opens, all scenarios, alternating runs, N ≥ 3, throughput, p50/p99, peak memory, request count and reconnects. A cell worse than `main` beyond the spread is fixed or reverted, never called a trade-off without the user's OK.
 - **UI and runtime fixes** are shown working in the real app (`evidence`); unit scripts alone don't count. New UI ships after a fresh reviewer, never the main session, passes its screenshot's hierarchy and noise: the whole page at the user's real viewport, with real data. For a product that changes how pages load, record a screencast from navigation to settled and count every visible pop-in and shift, the host page's own included. Never judge by how fast your own pieces are ready.
 
@@ -132,7 +136,7 @@ Every sentence about behavior in docs, a README or JSDoc is a claim, checked aga
 - **Quick gates, after every commit:** format, type-check and units.
 - **Full gates, before every push:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; the runtime-specific lanes. Build the list from the repo's CI workflows, every check they run, never by hand.
 - **Heavy lanes, before every push,** on each PR's head: build, then the heavy lanes the project file lists (production-mode e2e, every adapter or transport, the examples).
-- **Gates fail closed:** a gate that errors or can't run is red. A failure that doesn't repeat is still a finding: find its cause, or file it with the logs, before calling anything green. "N passed" with a non-zero exit code is red; record `EXIT=$?` and quote it, never a log tail.
+- **Gates fail closed:** a gate that errors or can't run is red. A failure that doesn't repeat is still a finding: find its cause, or file it with the logs, before calling anything green. "N passed" with a non-zero exit code is red, and so is exit 0 with no test run (a filter that matched nothing); record `EXIT=$?` and the count of tests run, and quote both, never a log tail.
 - **Name the head:** every claim names the head it ran on. A known base bug that a lane shows is recorded as the base's, with the evidence that the base fails it too.
 
 ### Git

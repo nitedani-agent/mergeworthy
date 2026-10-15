@@ -36,7 +36,7 @@ What counts:
 
 How:
 - read each change end to end with every caller;
-- try the edges: <the slice's risky edges>, each `## Recurring misses` line of the project file, and for stream code code §No regressions' stream probes;
+- try the edges: <the slice's risky edges>, each `## Recurring misses` line of the project file, and, for a diff that touches a body, a buffer, a stream, cancellation, a transport or a hot path (when unsure, it does), each of the nine bold items under code §No regressions' first bullet (Cancellation to Second copy), answered in that bullet's line form under a heading `## Bodies and streams`;
 - every sentence the diff adds to docs, a README or JSDoc is a claim: reproduce it against the head;
 - when the change handles one case of a mechanism (one method, status, adapter or runtime), probe the same failure in its sibling cases: one the PR should have covered is an incomplete fix; one that belongs in its own PR goes under its own heading, never dropped;
 - make your own worktrees under <work folder> (worktree add --detach, install, build) and remove them when done;

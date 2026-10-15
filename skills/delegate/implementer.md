@@ -23,7 +23,7 @@ Run <quick gates> after every commit and <lanes for touched areas> before handin
 One commit per item or class; message: <style>; author: <login> <noreply email>; trailer: <the agent trailer, the `Co-Authored-By:` line your harness adds to agent commits>.
 Before handing back, run code §Checklist on your own diff and fix what it catches.
 
-Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`.
+Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`, a test run's with `(N tests)`.
 ```
 
 A shape pass's findings: the IDs come from its report; the Loop B agent re-rates your result independently.

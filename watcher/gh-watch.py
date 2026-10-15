@@ -6,6 +6,7 @@
   (your events feed; one watch dir gets each, see main_dir). Nothing else.
 - `owner/repo all` in repos.txt: the repo's new issues and PRs (`### NEW ISSUE`, `### NEW PR`), and every thread that moves joins threads.txt (moved_thread).
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
+- MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
 - Machine-wide work (those two) runs in one daemon at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
@@ -886,6 +887,7 @@ def scan(state, jobs):
                 note_active(state, user, upd)
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
+                maintainer_review(key, author, kind, cid, user, url, extra)
             pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
             s['act'] = a
@@ -1374,6 +1376,12 @@ def emit_to(d, line):
         return emit(line)
     with open(os.path.join(d, 'events.log'), 'a') as f:
         f.write(line + '\n')
+
+
+def maintainer_review(key, author, kind, cid, user, url, state):
+    """A maintainer's review of your PR, other than a bare approval, goes to the steward (else here) once, for the sort of each defect it names."""
+    if kind == 'review' and author == ME and user.get('login') != ME and user.get('assoc') in MAINTAINER and state != 'APPROVED':
+        follow_emit(f"mreview:{cid}", [HERE], f"### MAINTAINER REVIEW {key}: {url} by {user['login']} reviews your PR  at {iso(time.time())}")
 
 
 def follow_emit(sk, dirs, line):

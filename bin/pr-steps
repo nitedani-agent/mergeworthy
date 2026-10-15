@@ -73,7 +73,14 @@ carries() {
 if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
 case "$step" in
   verify|reverify)
-    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; } ;;
+    [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; }
+    # A diff that touches bodies, buffers, streams or cancellation gets code §No regressions' list answered item by item
+    base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
+    if [ "$step" = verify ] && [ -n "$base" ] && git diff "$base" HEAD | grep -Eq '^\+.*(ReadableStream|WritableStream|TransformStream|arrayBuffer\(|\.bytes\(|\.body\b|bodyUsed|\btee\(|\.clone\(|AbortSignal|AbortController|ArrayBuffer|(Int|Uint|Float|BigInt|BigUint)[0-9]+Array|Buffer\.|defineProperty|prototype\.[A-Za-z_]+ *=)'; then
+      sec=$(awk '/^## Bodies and streams/{f=1;next} /^## /{f=0} f' "$out")
+      miss=$(for w in Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy'; do printf '%s\n' "$sec" | grep -Eqi "^- \*{0,2}$w\*{0,2}: +[^ ]+ +[^ ]+ +[^ ]+" || printf '%s, ' "$w"; done)
+      [ -z "$miss" ] || { echo "the diff touches bodies, buffers, streams or cancellation: $out needs '## Bodies and streams' with a line '- <item>: <the probe run and what it showed>' (or 'not reached, because <reason>') for each item of code §No regressions' first bullet; missing or too short: ${miss%, }" >&2; exit 1; }
+    fi ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)
@@ -102,8 +109,11 @@ case "$step" in
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates)
-    grep -Eq '^.+ -> exit [0-9]+$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
-    ! grep -Eq ' -> exit [1-9][0-9]*$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; } ;;
+    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ tests?\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
+    # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)'
+    bad=$(grep -E ' -> exit [0-9]+' "$out" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) tests?\)$' | head -n3 || true)
+    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates): $bad" >&2; exit 1; } ;;
 esac
 fi
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }

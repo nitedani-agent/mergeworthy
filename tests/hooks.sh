@@ -70,9 +70,11 @@ check "no replies-owed.md, cwd=watch dir" 0 "$(stop "$WD")"
 F40=$(date -u -d '-40 minutes' +%FT%TZ); F10=$(date -u -d '-10 minutes' +%FT%TZ)
 printf '### FOLLOW-UP o/r#5, #6: abcdef1234 by carol changes lines from your PR  <c>  at %s\n### FOLLOW-UP o/r#5: https://github.com/o/r/pull/9 by alice references your PR  at %s\n' "$F40" "$F10" > "$WD/events.log"
 check "BLOCK: a FOLLOW-UP unsorted after 30 minutes, named; a newer one waits" "2 1 0" "$(stop "$WD") $(grep -c abcdef1234 "$T/err") $(grep -c pull/9 "$T/err")"
+printf '### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-71 by magne reviews your PR  at %s\n' "$F40" >> "$WD/events.log"
+check "BLOCK: a MAINTAINER REVIEW unsorted after 30 minutes, named" "2 1" "$(stop "$WD") $(grep -c pullrequestreview-71 "$T/err")"
 echo "abcdef1234 nothing to act on" > "$WD/followups-sorted.txt"
 check "BLOCK: 'nothing to act on' is not a verdict" 2 "$(stop "$WD")"
-echo "abcdef1234567 TASTE https://example.invalid/notes" > "$WD/followups-sorted.txt"
+printf 'abcdef1234567 TASTE https://example.invalid/notes\nhttps://github.com/o/r/pull/5#pullrequestreview-71 MISS https://example.invalid/ledger\n' > "$WD/followups-sorted.txt"
 check "a verdict line in followups-sorted.txt sorts it" 0 "$(stop "$WD")"
 rm "$WD/events.log" "$WD/followups-sorted.txt"
 echo "o/r 1 comment 42 by someone" > "$WD/replies-owed.md"
@@ -665,6 +667,9 @@ check "BLOCK: a research brief with no Topic line" 2 "$(ag "$OC" 'Look into CSS'
 check "BLOCK: research the notes already cover, naming the file" "2 1" "$(ag "$OC" $'Look into CSS again\nTopic: tanstack client css' research) $(grep -c "$MR/css-research.md" "$T/err")"
 check "research passes once each covering file is named as checked" 0 "$(ag "$OC" $'Look into CSS once more\nTopic: tanstack client css\nChecked: '"$MR/css-research.md"' covers dev only' research)"
 check "research on a topic nothing covers passes" 0 "$(ag "$OC" $'Look into RSC\nTopic: flight streaming chunk order' research)"
+mkdir -p "$MR/flight"; printf 'Topic: flight streaming chunk order\nGoal: find it\n' > "$MR/flight/brief.md"
+check "the brief being launched is not research that already covers its own topic" 0 "$(ag "$OC" "Follow $MR/flight/brief.md exactly" research)"
+rm -r "$MR/flight"
 # pre-agent-dedupe: a brief for a repo with maintainers' notes names the notes file
 mkdir -p "$HOME/.mergeworthy/projects/o" "$T/oc"; echo '- a convention' > "$HOME/.mergeworthy/projects/o/r.md"
 git init -q "$T/oc"; git -C "$T/oc" remote add origin https://github.com/o/r.git; mkdir -p "$T/oc/src"
@@ -876,6 +881,18 @@ printf 'carries the pass of %s: one line\n' "$E" > "$T/carry4.md"
 check "BLOCK: an old head with a refactor pass but no loopb record can't be carried as shape" 1 "$(prs shape "$T/carry4.md")"
 CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 check "BLOCK: the branch reused with a new approach is new-contract again" 1 "$(prs loopb "$T/olb.md")"
+# pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
+G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
+echo 'const b = await request.arrayBuffer()' > "$G3/a.ts"; git -C "$G3" add a.ts; git -C "$G3" -c user.name=t -c user.email=t@t commit -q -m b
+prs3() { (cd "$G3" && bash "$R/bin/pr-steps" "$@" 2>"$T/prs3.err" >/dev/null; echo $?); }
+printf 'slice 1: no bug that counts\nNO BUGS\n' > "$T/vb0.md"
+printf 'slice 1\n## Bodies and streams\n- Cancellation: ok\n- Backpressure: ok\n- Cap: ok\n- Release: ok\n- Read once: ok\n- Ownership: ok\n- Failure: ok\n- Sources: ok\n## Done\nNO BUGS\n' > "$T/vb1.md"
+printf 'slice 1\n## Bodies and streams\n- Cancellation: ok\n- Backpressure: ok\n- Cap: ok\n- Release: ok\n- Read once: ok\n- Ownership: ok\n- Failure: ok\n- Sources: ok\n- Second copy: ok\nNO BUGS\n' > "$T/vb2.md"
+L='- %s: cancelled the reader mid-stream, source stopped\n'; printf "slice 1\n## Bodies and streams\n$L$L$L$L$L$L$L$L$L" Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy' > "$T/vb3.md"; echo NO BUGS >> "$T/vb3.md"
+check "BLOCK: a body-touching diff's Loop A without the list, then without one item (named), then with one-word answers; with a probe per item, records" "1 1 1 1 0" "$(prs3 verify "$T/vb0.md") $(prs3 verify "$T/vb1.md") $(grep -c 'too short: Cancellation, .*Second copy$' "$T/prs3.err") $(prs3 verify "$T/vb2.md") $(prs3 verify "$T/vb3.md")"
+echo 'Response.prototype.text = f' > "$G3/a.ts"; git -C "$G3" -c user.name=t -c user.email=t@t commit -qam c
+check "BLOCK: a patch onto a built-in's prototype also needs the list" 1 "$(prs3 verify "$T/vb0.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
@@ -892,7 +909,9 @@ printf 'Maintainer: hi-ogawa\nMERGE AS IS: yes\nCLEAN\n' > "$T/fr.md"; check "th
 printf 'pnpm test -> exit 0\npnpm lint -> exit 1\n' > "$T/g1.md"
 check "BLOCK: a gates log with a red gate" 1 "$(prs2 gates "$T/g1.md")"
 check "BLOCK: gh pr ready with four of five steps" 2 "$(ready)"
-printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
+printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g0.md"; printf 'pnpm test -> exit 0 (0 tests)\n' > "$T/g00.md"
+check "BLOCK: a test gate without its count, or with 0 tests" "1 1" "$(prs2 gates "$T/g0.md") $(prs2 gates "$T/g00.md")"
+printf 'pnpm test -> exit 0 (134 tests)\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
