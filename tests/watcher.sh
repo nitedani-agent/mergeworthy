@@ -314,6 +314,23 @@ print("|".join(l.split("  at ")[0] for l in open(os.path.join(sd, "events.log"))
 ')
 check "MAINTAINER REVIEW: a maintainer's review of your PR goes to the steward once; an approval, a non-maintainer, another's PR and a comment don't" "### MAINTAINER REVIEW o/r#5: <rv71> by magne reviews your PR" "$got"
 got=$(follow '
+timeline += [{"event": "renamed", "actor": {"login": "brillout"}, "rename": {"from": "fix: a", "to": "fix(core): a"}, "created_at": "2026-10-14T10:00:00Z"},
+             {"event": "renamed", "actor": {"login": "me"}, "rename": {"from": "x", "to": "y"}, "created_at": "2026-10-14T09:00:00Z"}]
+print("|".join(l for l in scan() + scan() if "renames" in l))
+')
+check "FOLLOW-UP: another account renaming your merged PR, once; your own rename nothing" '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/5#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: a" -> "fix(core): a"' "$got"
+got=$(py '
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 2\no/r 3\n"); open(os.path.join(m.HERE, "events.log"), "w").close(); m.ME = "me"
+renames = [("2026-10-14T10:00:00Z", "brillout", "fix: b", "fix(core): b"), ("2026-10-14T09:00:00Z", "me", "x", "y")]
+last = {"open": True, "last": None, "prev": None, "people": [], "renames": renames}
+m.fetch_thread = lambda repo, num, *a, **k: (True, "me" if num == "2" else "other", [], {"head": "a", "state": "open", "conflict": False}, None, last, {}, True, None)
+m.scan_reactions = lambda *a: None
+m.run_scan(); m.run_scan(True)
+print("|".join(l.split("  at ")[0] for l in open(os.path.join(m.HERE, "events.log")).read().splitlines()))
+')
+check "FOLLOW-UP: another account renaming your open PR, once; on another's PR or by you nothing" '### FOLLOW-UP o/r#2: https://github.com/o/r/pull/2#rename-2026-10-14T10:00:00Z by brillout renames your PR: "fix: b" -> "fix(core): b"' "$got"
+got=$(follow '
 scan()
 n = len(calls); scan()
 print("calls on a due recheck without new commits: " + str(len(calls) - n))

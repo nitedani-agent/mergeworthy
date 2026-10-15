@@ -8,6 +8,7 @@
 - Your "/agent ..." comments on threads no watch dir lists, found in the watched repos' recent comments (search as a backup) and sent to one dir (see agent_command): `### AGENT COMMAND`.
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
+  Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
@@ -750,18 +751,20 @@ def fetch_thread(repo, num, since, is_pr_known, author_known, prev_pr, etags, mo
     return is_pr, author, events, pr_state, red, last, pending, full, updated
 
 
-_F = 'state comments(last:2){nodes{databaseId url createdAt author{login}}} participants(first:100){nodes{login}}'
+_F = ('state comments(last:2){nodes{databaseId url createdAt author{login}}} participants(first:100){nodes{login}} '
+      'timelineItems(last:10,itemTypes:[RENAMED_TITLE_EVENT]){nodes{... on RenamedTitleEvent{actor{login} previousTitle currentTitle createdAt}}}')
 LAST_COMMENT = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issueOrPullRequest(number:$n){'
                 '... on Issue{F} ... on PullRequest{F}}}}').replace('F', _F)
 
 
 def fetch_last_comment(repo, num):
-    """The thread's latest issue or PR conversation comment, the one before it, the people in it and whether it is open: one GraphQL call."""
+    """The thread's latest issue or PR conversation comment, the one before it, the people in it, whether it is open and its renames: one GraphQL call."""
     o, r = repo.split('/')
     t = request('graphql', 'POST', ['-f', f'query={LAST_COMMENT}', '-f', f'o={o}', '-f', f'r={r}', '-F', f'n={num}']).json()['data']['repository']['issueOrPullRequest']
     nodes = t['comments']['nodes']
     return {'open': t['state'] == 'OPEN', 'last': nodes[-1] if nodes else None, 'prev': nodes[0] if len(nodes) > 1 else None,
-            'people': [p['login'] for p in t['participants']['nodes']]}
+            'people': [p['login'] for p in t['participants']['nodes']],
+            'renames': [(n['createdAt'], (n.get('actor') or {}).get('login'), n['previousTitle'], n['currentTitle']) for n in t['timelineItems']['nodes']]}
 
 
 def note_active(state, user, when):
@@ -888,6 +891,8 @@ def scan(state, jobs):
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
                 maintainer_review(key, author, kind, cid, user, url, extra)
+            for r in last['renames'] if last and is_pr and author == ME else ():
+                pr_renamed(key, [HERE], *r)
             pings.append((key, last, events))
             s = sched.setdefault(key, {'full': 0})
             s['act'] = a
@@ -1384,6 +1389,13 @@ def maintainer_review(key, author, kind, cid, user, url, state):
         follow_emit(f"mreview:{cid}", [HERE], f"### MAINTAINER REVIEW {key}: {url} by {user['login']} reviews your PR  at {iso(time.time())}")
 
 
+def pr_renamed(key, dirs, when, login, old, new):
+    """Someone else retitled your PR, open or merged: the title is the repo's form, so it goes where a FOLLOW-UP goes, once."""
+    if login and login != ME:
+        repo, num = key.rsplit('#', 1)
+        follow_emit(f"rename:{key}:{when}", dirs, f'### FOLLOW-UP {key}: https://github.com/{repo}/pull/{num}#rename-{when} by {login} renames your PR: "{old}" -> "{new}"  at {iso(time.time())}')
+
+
 def follow_emit(sk, dirs, line):
     if claim(sk, record=not ONCE):  # once across restarts and daemons; a manual --once check records nothing
         for d in steward.recipient(dirs):
@@ -1473,6 +1485,8 @@ def follow_ups():
                     i = (t.get('source') or {}).get('issue') or {}
                     if t.get('event') == 'cross-referenced' and 'pull_request' in i and not is_bot(i.get('user')) and (i.get('user') or {}).get('login') != ME:
                         follow_emit(f"followup-ref:{k}:{i['html_url']}", prs[k], f"### FOLLOW-UP {k}: {i['html_url']} by {i['user']['login']} references your PR  at {iso(time.time())}")
+                    elif t.get('event') == 'renamed':
+                        pr_renamed(k, prs[k], t['created_at'], (t.get('actor') or {}).get('login'), t['rename']['from'], t['rename']['to'])
                 pending.update(tpending)
                 e['scanned'] = bk['started']
             done = True

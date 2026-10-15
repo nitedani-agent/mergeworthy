@@ -215,7 +215,7 @@ class FakeGitHub:
                 nodes = [{'databaseId': c['id'], 'url': c['html_url'], 'createdAt': c['created_at'], 'author': c['user']} for c in mine[-2:]]
                 people = [{'login': u} for u in dict.fromkeys(c['user']['login'] for c in mine)]
                 state = 'OPEN' if not pr or pr['state'] == 'open' else 'MERGED' if pr['merged'] else 'CLOSED'
-                return 200, {}, json.dumps({'data': {'repository': {'issueOrPullRequest': {'state': state, 'comments': {'nodes': nodes}, 'participants': {'nodes': people}}}}})
+                return 200, {}, json.dumps({'data': {'repository': {'issueOrPullRequest': {'state': state, 'comments': {'nodes': nodes}, 'participants': {'nodes': people}, 'timelineItems': {'nodes': []}}}}})
             return 201, {}, '[]'  # a reaction
         if url == 'user':
             return 200, {}, json.dumps({'login': 'me'})
