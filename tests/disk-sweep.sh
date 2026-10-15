@@ -106,6 +106,12 @@ mkdir -p "$T/killed/node_modules"; echo x > "$T/killed/node_modules/x"; age "$T/
 dsm 'm.DRY = False; m.shutil.rmtree = lambda p: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
 check "a sweep killed while deleting leaves the deletion's intent in the log" "137 1" "$? $(grep -c "^[^ ]* [0-9][0-9]* $T/killed/node_modules c-ignored deleting$" "$LOG")"
 
+# tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
+F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"
+echo 'import subprocess; subprocess.Popen(["sh", "-c", "sleep 0.5; docker version"])' > "$F/docs/build-graphs.py"
+bash "$R/tests/all.sh" "$F" > /dev/null 2> "$T/allsh.err"
+check "tests/all.sh fails a suite whose child calls docker after the suite exited" "1 1" "$? $(grep -c 'called docker' "$T/allsh.err")"
+
 kill "$SPID" "$WPID" "$LPID"; wait "$SPID" "$WPID" "$LPID" 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
