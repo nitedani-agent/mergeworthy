@@ -128,6 +128,21 @@ print("\n".join(out), file=sys.stderr)
 check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
 
+# a maintainer's comment carrying a refactor prompt URL its project file names is a refactor ask, recorded for pr-steps
+mkdir -p "$HOME/.mergeworthy/projects/o"
+ask() { # project-file line, comment body, commenter's association -> lines in ~/.claude/refactor-asks.txt
+  printf '# o/r\n\n## Maintainer preferences\n- %s\n' "$1" > "$HOME/.mergeworthy/projects/o/r.md"; rm -f "$HOME/.claude/refactor-asks.txt"
+  BODY="$2" ASSOC="$3" py "m.note_refactor_ask('o/r', 'o/r#5', {'login': 'brillout', 'assoc': os.environ['ASSOC']}, 'https://example.invalid/c9', os.environ['BODY'], '2026-10-15T08:04:10Z', 'abcdef1234')" >/dev/null 2>&1
+  cat "$HOME/.claude/refactor-asks.txt" 2>/dev/null | wc -l
+}
+P='Run the refactor pass on the whole PR with his refactor prompt https://example.invalid/skills/refactor/SKILL.md, fetched fresh.'
+check "a maintainer's comment with the project file's refactor prompt URL is recorded as an ask" 1 "$(ask "$P" 'Apply https://example.invalid/skills/refactor/SKILL.md' MEMBER)"
+check "the recorded ask: time, the PR's head, the PR, the comment" "2026-10-15T08:04:10Z abcdef1234 o/r#5 https://example.invalid/c9" "$(cat "$HOME/.claude/refactor-asks.txt")"
+check "a comment without the URL marks nothing, even one asking for a refactor in words" 0 "$(ask "$P" 'Please run the refactor skill again' MEMBER)"
+check "a project file without a refactor prompt URL marks nothing" 0 "$(ask 'Run the refactor pass on the whole PR before every ready.' 'Apply https://example.invalid/skills/refactor/SKILL.md' MEMBER)"
+check "a non-maintainer's comment with the URL marks nothing" 0 "$(ask "$P" 'Apply https://example.invalid/skills/refactor/SKILL.md' NONE)"
+rm -f "$HOME/.claude/refactor-asks.txt" "$HOME/.mergeworthy/projects/o/r.md"
+
 # WAIT PING DUE: our last comment, older than the threshold on an open thread, emits once per comment; someone's later comment doesn't
 got=$(py '
 import datetime

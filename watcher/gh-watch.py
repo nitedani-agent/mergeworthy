@@ -493,6 +493,27 @@ def append_owed(entry, d=None):
         f.write(entry + '\n')
 
 
+ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # read by pr-steps, which refuses a carry made after an ask
+
+
+def refactor_prompts(repo):
+    """The refactor prompt URLs the repo's project file names: the links to a file, not to a thread, on its lines about the refactor pass or prompt."""
+    try: lines = open(os.path.expanduser(f"~/.mergeworthy/projects/{re.sub(r'^gitlab[.]com/', '', repo)}.md")).read().splitlines()
+    except OSError: return []
+    return [u.rstrip('.,;:)') for l in lines if re.search(r'\brefactor (pass|prompt)\b', l, re.I)
+            for u in re.findall(r'https?://\S+', l) if not re.search(r'/(pull|issues|discussions|merge_requests)/|#', u)]
+
+
+def note_refactor_ask(repo, key, user, url, body, upd, head):
+    """A maintainer's comment carrying a refactor prompt URL its project file names asks for a pass: one line in ASKS, with the PR's
+    head at the ask, so pr-steps ties it to the branch by ancestry, with no PR number or network."""
+    if not head or (user or {}).get('assoc') not in MAINTAINER or not any(u in (body or '') for u in refactor_prompts(repo)):
+        return
+    asks = open(ASKS).read().split() if os.path.exists(ASKS) else []
+    if url not in asks:
+        with open(ASKS, 'a') as f: f.write(f"{upd} {head} {key} {url}\n")
+
+
 def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='', react=None):
     """An answerable comment (mergeworthy:reply): an event, an owed reply and an :eyes: reaction, each once."""
     sk = f"{kind}:{cid}"
@@ -888,6 +909,8 @@ def scan(state, jobs):
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
                 note_active(state, user, upd)
+                if is_pr and pr_state:
+                    note_refactor_ask(repo, key, user, url, body, upd, pr_state['head'])
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
                 maintainer_review(key, author, kind, cid, user, url, extra)
