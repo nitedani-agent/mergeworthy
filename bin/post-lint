@@ -27,6 +27,8 @@ kind = {'comment': 'reply'}.get(kind, kind)
 _repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the language only: the other repo checks keep needing --repo
 W = post_words.words(_repo)  # the words the checks look for, in the repo's language
 RATED = re.compile(r'^\s*\|.*[0-9]+ *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # an old ⇒ new rating row (pr-steps' is_pass)
+def unrated(s):  # an old ⇒ new rating table is the pass's result: it counts toward no word cap
+    return re.sub(r'(?:^[ \t]*\|.*\n?)+', lambda t: '' if RATED.search(t.group(0)) else t.group(0), s, flags=re.M)
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
@@ -73,7 +75,7 @@ WORD = r"[A-Za-z0-9][\w'’-]*"
 # words besides numbers and inline code) or the only cell of its row, and a code line of six or more words with no flag,
 # path, code symbol or `->` that isn't mostly numbers
 cells = []
-for l in re.findall(r'^\s*\|(.*)$', prose, flags=re.M):
+for l in re.findall(r'^\s*\|(.*)$', unrated(prose), flags=re.M):
     row = l.rstrip().rstrip('|').split('|')
     if not re.fullmatch(r'[\s:|-]*', l):  # a separator row
         cells += [c for c in row if len(row) == 1 or len([w for w in re.findall(WORD, c) if w != 'CODE' and not w[0].isdigit()]) > 15]
@@ -175,7 +177,7 @@ if kind != 'pr':
         counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
-    counted = re.sub(r'(?:^[ \t]*\|.*\n?)+', lambda t: '' if RATED.search(t.group(0)) else t.group(0), counted, flags=re.M)  # a rating table is the result: data, like a PR body's
+    counted = unrated(counted)
     counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
     counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
     counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)

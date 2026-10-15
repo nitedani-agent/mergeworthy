@@ -436,6 +436,8 @@ check "an unasked old ⇒ new rating table in a Done reply passes, its /10 and '
 check "without the table, the same words are process, and the fix text keeps a rating table" "1 1" "$(sed -i '/^|/d' "$T/rt.md"; python3 "$R/bin/post-lint" "$T/rt.md" --kind reply --parent "$T/rt.parent.md" 2>&1 | grep -c 'process in the thread') $(python3 "$R/bin/post-lint" "$T/rt.md" --kind reply --parent "$T/rt.parent.md" 2>&1 | grep -c 'a rating table stays')"
 mkdir -p "$T/rr"; cp "$(dirname "$0")/fixtures/rating-reply.md" "$(dirname "$0")/fixtures/rating-reply.parent.md" "$T/rr/"  # vikejs/vike#3609's refactor result, three rating tables, 1,243 words
 check "a reply's rating tables count toward no word cap: the #3609 refactor result to 'Apply <skill>' passes, no length or rating finding" 0 "$(MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/rr/rating-reply.md" --kind reply --repo vikejs/vike 2>&1 | grep -c 'words\|/10\|rated')"
+cp "$(dirname "$0")/fixtures/rating-body.md" "$T/rr/"  # #3609's PR body with its three rating tables under their own titles, Why cells past 15 words
+check "a PR body's rating tables count toward no word cap, whatever block holds them" 0 "$(MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/rr/rating-body.md" --kind pr --repo vikejs/vike 2>&1 | grep -c 'words >')"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"
