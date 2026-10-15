@@ -26,7 +26,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 Agent runs cost the user's subscription, so converge per push, not per commit.
 - **Batch:** collect the commits a review round or a maintainer's ask produces, and converge the batch once, right before its push. A maintainer's commits get one review once they stop (`reply §Maintainer commits`).
-- **Carry the pass:** a change of 80 lines or fewer that adds no behavior (tests, docs, wording) gets the quick gates and the lanes it touches, and its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for a pass, the shape pass runs and records instead, on the unchanged head too. Behavior changes, and anything over 80 lines, get the loops again, then one fresh read for the batch.
+- **Carry the pass:** a change of 80 lines or fewer that adds no behavior (tests, docs, wording) gets the quick gates and the lanes it touches, and its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for a pass, the shape pass runs and records instead, on the unchanged head too. Behavior changes, and anything over 80 lines, get the loops on the whole PR diff from its merge-base, then one fresh read of it.
 - **Every edit to a post goes back to its reviewer** (`post` step 3), a typo or a sha bump too; the fast form keeps a one-word fix cheap.
 - **The shape pass goes stale** past 80 changed lines since its last full pass (tests and lockfiles excluded; the watcher's `### SHAPE STALE`): a fresh agent runs it on the whole diff before the next "Done" reply.
 
