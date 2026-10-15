@@ -699,6 +699,7 @@ check "BLOCK: a drafter brief without the template's scope-word check, naming th
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
 check "BLOCK: a brief with a template's placeholder unfilled, naming it and its template" "2 1" "$(ag "$T" $'Verify the slice.\n- try the edges: <the slice\'s risky edges>, each Recurring misses line' review) $(grep -c "<the slice's risky edges> (delegate/verifier.md)" "$T/err")"
 check "a filled brief passes with the paste-in rules (their <work folder>), an output form in backticks and a quoted HTML tag" 0 "$(ag "$T" "$(printf 'Verify the slice: try the edges: the abort path.\nFinal message: the gates as `<command> -> exit <code>`; check the <head> tags.\n'; cat "$R/skills/delegate/agent.md")" review)"
+check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
 git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
 alive() { # task [transcript_path]

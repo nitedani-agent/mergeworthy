@@ -50,6 +50,7 @@ if not register:
     tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'skills', 'delegate')
     pasted = {l.strip() for l in open(os.path.join(tdir, 'agent.md'))} if os.path.isfile(os.path.join(tdir, 'agent.md')) else set()
     brief = '\n'.join(l for l in gate_text.splitlines() if l.strip() not in pasted)
+    brief = re.sub(r'`[^`\n]*`', '', brief)  # a form the brief quotes in backticks (`PROMISED <thread>: …`) is a format, not a slot
     HTML = set('a b base body br code div em footer form h1 h2 h3 head header html i img input li link main meta nav ol p path pre script section span strong style svg table td template title tr ul'.split())
     unfilled = {}
     for t in sorted(glob.glob(os.path.join(tdir, '*.md'))):
