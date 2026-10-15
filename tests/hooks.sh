@@ -1178,6 +1178,26 @@ printf 'carries the pass of %s: tests only\nCLEAN\n' "${OH:0:10}" > "$T/sp-carry
 printf 'shape %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T09:00:00Z\n' "$T/sp-carry3.md" "$T/sp-new.md" > "$HOME/.claude/pr-steps/$NH2"; pr7 "$NH2" "Fixes the leak."$'\n\n'"$OLDT"
 check "BLOCK: a head with a carry, then a pass recorded for an ask: the old pass's table doesn't show it, the new rows do" "1 0" "$(shown 'gh pr ready 7 -R o/r') $(shown "gh pr comment 7 -R o/r --body-file $NEWR")"
 rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$OH" "$HOME/.claude/pr-steps/$NH" "$HOME/.claude/pr-steps/$NH2"
+# a maintainer's refactor ask on the PR (the watcher's refactor-asks.txt) needs a pass recorded after it, on any of the PR's commits, shown in the post
+AH=$(printf '1%.0s' $(seq 40)); MH=$(printf '2%.0s' $(seq 40))
+echo "2026-10-15T08:04:10Z ${AH:0:10} o/r#7 https://example.invalid/o/r/pull/7#issuecomment-9" > "$HOME/.claude/refactor-asks.txt"
+asked() { sguard "$1" >/dev/null; grep -c "issuecomment-9 asks for a refactor pass (2026-10-15T08:04:10Z) and no pass on this PR was recorded after it.*pr-steps shape <report>" "$T/err"; }
+oldpass() { echo "shape $T/sp-old.md 2026-10-14T08:00:00Z" > "$HOME/.claude/pr-steps/$AH"; }
+newpass() { echo "shape $T/sp-new.md 2026-10-15T09:00:00Z" >> "$HOME/.claude/pr-steps/$AH"; }
+OLDR=$(gated sp-old-r "Done in abc1234."$'\n\n'"$OLDT")
+oldpass; pr7 "$AH" 'Fixes the leak.'
+check "BLOCK: an ask after the head's pass, answered with no new pass (it landed no commit), naming the ask and pr-steps shape" 1 "$(asked "gh pr comment 7 -R o/r --body-file $OLDR")"
+newpass
+check "a pass recorded on the unchanged head after the ask, shown in the reply, passes; the old table doesn't show it" "0 0 1" "$(asked "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $OLDR")"
+oldpass; pr7 "$MH" 'Fixes the leak.'; python3 -c 'import json,sys; print(json.dumps([{"sha":sys.argv[1]},{"sha":sys.argv[2]}]))' "$AH" "$MH" > "$FX/repos_o_r_pulls_7_commits_per_page_100"
+check "BLOCK: the maintainer's commits on top (a head with no record): the ask still needs a pass" 1 "$(asked "gh pr comment 7 -R o/r --body-file $OLDR")"
+newpass
+check "a pass after the ask on any of the PR's commits passes once shown; the old table doesn't show it" "0 0 1" "$(asked "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $OLDR")"
+oldpass
+check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$OLDR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$OLDR")"
+newpass
+check "through gh api, the pass recorded and shown passes; the old table doesn't show it" "0 0 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(shown "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR") $(shown "gh api repos/o/r/issues/7/comments -F body=@$OLDR")"
+rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }

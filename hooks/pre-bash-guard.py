@@ -181,19 +181,35 @@ def check_context(thread, files):
         if r.returncode != 0 and r.stderr.strip():
             block(f"{r.stderr.strip()} (mergeworthy:post step 1: draft from thread-context.md, give the reviewer the same file)")
 
+def gh_json(path):
+    """`gh api <path>` parsed, or None when gh can't read it."""
+    try:
+        r = subprocess.run(['gh', 'api', path], capture_output=True, text=True, timeout=20)
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except (subprocess.TimeoutExpired, ValueError): return None
+
+ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # the watcher's: <time> <PR head then> <owner/repo#N> <comment URL>
 def check_shape_shown(repo, num, texts, head=None, live=True):
     """delegate/shape.md: the maintainer is shown the shape pass. When the PR's head has a recorded shape pass (`pr-steps shape`, a carry
     followed to its pass), the post or the live PR body has a table of that pass's own rows, so an older pass's table doesn't stand in for it.
+    A maintainer's refactor ask on the PR needs a real pass recorded after it, on any of the PR's commits, and that pass is the one shown.
     The head is the PR's (gh api), else the one given; a PR gh can't read is not checked."""
-    body = ''
+    body, asks = '', []
     if repo and str(num).isdigit():
-        try:
-            r = subprocess.run(['gh', 'api', f'repos/{repo}/pulls/{num}'], capture_output=True, text=True, timeout=20)
-            pr = json.loads(r.stdout) if r.returncode == 0 else None
-        except (subprocess.TimeoutExpired, ValueError): pr = None
+        pr = gh_json(f'repos/{repo}/pulls/{num}')
         if not isinstance(pr, dict): return
         head, body = (pr.get('head') or {}).get('sha') or head, (pr.get('body') or '') if live else ''
+        asks = sorted(l.split() for l in (open(ASKS) if os.path.exists(ASKS) else []) if l.split()[2:3] == [f'{repo}#{num}'])
     passed, out = shape_pass(head) if head else (None, None)
+    if asks:
+        t, _, _, url = asks[-1][:4]
+        commits = gh_json(f'repos/{repo}/pulls/{num}/commits?per_page=100')
+        shas = {c.get('sha') for c in commits if isinstance(c, dict)} if isinstance(commits, list) else set()
+        passes = sorted((at, sha, f) for sha in shas | {head} for k, f, at in real_passes(sha))
+        if not passes or passes[-1][0] <= t:
+            block(f"{url} asks for a refactor pass ({t}) and no pass on this PR was recorded after it: fetch the PR's head, run the pass on it "
+                  "(converge step 2, delegate/shape.md), then record its report there with `pr-steps shape <report>`, on the unchanged head when the pass changes nothing")
+        _, passed, out = passes[-1]
     if passed and not any(shows(t, out) for t in texts + [body]):
         on = passed[:10] + (f' (carried to {head[:10]})' if passed != head else '')
         block(f"the shape pass on {on} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
@@ -211,6 +227,12 @@ def shape_pass(sha, seen=()):
             if (p := shape_pass(os.path.basename(full), (*seen, sha)))[0]: return p
         return None, None
     return None, None
+
+def real_passes(sha):
+    """The (step, report, time) shape records of sha whose report is a pass, not a carry."""
+    rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
+    rows = [l.split()[:3] for l in open(rec) if len(l.split()) >= 3] if sha and os.path.isfile(rec) else []
+    return [r for r in rows if r[0] == 'shape' and os.path.isfile(r[1]) and 'carries the pass of' not in open(r[1], errors='replace').read()]
 
 RATING = re.compile(r'(\d+)(?:/10)? *(?:⇒|=>) *(\d+|removed|new|n/a)')
 def rated_rows(text):
@@ -463,8 +485,11 @@ def check(t, has_cd):
             bodies = [open(x).read() for x in (os.path.join(cwd, os.path.expandvars(os.path.expanduser(f))) for f in files) if os.path.isfile(x)]
             if sub == 'create' and a[0] == 'pr':
                 check_shape_shown(None, None, bodies, subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip())
-            elif sub in ('comment', 'edit') and files:
-                check_shape_shown((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), next((x for x in rest if x.isdigit()), None), bodies, live=sub == 'comment')
+            elif sub in ('comment', 'edit') and files and a[0] == 'pr':
+                num = next((x for x in rest if x.isdigit()), None)
+                try: num = num or subprocess.run(['gh', 'pr', 'view', '--json', 'number', '--jq', '.number'], cwd=run_dir, capture_output=True, text=True, timeout=20).stdout.strip()
+                except Exception: pass
+                check_shape_shown((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, bodies, live=sub == 'comment')
             if sub == 'comment' and '--edit-last' not in rest:
                 num = next((x for x in rest if x.isdigit()), None)
                 check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)
@@ -496,6 +521,16 @@ def check(t, has_cd):
                 r_ = subprocess.run(['gh', 'api', ep.lstrip('/'), '--jq', '.issue_url // .pull_request_url'], capture_output=True, text=True, timeout=20)
                 n_ = re.search(r'/(\d+)\s*$', r_.stdout) if r_.returncode == 0 else None
                 thread = f'{c_.group(1)}#{n_.group(1)}' if n_ else None
+        # a comment on a PR, or an edit of its body, shows its shape pass as `gh pr comment` and `gh pr edit` do
+        if thread and method in ('POST', 'PATCH') and re.search(r'/issues/(?:\d+/comments|comments/\d+)$|/(?:issues|pulls)/\d+$', ep):
+            texts = []
+            for f in bodies + inputs:
+                x = os.path.join(cwd, os.path.expandvars(os.path.expanduser(f)))
+                x = open(x).read() if os.path.isfile(x) else ''
+                try: x = (json.loads(x).get('body') or '') if f in inputs else x  # --input is the request's JSON
+                except (ValueError, AttributeError): pass
+                texts.append(x)
+            check_shape_shown(*thread.split('#'), texts, live=not re.search(r'/(?:issues|pulls)/\d+$', ep))
         check_context(thread, bodies + inputs)
         for f in bodies + inputs: gated_file(f, has_cd, create=f in new_post_drafts(t))
 
