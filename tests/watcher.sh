@@ -546,7 +546,7 @@ m.main_dir = lambda: m.HERE; m.sweep_disk(state); m.sweep_disk(state); b = len(c
 state["sweep_at"] -= 3600; m.sweep_disk(state)
 print(imported, a, b, len(calls), calls[0][0][:5], os.path.basename(calls[0][0][5]), calls[0][0][6:], os.path.basename(calls[0][1]))
 ')
-check "disk-sweep --delete runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out; never from an imported module (a test)" "0 0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep ['--delete'] disk-sweep.out" "$got"
+check "disk-sweep --delete runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out; a direct sweep_disk call starts none while DAEMON is false, until main() sets it" "0 0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep ['--delete'] disk-sweep.out" "$got"
 
 # the daemon's tick starts it: once an hour, from the main dir only, the hour kept in the state file across ticks
 got=$(py '

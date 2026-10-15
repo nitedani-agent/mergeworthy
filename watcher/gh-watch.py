@@ -19,7 +19,7 @@
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
-- Once an hour main_dir's daemon starts bin/disk-sweep in the background (sweep_disk).
+- On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
 and scans overlap by 10 minutes. A failed API call prints WATCH ERROR and that thread's scan position isn't advanced.
 """
@@ -427,12 +427,13 @@ def log_stats(state):
 
 
 SWEEP = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'bin', 'disk-sweep')
-DAEMON = False  # main()'s loop sets it: a test or a manual run that calls tick() never starts a deleting sweep
+DAEMON = False  # main() sets it: a direct tick() or sweep_disk() call starts no sweep until then
 
 
 def sweep_disk(state):
-    """Once an hour, from main_dir's daemon alone: bin/disk-sweep in the background at the lowest priority, so polling never
-    waits on it; its output goes to disk-sweep.out (not events.log: nothing in it is for the session)."""
+    """On Linux, at most once an hour, from main_dir's daemon alone: bin/disk-sweep --delete in the background under nice -n 19 and
+    ionice -c3, so polling never waits on it, its output and errors in HERE/disk-sweep.out rather than events.log; disk-sweep
+    itself deletes under the account's home only when this daemon started it (from_daemon)."""
     now = time.time()
     if not DAEMON or sys.platform != 'linux' or main_dir() != HERE or now - state.get('sweep_at', 0) < 3600:  # it reads /proc; ionice is Linux's
         return

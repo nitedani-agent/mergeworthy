@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""disk-sweep [--delete]: with --delete, deletes what can be rebuilt, under the work folders (~/*-work/), ~/.t3/worktrees/
-and Docker, and appends `<iso time> <bytes> <path or docker object> <rule> deleting` to ~/.mergeworthy/disk-sweep.log before
-each deletion and the same line ending `deleted` or `failed` after it (a Docker prune: `deleted` once it succeeded); without it,
-a dry run prints those lines without the last word and deletes nothing. It never follows a symlink or leaves a
-root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
-"Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate holding version-control data, a file changed in 24 hours or a folder it can't read, or one whose repo
-or loose parent a process works in, holds a file open in or a job names right before its deletion, is kept.
-- c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
-- c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
-- d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
-  Docker reports, `?` in a dry run.
+"""disk-sweep [--delete]: with --delete, deletes the build folders and node_modules under the work folders (~/*-work/) and
+~/.t3/worktrees/ that hold nothing a rebuild can't restore, and prunes Docker's dangling images and build cache. Before each
+deletion it appends `<UTC time, YYYY-MM-DDTHH:MM:SSZ> <bytes> <path, or docker:image or docker:builder> <rule> deleting` to
+~/.mergeworthy/disk-sweep.log, and the same line ending `deleted` or `failed` after it. <bytes> is the allocated size of the
+entries whose every hard link is inside the path; a Docker prune writes one line, `deleted`, with the size Docker reports once it
+succeeded. Without --delete it prints those lines without the last word, `?` for Docker's bytes, and deletes nothing.
+It never follows a symlink or leaves a root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
+"Idle": no file outside the paths git ignores has an mtime within 24 hours of the sweep's start. "Busy": a process works in the
+folder or holds a file open in it, or an unfinished job in ~/.claude/agent-jobs names its absolute or ~/ path, read each time.
+A candidate is kept when it holds version-control data, a file with an mtime in the last 24 hours or a folder the sweep can't
+read, or when its repo or loose parent is busy right before it would be listed or deleted.
+- c-ignored: in an idle repo or worktree that isn't busy, the folders git ignores named in BUILD.
+- c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
+  and isn't busy.
+- d-docker: `docker image prune` and `docker builder prune` with `-f --filter until=24h`, each by its own age rule; never
+  containers or volumes.
 Deleting under the account's home and pruning Docker happen only when the watcher daemon of the main watch dir started the sweep
 (from_daemon); anything else deletes only in folders outside that home, a test's temp roots."""
 import datetime, fcntl, glob, os, pwd, re, shutil, subprocess, sys, time
@@ -84,13 +89,13 @@ def git(repo, *args):
 
 
 def mention(path):
-    """A regex for path, or a path inside it, as a brief or a transcript writes it: absolute or from ~."""
+    """A regex for path, or a path inside it, as a job's text writes it: absolute or from ~/."""
     forms = [path] + (['~' + path[len(HOME):]] if path.startswith(HOME + '/') else [])
     return '(?:' + '|'.join(map(re.escape, forms)) + r')(?![\w-]|\.[\w.-])'  # a sentence's full stop may follow it
 
 
 def measure(path, dev):
-    """The bytes deleting path frees (an inode counts once every link to it is inside), or None when it must stay: it holds an
+    """The bytes deleting path frees (st_blocks * 512 of each entry whose every hard link is inside), or None when it must stay: it holds an
     entry on another filesystem, version-control data (VCS), a file changed in the last 24 hours, or a folder it can't read."""
     st = os.lstat(path)
     if st.st_dev != dev:
@@ -113,7 +118,7 @@ def measure(path, dev):
 
 
 def changed(top, skip):
-    """Whether a file under top, outside the paths skip(path relative to top) excludes, changed in the last 24 hours."""
+    """Whether a file under top, outside the paths skip(path relative to top) excludes, has an mtime within 24 hours of the start."""
     stack = [top]
     while stack:
         try:
@@ -241,7 +246,7 @@ def delete(path, owner, dev, rule):
 
 
 def walk(root, work):
-    """root's filesystem, the repos under it and, in a work folder, the node_modules folders outside them."""
+    """(root's device, the repos under root, and when work is true the node_modules folders outside them), on root's filesystem."""
     dev, repos, loose, stack = os.lstat(root).st_dev, [], [], [root]
     while stack:
         d = stack.pop()
@@ -285,7 +290,7 @@ def sweep_files():
                 delete(nm, parent, dev, 'c-node_modules')
 
 
-PRUNES = ('image', 'builder')  # no containers: until= is their creation time, so a stack stopped a minute ago would go
+PRUNES = ('image', 'builder')  # no containers: until=24h selects one created over a day ago even if it stopped a minute ago
 
 
 def prune_docker():

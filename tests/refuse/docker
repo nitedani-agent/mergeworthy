@@ -1,5 +1,5 @@
 #!/bin/sh
-# tests/all.sh puts this first on PATH: no test reaches the machine's Docker unless it puts its own stub before this one
+# Docker calls that PATH resolves to this file are recorded in ALL_SH_LEAKED and refused; tests/all.sh puts it first on PATH
 echo "tests must not call the real docker: docker $*" >&2
 [ -n "${ALL_SH_LEAKED:-}" ] && echo "docker $*" >> "$ALL_SH_LEAKED"
 exit 1
