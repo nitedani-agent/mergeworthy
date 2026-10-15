@@ -155,6 +155,22 @@ def in_use(path):
     return False
 
 
+_daemon = {}
+
+
+def authorized(path=None):
+    """Raise PermissionError unless this process may delete path now, or run a Docker command (path None): never in a dry run,
+    and under the account's home or for Docker only when the main watch dir's daemon started it (from_daemon, worked out once
+    per parent process). Every function that deletes or runs Docker calls it right before the syscall or the exec."""
+    if DRY:
+        raise PermissionError('disk-sweep: a dry run deletes nothing and runs no Docker command')
+    if path is None or inside(path, ACCOUNT_HOME):
+        if os.getppid() not in _daemon:
+            _daemon[os.getppid()] = from_daemon(INSTALLED, main_watch_dir())
+        if not _daemon[os.getppid()]:
+            raise PermissionError(f'disk-sweep: only the watcher daemon of the main watch dir deletes under {ACCOUNT_HOME} or runs Docker')
+
+
 def open_dir(path):
     """An fd of the directory path, opened from / one component at a time; OSError when a component is a symlink."""
     fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
@@ -167,17 +183,20 @@ def open_dir(path):
     return fd
 
 
-def empty(fd):
-    """Delete everything inside the open directory fd, opening each subdirectory without following a symlink."""
+def empty(fd, path=None):
+    """Delete everything inside the open directory fd (path, for authorized), opening each subdirectory without following a symlink."""
+    path = path or os.readlink(f'/proc/self/fd/{fd}')
     for e in os.scandir(fd):
         if e.is_dir(follow_symlinks=False):
             sub = os.open(e.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             try:
-                empty(sub)
+                empty(sub, os.path.join(path, e.name))
             finally:
                 os.close(sub)
+            authorized(os.path.join(path, e.name))
             os.rmdir(e.name, dir_fd=fd)
         else:
+            authorized(os.path.join(path, e.name))
             os.unlink(e.name, dir_fd=fd)
 
 
@@ -189,9 +208,10 @@ def remove(path, st):
         try:
             if (os.fstat(fd).st_dev, os.fstat(fd).st_ino) != (st.st_dev, st.st_ino):
                 raise OSError(f'{path} is no longer the directory the sweep inspected')
-            empty(fd)
+            empty(fd, path)
         finally:
             os.close(fd)
+        authorized(path)
         os.rmdir(os.path.basename(path), dir_fd=parent)
     finally:
         os.close(parent)
@@ -232,9 +252,6 @@ def delete(path, owner, dev, rule):
     if busy(owner):  # a process or a job may have started in owner since its selection
         return
     if not DRY:
-        if inside(path, ACCOUNT_HOME) and not from_daemon(INSTALLED, main_watch_dir()):
-            print(f'disk-sweep: {path}: only the watcher daemon of the main watch dir deletes under {ACCOUNT_HOME}', file=sys.stderr)
-            return
         record(nbytes, path, rule, 'deleting')
         try:
             remove(path, st)
@@ -302,22 +319,17 @@ def prune_docker():
         for what in PRUNES:
             record('?', f'docker:{what}', 'd-docker', 'deleted')
         return 0
-    if not from_daemon(INSTALLED, main_watch_dir()):
-        print('disk-sweep: not started by the watcher daemon of the main watch dir: Docker skipped', file=sys.stderr)
-        return 0
     try:
-        if subprocess.run(['docker', 'version'], capture_output=True, timeout=60).returncode:
+        if run_docker('version', timeout=60).returncode:
             return 0
+    except PermissionError as e:
+        print(f'{e}: Docker skipped', file=sys.stderr)
+        return 0
     except subprocess.TimeoutExpired:
         return 0
-    return run_prunes('docker')
-
-
-def run_prunes(docker):
-    """docker's image and builder prunes, each logged with the size it reports; 1 when one fails, else 0."""
     failed = 0
     for what in PRUNES:
-        r = subprocess.run([docker, what, 'prune', '-f', '--filter', 'until=24h'], capture_output=True, text=True)
+        r = run_docker(what, 'prune', '-f', '--filter', 'until=24h')
         if r.returncode:
             print(f'disk-sweep: docker {what} prune exited {r.returncode}: {r.stderr.strip()}', file=sys.stderr)
             failed = 1
@@ -325,6 +337,12 @@ def run_prunes(docker):
         m = re.search(r'Total(?: reclaimed space)?:\s*([\d.]+)\s*([kKMGT]?)B', r.stdout)
         record(int(float(m[1]) * 1000 ** ' KMGT'.index(m[2].upper() or ' ')) if m else 0, f'docker:{what}', 'd-docker', 'deleted')
     return failed
+
+
+def run_docker(*args, timeout=None):
+    """docker <args>, captured, once authorized() allows a Docker command."""
+    authorized()
+    return subprocess.run(['docker', *args], capture_output=True, text=True, timeout=timeout)
 
 
 def main():

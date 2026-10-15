@@ -2,7 +2,7 @@
 # Tests for bin/disk-sweep. Usage: tests/disk-sweep.sh [repo root]
 # Builds a temp HOME with a work folder of worktrees and repos, a ~/.t3/worktrees worktree and a stub `docker` first on PATH,
 # ages their files, runs the sweep without --delete (a dry run) and then with it, and checks what each rule removed and kept.
-# Docker's prunes run only from the watcher daemon of the main watch dir, so run_prunes is called with the recording stub's path.
+# Docker's prunes run only from the watcher daemon of the main watch dir, so they run in a process tree shaped like the daemon's.
 # Prints "case: <got> (want <want>)"; exits 0 only when every case gives what it wants.
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
@@ -72,14 +72,6 @@ check "a tracked node_modules is kept" kept "$(there "$WF/tracked/node_modules")
 check "symlinks to outside the roots are not followed" "kept kept kept" "$(there "$T/outside/node_modules/x") $(there "$WF/link") $(there "$WF/dirty/node_modules")"
 check "node_modules outside repos: idle parent removed, recent parent kept" "removed kept" "$(there "$WF/drafts/node_modules") $(there "$WF/fresh/node_modules")"
 check "a work folder's .webm and .zip over 10 MB and 8 days old are kept" "kept kept" "$(there "$WF/rec/old.webm") $(there "$WF/rec/old.zip")"
-
-# run_prunes with the recording stub: what the daemon's sweep runs
-prune() { dsm "m.DRY = False; sys.exit(m.run_prunes('$T/bin/docker'))"; }
-: > "$DOCKER_LOG"; prune; rc=$?
-check "Docker: the dangling-image and build-cache prunes; never containers or volumes" "0 image prune -f --filter until=24h|builder prune -f --filter until=24h|" "$rc $(tr '\n' '|' < "$DOCKER_LOG")"
-check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
-DOCKER_FAIL=1 prune 2> "$T/prune.err"; rc=$?
-check "a prune that fails exits 1, its stderr reported, no log line written" "1 2 2" "$rc $(grep -c 'daemon is shutting down' "$T/prune.err") $(grep -c d-docker "$LOG")"
 
 # a HOME whose ~/.t3 is a symlink to a folder outside it, with a process already working in the worktree there
 H2="$T/home2"; mkdir -p "$H2" "$T/t3real/worktrees"; ln -s "$T/t3real" "$H2/.t3"
@@ -161,6 +153,13 @@ copy=$(daemon 'print(m.from_daemon(sys.argv[2], sys.argv[3]))' "$R/bin/disk-swee
 direct=$(cd "$W" && python3 -c "$LOAD"'print(m.from_daemon(sys.argv[2], sys.argv[3]))' "$I/bin/disk-sweep" "$I" "$W")
 byhand=$(cd "$W" && python3 -u gh-watch.py "$LOAD"'print(m.from_daemon(sys.argv[2], sys.argv[3]))' "$I/bin/disk-sweep" "$I" "$W"; true)
 check "from_daemon: the daemon's tree on the main watch dir yes; another main dir, another install, a sweep from another copy, a probe in the watch dir or its gh-watch.py run by hand no" "True False False|False|False|False" "$daemon|$copy|$direct|$byhand"
+# the prunes through the guarded entry, from the daemon's tree with this test's install and watch dir: what the daemon's sweep runs
+PRUNE='m.INSTALLED, m.main_watch_dir, m.DRY = sys.argv[2], lambda: sys.argv[3], False; print(m.prune_docker())'
+: > "$DOCKER_LOG"; got=$(daemon "$PRUNE" "$I/bin/disk-sweep")
+check "Docker from the daemon's tree: version, then the dangling-image and build-cache prunes; never containers or volumes" "0 version|image prune -f --filter until=24h|builder prune -f --filter until=24h|" "$got $(tr '\n' '|' < "$DOCKER_LOG")"
+check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
+got=$(DOCKER_FAIL=1 daemon "$PRUNE" "$I/bin/disk-sweep" 2> "$T/prune.err")
+check "a prune that fails returns 1, its stderr reported, no log line written" "1 2 2" "$got $(grep -c 'daemon is shutting down' "$T/prune.err") $(grep -c d-docker "$LOG")"
 
 # a dry run selects as a deleting run does: not a node_modules whose repo a process holds a file in, or starts working in while it runs
 H5="$T/home5"; D="$H5/d-work"; mkdir -p "$H5/.mergeworthy"
@@ -180,6 +179,23 @@ finally:
     for q in started:
         q.kill(); q.wait()' > "$T/dry5.out"
 check "a dry run lists no node_modules whose repo a process holds a file in or started working in while it ran" 0 "$(grep -c "$D/" "$T/dry5.out")"
+
+# every sink refuses by itself, whoever calls it: in a dry run (the default on import); under the account's home and for Docker
+# unless the main watch dir's daemon started the sweep
+mkdir -p "$T/sink/e/x" "$T/sink/r/x"; echo x > "$T/sink/e/x/f"; echo x > "$T/sink/r/x/f"; AS=$(mktemp -d -p "$AH" .disk-sweep-test.XXXXXX); mkdir -p "$AS/r/x"; echo x > "$AS/r/x/f"; : > "$DOCKER_LOG"
+got=$(dsm 'def refused(f, *a):
+    try:
+        f(*a)
+    except (PermissionError, AttributeError) as e:
+        return type(e).__name__
+    return "ran"
+fd = os.open(sys.argv[3] + "/e", os.O_RDONLY | os.O_DIRECTORY)
+out = [refused(m.empty, fd), refused(m.remove, sys.argv[3] + "/r", os.lstat(sys.argv[3] + "/r")), refused(getattr(m, "run_docker", None) or m.run_prunes, "docker")]
+m.DRY = False
+out += [refused(m.remove, sys.argv[4] + "/r", os.lstat(sys.argv[4] + "/r")), refused(getattr(m, "run_docker", None) or m.run_prunes, "docker")]
+print(*out)' "$T/sink" "$AS" 2>/dev/null)
+check "empty, remove and Docker refuse in a dry run; remove under the account's home and Docker refuse outside the daemon" "PermissionError PermissionError PermissionError PermissionError PermissionError kept kept kept 0" "$got $(there "$T/sink/e/x/f") $(there "$T/sink/r/x/f") $(there "$AS/r/x/f") $(wc -l < "$DOCKER_LOG")"
+rm -rf "$AS"
 
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
 F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"
