@@ -2,7 +2,7 @@
 """Claude Code PreToolUse hook (matcher: Bash). Exit 2 blocks the command; stderr goes to the agent.
 Checks each simple command separately (split at ; && || | & and newlines, heredoc bodies and quoted text ignored).
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import glob, json, re, sys, os, hashlib, subprocess
+import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight
 import steward, post_words
@@ -208,7 +208,8 @@ def gh_json(path):
 
 def promised(repo, num, drafts):
     """An open `PROMISED <repo>#<num>: …refactor…` line in proposals-open.md of this session's watch dir (gh-watch-dirs.txt, its `session`
-    file), or above a draft's folder, as gate-pass finds it: the session told the maintainer the pass's result is still to come."""
+    file), or above a draft's folder, as gate-pass finds it. It proves only that the line exists: not that a holding reply was posted, nor
+    its time; stop-lint holds the session to a time the line names."""
     sid = d.get('session_id') or os.environ.get('CLAUDE_CODE_SESSION_ID')
     reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
     dirs = [w for w in (l.strip() for l in (open(reg) if os.path.exists(reg) else [])) if w and sid and (open(os.path.join(w, 'session')).read().strip()
@@ -218,86 +219,31 @@ def promised(repo, num, drafts):
     return any(os.path.isfile(po := os.path.join(w, 'proposals-open.md')) and line.search(open(po).read()) for w in dirs)
 
 ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # the watcher's: <time> <PR head the scan saw> <owner/repo#N> <comment URL>
-def check_shape_shown(repo, num, texts, head=None, live=True, drafts=()):
-    """delegate/shape.md: the maintainer is shown the shape pass. When the PR's head has a recorded shape pass (`pr-steps shape`, a carry
-    followed to its pass), the post, or for a comment or ready the live PR body too, renders a table whose rated rows all match that pass's
-    report, a subset included; this doesn't prove the table is complete or unique to the pass. The newest entry for this PR in
-    refactor-asks.txt (the watcher's record of a maintainer's ask) needs a non-carry shape record with a later time on the head or on the
-    first page of the PR's commits; that pass is the one shown, and until it exists only a post whose session promised the result goes out.
-    The head is the PR's (gh api), else the one given; a PR gh can't read is not checked."""
-    body, asks = '', []
-    if repo and str(num).isdigit():
-        pr = gh_json(f'repos/{repo}/pulls/{num}')
-        if not isinstance(pr, dict): return
-        head, body = (pr.get('head') or {}).get('sha') or head, (pr.get('body') or '') if live else ''
-        asks = sorted(l.split() for l in (open(ASKS) if os.path.exists(ASKS) else []) if l.split()[2:3] == [f'{repo}#{num}'])
-    passed, out = shape_pass(head) if head else (None, None)
-    if asks:
-        t, _, _, url = asks[-1][:4]
-        commits = gh_json(f'repos/{repo}/pulls/{num}/commits?per_page=100')
-        shas = {c.get('sha') for c in commits if isinstance(c, dict)} if isinstance(commits, list) else set()
-        passes = sorted((at, sha, f) for sha in shas | {head} for k, f, at in real_passes(sha))
-        if not passes or passes[-1][0] <= t:
-            if promised(repo, num, drafts): return  # a holding reply, or a commit review, while the pass runs
-            block(f"{url} asks for a refactor pass ({t}) and no pass on this PR was recorded after it: fetch the PR's head, run the pass on it "
-                  "(converge step 2, delegate/shape.md), then record its report there with `pr-steps shape <report>`, on the unchanged head when the pass changes nothing. "
-                  f"To post before it (a holding reply, a commit review), first add 'PROMISED {repo}#{num}: the refactor pass's result by <time> (<draft>)' "
-                  "to proposals-open.md in your watch dir")
-        _, passed, out = passes[-1]
-        on = passed[:10] + (f' (recorded on a PR commit; current head {head[:10]})' if passed != head else '')
-    else:
-        on = (passed or '')[:10] + (f' (carried to {head[:10]})' if passed and passed != head else '')
-    if passed and not any(shows(t, out) for t in texts + [body]):
-        where = ('edit the PR body to include them, then retry ready' if not texts else
-                 'include them here or in the live PR body' if live else 'include them in this replacement body')
-        block(f"the shape pass on {on} isn't shown: {where}: a table of the old ⇒ new rows in {out} (the same items and numbers), with the link to "
-              "the pass's whole diff as delegate/shape.md requires (this check compares rows only)")
-
-def shape_pass(sha, seen=()):
-    """(commit, its shape report) of the pass that stands for sha: the head's latest shape record, or, through each `carries the pass of
-    <sha>` record, the pass it carries; (None, None) without one."""
-    rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
-    if sha in seen or not os.path.isfile(rec): return None, None
-    for k, f, *_ in reversed([l.split() for l in open(rec) if len(l.split()) >= 2]):
-        if k != 'shape' or not os.path.isfile(f): continue
-        c = re.search(r'carries the pass of ([0-9a-f]{7,40})', open(f, errors='replace').read())
-        if not c: return sha, f
-        for full in glob.glob(os.path.expanduser(f'~/.claude/pr-steps/{c[1]}*')):
-            if (p := shape_pass(os.path.basename(full), (*seen, sha)))[0]: return p
-        return None, None
-    return None, None
+def check_refactor_ask(repo, num, comment, drafts=()):
+    """A maintainer's refactor ask (the newest entry for this PR in refactor-asks.txt) is answered by a pass: a non-carry shape record with a
+    later time, on the PR's head or a commit on the first page of its commits. Until one exists, a post goes out only with the session's
+    PROMISED line for the result (promised()). Only the record is checked: whether the post
+    shows that pass's result is the post review's (delegate/post-review.md). A PR gh can't read is not checked."""
+    if not repo or not str(num).isdigit(): return
+    asks = sorted(l.split() for l in (open(ASKS) if os.path.exists(ASKS) else []) if l.split()[2:3] == [f'{repo}#{num}'])
+    if not asks: return
+    pr = gh_json(f'repos/{repo}/pulls/{num}')
+    if not isinstance(pr, dict): return
+    t, _, _, url = asks[-1][:4]
+    commits = gh_json(f'repos/{repo}/pulls/{num}/commits?per_page=100')
+    shas = {c.get('sha') for c in commits if isinstance(c, dict)} if isinstance(commits, list) else set()
+    if any(at > t for sha in shas | {(pr.get('head') or {}).get('sha')} for _, _, at in real_passes(sha)): return
+    if promised(repo, num, drafts): return  # a holding reply, or a commit review, while the pass runs
+    block(f"{url} asks for a refactor pass ({t}) and no pass on this PR was recorded after it: fetch the PR's head, run the pass on it "
+          "(converge step 2, delegate/shape.md), then record its report there with `pr-steps shape <report>`, on the unchanged head when the pass changes nothing. " +
+          f"To post before it (a holding reply, a commit review), first add 'PROMISED {repo}#{num}: the refactor pass's result by <time> (<draft>)' "
+          "to proposals-open.md in your watch dir")
 
 def real_passes(sha):
     """The (step, report, time) shape records of sha whose report is a pass, not a carry."""
     rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
     rows = [l.split()[:3] for l in open(rec) if len(l.split()) >= 3] if sha and os.path.isfile(rec) else []
     return [r for r in rows if r[0] == 'shape' and os.path.isfile(r[1]) and 'carries the pass of' not in open(r[1], errors='replace').read()]
-
-RATING = re.compile(r'(\d+)(?:/10)? *(?:⇒|=>) *(\d+|removed|new|n/a)')
-def rated_rows(text):
-    """Each table's rated rows as (item names, old, new): the first cell holding an arrow rating gives old and new, the backticked spans of
-    the cells before it (else their plain text) the names; cells after it are ignored, whatever their headers say."""
-    tables = []
-    for t in re.findall(r'(?:^[ \t]*\|.*(?:\n|$))+', text, re.M):
-        rows = []
-        for l in t.splitlines():
-            cells = l.strip().strip('|').split('|')
-            i = next((i for i, c in enumerate(cells) if RATING.search(c)), None)
-            if i is None: continue
-            item = ' '.join(c for c in cells[:i] if not c.strip().isdigit())
-            names = set(re.findall(r'`([^`]+)`', item)) or {re.sub(r'[*`]', '', ' '.join(item.split())).lower()}
-            rows.append((names, *RATING.search(cells[i]).groups()))
-        if rows: tables.append(rows)
-    return tables
-
-def shows(text, out):
-    """text, as GitHub renders it (no HTML comments or fenced code), holds a table whose every rated row is a row of the pass report out: the same
-    old ⇒ new for an item it names (a path matches its tail)."""
-    same = lambda a, b: a == b or a.endswith('/' + b) or b.endswith('/' + a)
-    theirs = [r for t in rated_rows(open(out, errors='replace').read()) for r in t]
-    text = re.sub(r'^(?P<f>```|~~~)[^\n]*\n[\s\S]*?^(?P=f)[^\n]*$', '', re.sub(r'<!--[\s\S]*?-->', '', text), flags=re.M)  # what the maintainer sees
-    return any(all(any(o == po and n == pn and any(same(a, b) for a in names for b in pnames) for pnames, po, pn in theirs)
-                   for names, o, n in rows) for rows in rated_rows(text))
 
 def cwd_repo(run_dir):
     import subprocess
@@ -467,7 +413,7 @@ def check(t, has_cd):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
-        check_shape_shown(*post_target('pr', a[2:], run_dir), [])
+        check_refactor_ask(*post_target('pr', a[2:], run_dir), comment=False)
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
@@ -519,13 +465,10 @@ def check(t, has_cd):
                     if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
                         block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
                               f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
-            # gh pr create checks the local HEAD's shape pass; every other post checks the PR post_target names, an edited body replacing the live one
-            bodies = [open(x).read() for x in (os.path.join(cwd, os.path.expandvars(os.path.expanduser(f))) for f in files) if os.path.isfile(x)]
-            if sub == 'create' and a[0] == 'pr':
-                check_shape_shown(None, None, bodies, subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip())
+            # a comment or body edit on a PR with a refactor ask: the target post_target resolves (gh issue too: an issue number that is a PR)
             target = post_target(a[0], rest, run_dir) if sub != 'create' else (None, None)
-            if sub in ('comment', 'edit') and files:  # gh issue too: an issue number that is a PR reaches the PR's check
-                check_shape_shown(*target, bodies, live=sub == 'comment', drafts=files)
+            if sub in ('comment', 'edit') and files:
+                check_refactor_ask(*target, comment=sub == 'comment', drafts=files)
             if sub == 'comment' and '--edit-last' not in rest:
                 check_turn(*target, rest)
             if sub in ('comment', 'review'):
@@ -555,16 +498,9 @@ def check(t, has_cd):
                 r_ = subprocess.run(['gh', 'api', ep.lstrip('/'), '--jq', '.issue_url // .pull_request_url'], capture_output=True, text=True, timeout=20)
                 n_ = re.search(r'/(\d+)\s*$', r_.stdout) if r_.returncode == 0 else None
                 thread = f'{c_.group(1)}#{n_.group(1)}' if n_ else None
-        # a comment on a PR, or an edit of its body, shows its shape pass as `gh pr comment` and `gh pr edit` do
+        # a comment on a PR, or an edit of its body, as `gh pr comment` and `gh pr edit` are checked
         if thread and method in ('POST', 'PATCH') and re.search(r'/issues/(?:\d+/comments|comments/\d+)$|/(?:issues|pulls)/\d+$', ep):
-            texts = []
-            for f in bodies + inputs:
-                x = os.path.join(cwd, os.path.expandvars(os.path.expanduser(f)))
-                x = open(x).read() if os.path.isfile(x) else ''
-                try: x = (json.loads(x).get('body') or '') if f in inputs else x  # --input is the request's JSON
-                except (ValueError, AttributeError): pass
-                texts.append(x)
-            check_shape_shown(*thread.split('#'), texts, live=not re.search(r'/(?:issues|pulls)/\d+$', ep), drafts=bodies + inputs)
+            check_refactor_ask(*thread.split('#'), comment=not re.search(r'/(?:issues|pulls)/\d+$', ep), drafts=bodies + inputs)
         check_context(thread, bodies + inputs)
         for f in bodies + inputs: gated_file(f, has_cd, create=f in new_post_drafts(t))
 

@@ -1159,79 +1159,50 @@ check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 
 check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
 H=$(git -C "$G2" rev-parse HEAD); for k in verify loopb refactor reverify fresh gates; do echo "$k /x/$k.md 2026-10-13T00:00:00Z" >> "$HOME/.claude/pr-steps/$H"; done
 check "a head recorded before the shape pass (loopb and refactor) counts as shaped" 0 "$(ready)"
-# ---------- pre-bash-guard: a PR head with a recorded shape pass shows its old ⇒ new table to the maintainer (delegate/shape.md) ----------
-SH=$(printf 'f%.0s' $(seq 40))
-printf '| load() | 7 ⇒ 9 | abc1234 | one owner |\n✅ load()\nCLEAN\n' > "$T/sp-pass.md"; printf 'carries the pass of abc1234: tests only\nCLEAN\n' > "$T/sp-carry.md"
-echo "shape $T/sp-pass.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"
-spr() { python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":sys.argv[2]}))' "$SH" "$1" > "$FX/repos_o_r_pulls_7"; }
-sguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; grep -c "shape pass on ${SH:0:10} isn't shown" "$T/err"; }
-TBL=$'| Item | Old ⇒ new | Commit |\n|---|---|---|\n| load() | 7 ⇒ 9 | abc1234 |'
-spr 'Fixes the leak.'
-printf 'Done in abc1234.\n' > "$T/sp-r.md"; sha256sum "$T/sp-r.md" | cut -d' ' -f1 > "$T/sp-r.md.gate"
-printf 'Done in abc1234.\n\n%s\n' "$TBL" > "$T/sp-t.md"; sha256sum "$T/sp-t.md" | cut -d' ' -f1 > "$T/sp-t.md.gate"
-check "BLOCK: gh pr ready, or a reply on the PR, when its head has a shape pass neither the body nor the reply shows, naming the head; a reply with the table passes" "1 1 0" "$(sguard 'gh pr ready 7 -R o/r') $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-r.md") $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-t.md")"
-spr "Fixes the leak."$'\n\n'"$TBL"
-check "the live body's old ⇒ new table shows it, for ready and for a reply" "0 0" "$(sguard 'gh pr ready 7 -R o/r') $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-r.md")"
-echo "shape $T/sp-carry.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"; spr 'Fixes the leak.'
-check "a head whose shape record carries an earlier pass asks for no table" 0 "$(sguard 'gh pr ready 7 -R o/r')"
-CH=$(printf 'c%.0s' $(seq 40)); echo "shape $T/sp-pass.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"
-printf 'carries the pass of %s: a merge of main\nCLEAN\n' "${SH:0:10}" > "$T/sp-carry2.md"; echo "shape $T/sp-carry2.md 2026-10-15T09:00:00Z" > "$HOME/.claude/pr-steps/$CH"
-python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":"Fixes the leak."}))' "$CH" > "$FX/repos_o_r_pulls_7"
-check "BLOCK: a head whose shape record carries a real pass needs that pass's table, naming both" 1 "$(sguard 'gh pr ready 7 -R o/r' >/dev/null; grep -c "shape pass on ${SH:0:10} (carried to ${CH:0:10}) isn't shown" "$T/err")"
-rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$SH" "$HOME/.claude/pr-steps/$CH"
-# ...and only that pass's own rows show it: an older pass's table in the body doesn't stand in for the head's newer pass
-OH=$(printf 'd%.0s' $(seq 40)); NH=$(printf 'e%.0s' $(seq 40)); NH2=$(printf 'a%.0s' $(seq 40))
-printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 6 ⇒ 7 | one owner |\n| 2 | `save()` | 8 ⇒ 8 | stable |\n✅ load(), save()\nCLEAN\n' > "$T/sp-old.md"
-printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 7 ⇒ 9 | split the parser from the loader |\n| 2 | `save()` | 8 ⇒ 8 | stable |\n✅ load(), save()\nCLEAN\n' > "$T/sp-new.md"
-echo "shape $T/sp-old.md 2026-10-14T08:00:00Z" > "$HOME/.claude/pr-steps/$OH"; echo "shape $T/sp-new.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$NH"
-OLDT=$'| Item | Old ⇒ new |\n|---|---|\n| `load()` | 6 ⇒ 7 |\n| `save()` | 8 ⇒ 8 |'
+# ---------- pre-bash-guard: a maintainer's refactor ask (the watcher's refactor-asks.txt) is answered by a pass recorded after it ----------
+# The guard reads the record only, on the PR's head or any commit it lists; whether a post shows that pass's result is the post review's.
+sguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; }
 pr7() { python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":sys.argv[2]}))' "$1" "$2" > "$FX/repos_o_r_pulls_7"; }
 gated() { printf '%s\n' "$2" > "$T/$1.md"; sha256sum "$T/$1.md" | cut -d' ' -f1 > "$T/$1.md.gate"; echo "$T/$1.md"; }
-shown() { sguard "$1" >/dev/null; grep -c "isn't shown" "$T/err"; }
-pr7 "$NH" "Fixes the leak."$'\n\n'"$OLDT"
-NEWR=$(gated sp-new-r "Done in abc1234."$'\n\n| Item | Old ⇒ new | Commit | Why |\n|---|---|---|---|\n| `load()` | 7 ⇒ 9 | abc1234 | split the parser from the loader |')
-REWR=$(gated sp-rew-r "Done in abc1234."$'\n\n| What | Old ⇒ new | Why |\n|---|---|---|\n| `src/load.ts` | 7 ⇒ 9 | the loader no longer parses |\n| `save()` | 8 ⇒ 8 | nothing to change |')
-check "BLOCK: an older pass's table in the body, with a newer pass on the head: gh pr ready and a reply without the new rows" "1 1" "$(shown 'gh pr ready 7 -R o/r') $(shown "gh pr comment 7 -R o/r --body-file $T/sp-r.md")"
-check "the newer pass's rows in the reply pass, the body's old table notwithstanding; so do they with a reworded reason" "0 0" "$(shown "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $REWR")"
-# the head's latest shape record decides: a pass recorded after a carry on the same head (a pass made for an ask) is the one to show
-printf 'carries the pass of %s: tests only\nCLEAN\n' "${OH:0:10}" > "$T/sp-carry3.md"
-printf 'shape %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T09:00:00Z\n' "$T/sp-carry3.md" "$T/sp-new.md" > "$HOME/.claude/pr-steps/$NH2"; pr7 "$NH2" "Fixes the leak."$'\n\n'"$OLDT"
-check "BLOCK: a head with a carry, then a pass recorded for an ask: the old pass's table doesn't show it, the new rows do" "1 0" "$(shown 'gh pr ready 7 -R o/r') $(shown "gh pr comment 7 -R o/r --body-file $NEWR")"
-rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$OH" "$HOME/.claude/pr-steps/$NH" "$HOME/.claude/pr-steps/$NH2"
-# a maintainer's refactor ask on the PR (the watcher's refactor-asks.txt) needs a pass recorded after it, on any of the PR's commits, shown in the post
+printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 6 ⇒ 7 | one owner |\n✅ load()\nCLEAN\n' > "$T/sp-old.md"
+printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 7 ⇒ 9 | split the parser from the loader |\n✅ load()\nCLEAN\n' > "$T/sp-new.md"
+printf 'carries the pass of 1111111111: tests only\nCLEAN\n' > "$T/sp-carry.md"
 AH=$(printf '1%.0s' $(seq 40)); MH=$(printf '2%.0s' $(seq 40))
 echo "2026-10-15T08:04:10Z ${AH:0:10} o/r#7 https://example.invalid/o/r/pull/7#issuecomment-9" > "$HOME/.claude/refactor-asks.txt"
-asked() { sguard "$1" >/dev/null; grep -c "issuecomment-9 asks for a refactor pass (2026-10-15T08:04:10Z) and no pass on this PR was recorded after it.*pr-steps shape <report>" "$T/err"; }
+asked() { sguard "$1"; grep -c "issuecomment-9 asks for a refactor pass (2026-10-15T08:04:10Z) and no pass on this PR was recorded after it.*pr-steps shape <report>" "$T/err"; }
 oldpass() { echo "shape $T/sp-old.md 2026-10-14T08:00:00Z" > "$HOME/.claude/pr-steps/$AH"; }
 newpass() { echo "shape $T/sp-new.md 2026-10-15T09:00:00Z" >> "$HOME/.claude/pr-steps/$AH"; }
-OLDR=$(gated sp-old-r "Done in abc1234."$'\n\n'"$OLDT")
+OLDR=$(gated sp-old-r "Done in abc1234."$'\n\n| Item | Old ⇒ new |\n|---|---|\n| `load()` | 6 ⇒ 7 |')
+NEWR=$(gated sp-new-r "Done in abc1234."$'\n\n| Item | Old ⇒ new | Commit |\n|---|---|---|\n| `load()` | 7 ⇒ 9 | abc1234 |')
 oldpass; pr7 "$AH" 'Fixes the leak.'
 check "BLOCK: an ask after the head's pass, answered with no new pass (it landed no commit), naming the ask and pr-steps shape" 1 "$(asked "gh pr comment 7 -R o/r --body-file $OLDR")"
-newpass
-check "a pass recorded on the unchanged head after the ask, shown in the reply, passes; the old table doesn't show it" "0 0 1" "$(asked "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $OLDR")"
+echo "shape $T/sp-carry.md 2026-10-15T09:00:00Z" >> "$HOME/.claude/pr-steps/$AH"
+check "BLOCK: a carry recorded after the ask doesn't answer it" 1 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
+oldpass; newpass
+check "a pass recorded on the unchanged head after the ask answers it, whatever table the reply holds (the post review checks that)" "0 0" "$(asked "gh pr comment 7 -R o/r --body-file $NEWR") $(asked "gh pr comment 7 -R o/r --body-file $OLDR")"
 oldpass; pr7 "$MH" 'Fixes the leak.'; python3 -c 'import json,sys; print(json.dumps([{"sha":sys.argv[1]},{"sha":sys.argv[2]}]))' "$AH" "$MH" > "$FX/repos_o_r_pulls_7_commits_per_page_100"
-check "BLOCK: the maintainer's commits on top (a head with no record): the ask still needs a pass" 1 "$(asked "gh pr comment 7 -R o/r --body-file $OLDR")"
+check "BLOCK: the maintainer's commits on top (a head with no record): the ask still needs a pass" 1 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
 newpass
-check "a pass after the ask on any of the PR's commits passes once shown; the old table doesn't show it" "0 0 1" "$(asked "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $OLDR")"
+check "a pass after the ask on any of the PR's commits answers it" 0 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
 oldpass
-check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$OLDR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$OLDR")"
+check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 newpass
-check "through gh api, the pass recorded and shown passes; the old table doesn't show it" "0 0 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(shown "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR") $(shown "gh api repos/o/r/issues/7/comments -F body=@$OLDR")"
+check "through gh api, the pass recorded after the ask answers it" "0 0" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 # every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target
 oldpass; echo 6 > "$FX/pr_view_current"; echo 7 > "$FX/pr_view_feature"
-check "BLOCK: gh pr comment by URL or branch, gh issue comment on the PR's number, gh pr ready by URL" "1 1 1 1" "$(asked "gh pr comment https://github.com/o/r/pull/7 --body-file $OLDR") $(asked "gh pr comment feature -R o/r --body-file $OLDR") $(asked "gh issue comment 7 -R o/r --body-file $OLDR") $(asked 'gh pr ready https://github.com/o/r/pull/7')"
+check "BLOCK: gh pr comment by URL or branch, gh issue comment on the PR's number, gh pr ready by URL" "1 1 1 1" "$(asked "gh pr comment https://github.com/o/r/pull/7 --body-file $NEWR") $(asked "gh pr comment feature -R o/r --body-file $NEWR") $(asked "gh issue comment 7 -R o/r --body-file $NEWR") $(asked 'gh pr ready https://github.com/o/r/pull/7')"
 newpass
-check "the same forms pass once the pass is recorded and shown" "0 0 0" "$(shown "gh pr comment https://github.com/o/r/pull/7 --body-file $NEWR") $(shown "gh pr comment feature -R o/r --body-file $NEWR") $(shown "gh issue comment 7 -R o/r --body-file $NEWR")"
+check "the same forms pass once the pass is recorded" "0 0 0 0" "$(asked "gh pr comment https://github.com/o/r/pull/7 --body-file $NEWR") $(asked "gh pr comment feature -R o/r --body-file $NEWR") $(asked "gh issue comment 7 -R o/r --body-file $NEWR") $(asked 'gh pr ready https://github.com/o/r/pull/7')"
 rm -f "$FX/pr_view_current" "$FX/pr_view_feature"
-HIDR=$(gated sp-hid-r "Done in abc1234."$'\n\n<!--\n| `load()` | 7 ⇒ 9 | abc1234 |\n-->')
-CODR=$(gated sp-cod-r "Done in abc1234."$'\n\n```\n| `load()` | 7 ⇒ 9 | abc1234 |\n```')
-check "BLOCK: the pass's rows inside an HTML comment or fenced code don't show it" "1 1" "$(shown "gh pr comment 7 -R o/r --body-file $HIDR") $(shown "gh pr comment 7 -R o/r --body-file $CODR")"
-# while the ask waits on its pass, a holding reply goes out only once the session has promised the result in its watch dir's proposals-open.md
+# while the ask waits on its pass, a comment goes out once the session has promised the result in its watch dir's proposals-open.md;
+# gh pr ready and a body edit always wait for the recorded pass
 oldpass; HOLD=$(gated sp-hold-r "I'm running the refactor pass on the whole PR now; the ratings and their commits follow by 15:00 UTC.")
+DONE=$(gated sp-done-b "The wrapper is fixed in abc1234.")
 WR="$T/wr"; mkdir -p "$WR"; echo sess-r4 > "$WR/session"; echo "$WR" >> "$HOME/.claude/gh-watch-dirs.txt"
-hold() { printf '%s\n' "$1" > "$WR/proposals-open.md"; CLAUDE_CODE_SESSION_ID=sess-r4 asked "gh pr comment 7 -R o/r --body-file $HOLD"; }
-check "BLOCK: a holding reply with no PROMISED line, the block naming that way through" "1 1" "$(hold '') $(grep -c "To post before it .*'PROMISED o/r#7: the refactor pass's result by <time> (<draft>)'" "$T/err")"
-check "the session's open PROMISED line for the PR's refactor result lets it through; another PR's, or a cleared one, doesn't" "0 1 1" "$(hold "PROMISED o/r#7: the refactor pass's result by 15:00 UTC (sp-hold-r.md)") $(hold "PROMISED o/r#8: the refactor pass's result (x.md)") $(hold "DONE https://example.invalid/c PROMISED o/r#7: the refactor pass's result (sp-hold-r.md)")"
+hold() { printf '%s\n' "$1" > "$WR/proposals-open.md"; CLAUDE_CODE_SESSION_ID=sess-r4 asked "${2:-gh pr comment 7 -R o/r --body-file $HOLD}"; }
+check "BLOCK: a holding comment with no PROMISED line, the block naming that way through" "1 1" "$(hold '') $(grep -c "To post before it .*'PROMISED o/r#7: the refactor pass's result by <time> (<draft>)'" "$T/err")"
+PL="PROMISED o/r#7: the refactor pass's result by 15:00 UTC (sp-hold-r.md)"
+check "the session's open PROMISED line for the PR's refactor result lets a comment through; another PR's, or a cleared one, doesn't" "0 1 1" "$(hold "$PL") $(hold "PROMISED o/r#8: the refactor pass's result (x.md)") $(hold "DONE https://example.invalid/c PROMISED o/r#7: the refactor pass's result (sp-hold-r.md)")"
 rm -rf "$WR"; sed -i "\#^$WR\$#d" "$HOME/.claude/gh-watch-dirs.txt"
 rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
