@@ -443,6 +443,13 @@ check "a PR body over budget by a pass block titled 'Review' names the titles po
 printf 'Can you look at my five commits?\n' > "$T/cr.parent.md"; for n in $(seq 1 32); do echo "Commit number $n keeps the install line in the page."; done > "$T/cr0.md"
 { head -12 "$T/cr0.md"; printf '\n| Commit | What it does, and the idea behind it | Rating |\n|---|---|---|\n'; for n in 1 2 3 4 5; do echo "| abc12${n}0 | Moves the wrapper comment into the source so the generated file stays short and readable for users who open it, and the reason for the fallback lives next to the code | 9/10 (one case untested) |"; done; } > "$T/cr.md"
 check "a reply's commit-review table (reply §Maintainer commits) counts toward no word cap: 120 words of prose with it pass, 320 without it fail" "0 1" "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/cr.md" --kind reply --parent "$T/cr.parent.md" >/dev/null 2>&1; echo $?) $(python3 "$R/bin/post-lint" "$T/cr0.md" --kind reply --parent "$T/cr.parent.md" 2>&1 | grep -c 'words > 300 for a reply')"
+# only rated rows leave the count, and each lifts the short-comment cap by a sentence: a token row exempts nothing else
+printf 'Can you do it now?\n' > "$T/tk.parent.md"; WHY='This sentence explains how the code works inside in great detail so the reader has to wade through it again and again.'
+{ printf 'Done in abc1234567.\n\n| Item | Notes |\n|---|---|\n| `a.ts` | 7 ⇒ 9 |\n'; for n in $(seq 1 30); do echo "| Why $n | $WHY |"; done; } > "$T/tk1.md"
+{ printf 'Done in abc1234567.\n\n| Commit | Notes | Rating |\n|---|---|---|\n'; for n in $(seq 1 30); do echo "| x$n | $WHY | ok |"; done; } > "$T/tk2.md"
+{ for n in $(seq 1 10); do echo "$WHY"; done; printf '\n| `a.ts` | 7 ⇒ 9 |\n'; } > "$T/tk3.md"
+tk() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/$1.md" --kind reply --parent "$T/tk.parent.md" 2>&1 | grep -c "$2"; }
+check "BLOCK: prose rows under one rated row, a commit-review table with no rating, and one row under 220 words answering a short comment" "1 1 1" "$(tk tk1 'words > 300') $(tk tk2 'words > 300') $(tk tk3 'answering a 5-word comment (cap 100)')"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"
