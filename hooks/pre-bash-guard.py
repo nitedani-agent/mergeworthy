@@ -2,7 +2,7 @@
 """Claude Code PreToolUse hook (matcher: Bash). Exit 2 blocks the command; stderr goes to the agent.
 Checks each simple command separately (split at ; && || | & and newlines, heredoc bodies and quoted text ignored).
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
-import json, re, sys, os, hashlib, subprocess
+import glob, json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight
 import steward, post_words
@@ -193,12 +193,21 @@ def check_shape_shown(repo, num, texts, head=None, live=True):
         except (subprocess.TimeoutExpired, ValueError): pr = None
         if not isinstance(pr, dict): return
         head, body = (pr.get('head') or {}).get('sha') or head, (pr.get('body') or '') if live else ''
-    rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
-    if not head or not os.path.exists(rec): return
-    passes = [f for k, f, *_ in (l.split() for l in open(rec) if len(l.split()) >= 2) if k == 'shape' and os.path.isfile(f)
-              and not re.search(r'carries the pass of [0-9a-f]{7,40}', open(f, errors='replace').read())]
-    if passes and not any(RATED.search(t) for t in texts + [body]):
-        block(f"the shape pass on {head[:10]} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
+    passed = shape_pass(head) if head else None
+    if passed and not any(RATED.search(t) for t in texts + [body]):
+        on = passed[:10] + (f' (carried to {head[:10]})' if passed != head else '')
+        block(f"the shape pass on {on} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
+
+def shape_pass(sha, seen=()):
+    """The commit whose recorded shape pass stands for sha: sha itself, or, through each `carries the pass of <sha>` record, the pass it carries."""
+    rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
+    if sha in seen or not os.path.isfile(rec): return None
+    for k, f, *_ in (l.split() for l in open(rec) if len(l.split()) >= 2):
+        if k != 'shape' or not os.path.isfile(f): continue
+        c = re.search(r'carries the pass of ([0-9a-f]{7,40})', open(f, errors='replace').read())
+        if not c: return sha
+        for full in glob.glob(os.path.expanduser(f'~/.claude/pr-steps/{c[1]}*')):
+            if (p := shape_pass(os.path.basename(full), (*seen, sha))): return p
 
 def cwd_repo(run_dir):
     import subprocess

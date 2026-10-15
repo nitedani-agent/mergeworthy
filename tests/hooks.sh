@@ -1135,7 +1135,11 @@ spr "Fixes the leak."$'\n\n'"$TBL"
 check "the live body's old ⇒ new table shows it, for ready and for a reply" "0 0" "$(sguard 'gh pr ready 7 -R o/r') $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-r.md")"
 echo "shape $T/sp-carry.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"; spr 'Fixes the leak.'
 check "a head whose shape record carries an earlier pass asks for no table" 0 "$(sguard 'gh pr ready 7 -R o/r')"
-rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$SH"
+CH=$(printf 'c%.0s' $(seq 40)); echo "shape $T/sp-pass.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"
+printf 'carries the pass of %s: a merge of main\nCLEAN\n' "${SH:0:10}" > "$T/sp-carry2.md"; echo "shape $T/sp-carry2.md 2026-10-15T09:00:00Z" > "$HOME/.claude/pr-steps/$CH"
+python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":"Fixes the leak."}))' "$CH" > "$FX/repos_o_r_pulls_7"
+check "BLOCK: a head whose shape record carries a real pass needs that pass's table, naming both" 1 "$(sguard 'gh pr ready 7 -R o/r' >/dev/null; grep -c "shape pass on ${SH:0:10} (carried to ${CH:0:10}) isn't shown" "$T/err")"
+rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$SH" "$HOME/.claude/pr-steps/$CH"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
