@@ -5,7 +5,7 @@ description: "The standard for every word a person reads: GitHub comments, repli
 
 # Writing
 
-How every outward word reads: comments, replies, edits, PR and issue bodies, gists, and reports to the user. `post` says when and through which steps; a body's template (`pull-request §Body`, `open-issue` step 3) wins on form, and its prose follows this.
+A body's template (`pull-request §Body`, `open-issue` step 3) wins on form, and its prose follows this.
 
 ### Draft
 
