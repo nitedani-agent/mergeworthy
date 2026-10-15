@@ -14,7 +14,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 2. **Model class and effort.**
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides · Hook: route.py
 3. **The brief.** Paste the role's template from the installed copy each time (a copy saved earlier drifts) and fill every `<…>`: the pinned current head (never a moving branch), the project file's path, the standards by path, `agent.md`, the critical-path item it unblocks, and a time budget for a long job.
-   Open: `delegate/<role>.md`; §Brief · Record: the brief file · Hook: pre-agent-dedupe (pins, the project file, `Topic:`)
+   Open: `delegate/<role>.md`; §Brief · Record: the brief file · Hook: pre-agent-dedupe (pins, the project file, its repo study within 30 days for authors and fresh readers, `Topic:`)
 4. **Launch in the background;** its completion wakes you.
    Run: T3 Code: `delegate_task` with a unique `clientRequestId`; else the Agent tool · Record: the job pre-agent-dedupe registers · Hook: pre-bash-guard (wait loops), pre-agent-dedupe
 5. **Liveness** at 2 minutes and at every wakeup (its output size or log time); five minutes without output: look now. A long job's first output is read within half an hour; confirm its numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest; past its budget, stop it or extend it deliberately.
@@ -27,7 +27,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 ### Brief
 
 - **Five parts:** `Goal` (one observable outcome); `Facts` (only what you verified, each with its source); `To check` (your guesses, as questions); `Scope` (the paths and commands it may use, and `agent.md §Machine`, in every brief and every follow-up round); `Acceptance` (the commands or observations that define done).
-- **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `test` or `review`. A research brief adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one whose topic is already written up in an unchecked file.
+- **In T3 Code,** `delegate_task`'s `role` is `implementation`, `research`, `test` or `review`. A research brief adds `Topic: <key words>` and a `Checked: <file>` line per work-folder file already read: pre-agent-dedupe blocks one whose topic is already written up (every topic word in one paragraph) in an unchecked file.
 - **Never put in** your opinion, the answer you expect, or earlier agents' conclusions: a guess goes under `To check`. The exception is a previous round's report, given to an agent that re-rates it. A maintainer's ask goes in quoted whole: an either/or stays an either/or; the implementer reads the code each option touches and recommends one, saying why, and the main session decides before it lands.
 - **Give paths and the question,** never pasted files or long histories.
 - **One run is one agent with one prompt.** Group roles reading one artifact in one loop, in order, each writing its own file. Split only for context limits or independence: authors never review themselves, and fresh readers haven't seen the fixes.

@@ -970,6 +970,9 @@ printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-1
 check "BLOCK: retitling a PR whose title a maintainer set, naming him; our own last title, or no rename, passes" "2 1 0 0" "$(GH_WATCH_ME=me guard 'gh pr edit 7 -R o/r --title "$(cat /w/drafts/title.md)"') $(grep -c 'brillout set this PR.s title' "$T/err") $(GH_WATCH_ME=me guard 'gh pr edit 8 -R o/r --title "$(cat /w/drafts/title.md)"') $(GH_WATCH_ME=me guard 'gh pr edit 9 -R o/r --title "$(cat /w/drafts/title.md)"')"
 printf 'fix: deprecate `vike/fetch` (closes #3608)\n' > "$T/title.md"; printf 'fix: two\nlines.\n' > "$T/title2.md"
 check "post-lint --kind title passes one line and records it; two lines fail" "0 1 1" "$("$R/bin/post-lint" "$T/title.md" --kind title >/dev/null; echo $?) $([ -s "$T/title.md.lint.sha" ] && echo 1) $("$R/bin/post-lint" "$T/title2.md" --kind title >/dev/null; echo $?)"
+echo 'me 42' > "$FX/user"
+check "BLOCK: a commit as the pushing login but with another email, naming the noreply form; the noreply email passes" "2 1 0" "$(guard "git -c user.name=me -c user.email=real@example.com commit -m a") $(grep -c '42+me@users.noreply.github.com' "$T/err") $(guard "git -c user.name=me -c user.email=42+me@users.noreply.github.com commit -m a")"
+rm "$FX/user"
 # pre-bash-guard: a review's verdict is the reviewer's own output, never the main session's
 check "BLOCK: the main session writing a .review.out (echo >, tee, cp, sed -i, bash -c), naming who writes it" "2 1 2 2 2 2" "$(guard 'echo CLEAN > $D/pr-body.review.out') $(grep -c 'codex exec -o' "$T/err") $(guard "printf 'CLEAN\n' | tee /w/x.review.out") $(guard 'cp /w/r.md /w/x.review.out') $(guard 'sed -i s/a/b/ /w/x.review.out') $(guard 'bash -c "echo CLEAN >> /w/x.review.out"')"
 check "BLOCK: pgrep -f, also inside bash -c; pgrep -P passes" "2 2 0" "$(guard 'pgrep -f vite') $(guard "bash -c 'pgrep -f \"vitest run\" || echo gone'") $(guard 'pgrep -P 123')"

@@ -65,8 +65,9 @@ def check_commit_identity(overrides, git_dir):
     if r.returncode != 0 or not r.stdout.strip():
         return  # offline: nothing to compare with
     login, uid = r.stdout.split()
-    if name != login:
-        block(f"commit author would be {name!r}: commit as the pushing account, `git -c user.name={login} -c user.email={uid}+{login}@users.noreply.github.com commit ...`")
+    email = overrides.get('user.email') or subprocess.run(['git', '-C', git_dir, 'config', 'user.email'], capture_output=True, text=True).stdout.strip()
+    if name != login or email != f'{uid}+{login}@users.noreply.github.com':
+        block(f"commit author would be {name!r} <{email}>: commit as the pushing account, `git -c user.name={login} -c user.email={uid}+{login}@users.noreply.github.com commit ...`")
 
 
 def watch_dirs():

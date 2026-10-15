@@ -17,7 +17,7 @@ EOF
 read_standards() {
   sec=$(awk '/^## Standards read/{f=1;next} /^## /{f=0} f' "$out" | tr -s ' \n' '  ')
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
-  [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; mergeworthy delegate/verifier.md). Missing:" "$miss" >&2; exit 1; }
+  [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
 step=${1:?usage: pr-steps <preflight|approach|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
 case "$step" in preflight|approach|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;

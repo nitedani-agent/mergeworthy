@@ -145,7 +145,7 @@ It skips its watcher checks and the refresh order while the user's last message 
 
 ### `session-start` 
 
-It puts the always-on rules into context and writes `settings.env`. A second SessionStart hook, `session-memory.py`, prints, in an main session's checkout, the order to refresh `memory.md` when it is behind, then its Standing digest. `session-start` also points `~/.mergeworthy/current` at the installed version.
+It puts the always-on rules into context and writes `settings.env`. A second SessionStart hook, `session-memory.py`, prints, in a main session's checkout, the order to refresh `memory.md` when it is behind, then its Standing digest. `session-start` also points `~/.mergeworthy/current` at the installed version.
 
 ### `pre-skill-gate.py` (always-on rule 1)
 
@@ -168,7 +168,7 @@ Read-only commands pass.
 - an implementation, drafter (`thread-context.md`) or fresh-reader (`MERGE AS IS`) brief for a repo whose project file's `## Who decides` links no `<repo>.study.md` with a first line `Studied: <date>` within 30 days (`task` step 4);
 - a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list;
 - a brief still holding a placeholder of a fenced template in `skills/delegate/` (`<the slice's risky edges>`), naming each and its template; one in backticks there (the agent's output form), the pasted `agent.md`'s and an HTML tag don't count;
-- in an main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph) all appear in a file under the work folder not named in a `Checked:` line.
+- in a main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph) all appear in a file under the work folder not named in a `Checked:` line.
 
 ### `netns-run`
 

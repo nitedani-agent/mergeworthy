@@ -5,7 +5,7 @@ description: "Woken by the Monitor, a `/ai` comment or a resume; a comment to an
 
 # Reply
 
-You answer; agents only draft a reply or sort a follow-up. A maintainer's comment is handled like the user typing in this chat: highest priority, full effort. A `/ai` or `/agent` comment is the user typing: start it at once, in parallel with what's running, through `task`, and tell the user in chat.
+The watcher (`task` step 5) writes each comment you owe to `events.log` and `replies-owed.md` and reacts 👀 to it. You answer; agents only draft a reply or sort a follow-up. A maintainer's comment is handled like the user typing in this chat: highest priority, full effort. A `/ai` or `/agent` comment is the user typing: start it at once, in parallel with what's running, through `task`, and tell the user in chat.
 
 ## Steps
 

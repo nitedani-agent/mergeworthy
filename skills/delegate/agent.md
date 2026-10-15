@@ -20,4 +20,4 @@ Pasted into every brief, after the role's template.
 - **Never modify the package store or a shared `node_modules`.** Scratch installs use `--package-import-method=copy`. After any install, check `git status` for unexpected changes.
 - **Browsers:** isolated browser control with real interactions (`--isolated`); never scripted events in place of them, windows on the user's desktop, or another session's browser.
 - **Worktrees:** your own ports, databases and generated clients. Never touch the user's own checkouts or their git config: no edits, commits, checkouts, resets or branch switches there. To read another branch, `git worktree add --detach <work folder>/<name> <ref>`.
-- **Git:** never a bare `git stash`; never push unless the brief says so.
+- **Git:** never `git stash` without `push -u -m <tag>` (the stash stack is shared across worktrees); never push unless the brief says so.
