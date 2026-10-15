@@ -102,7 +102,50 @@ def in_use(path):
     return False
 
 
+def open_dir(path):
+    """An fd of the directory path, opened from / one component at a time; OSError when a component is a symlink."""
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    for name in path.strip('/').split('/'):
+        try:
+            sub = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+        finally:
+            os.close(fd)
+        fd = sub
+    return fd
+
+
+def empty(fd):
+    """Delete everything inside the open directory fd, opening each subdirectory without following a symlink."""
+    for e in os.scandir(fd):
+        if e.is_dir(follow_symlinks=False):
+            sub = os.open(e.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            try:
+                empty(sub)
+            finally:
+                os.close(sub)
+            os.rmdir(e.name, dir_fd=fd)
+        else:
+            os.unlink(e.name, dir_fd=fd)
+
+
+def remove(path, st):
+    """Delete the directory path through fds opened without following a symlink, only while it is still the inode st."""
+    parent = open_dir(os.path.dirname(path))
+    try:
+        fd = os.open(os.path.basename(path), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            if (os.fstat(fd).st_dev, os.fstat(fd).st_ino) != (st.st_dev, st.st_ino):
+                raise OSError(f'{path} is no longer the directory the sweep inspected')
+            empty(fd)
+        finally:
+            os.close(fd)
+        os.rmdir(os.path.basename(path), dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
 def delete(path, dev, rule):
+    st = os.lstat(path)
     if os.path.realpath(path) != path or changed(path, lambda rel: False):
         return
     nbytes = reclaim(path, dev)
@@ -113,7 +156,7 @@ def delete(path, dev, rule):
             return
         record(nbytes, path, rule, 'deleting')
         try:
-            shutil.rmtree(path)
+            remove(path, st)
         except OSError as e:
             print(f'disk-sweep: {path}: {e}', file=sys.stderr)
             record(nbytes, path, rule, 'failed')

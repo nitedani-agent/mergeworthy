@@ -103,8 +103,22 @@ check "a candidate a process started working in after the sweep's start is kept"
 
 # a sweep killed in the middle of a deletion
 mkdir -p "$T/killed/node_modules"; echo x > "$T/killed/node_modules/x"; age "$T/killed"
-dsm 'm.DRY = False; m.shutil.rmtree = lambda p: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
+dsm 'm.DRY = False; m.empty = lambda fd: os.kill(os.getpid(), 9); p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/killed/node_modules"
 check "a sweep killed while deleting leaves the deletion's intent in the log" "137 1" "$? $(grep -c "^[^ ]* [0-9][0-9]* $T/killed/node_modules c-ignored deleting$" "$LOG")"
+
+# a repo swapped for a symlink, then for a real directory, after the sweep inspected its node_modules and before it deletes it
+swap() { mkdir -p "$T/$1/repo/node_modules" "$T/$1/outside/node_modules"; echo x > "$T/$1/repo/node_modules/x"; echo only > "$T/$1/outside/node_modules/only-copy.txt"; age "$T/$1"
+  dsm 'rec = m.record
+def record(n, what, rule, state):
+    if state == "deleting":
+        os.rename(sys.argv[3] + "/repo", sys.argv[3] + "/repo-old")
+        os.symlink(sys.argv[3] + "/outside", sys.argv[3] + "/repo") if sys.argv[4] == "symlink" else os.rename(sys.argv[3] + "/outside", sys.argv[3] + "/repo")
+    rec(n, what, rule, state)
+m.record = record; m.DRY = False; p = sys.argv[3] + "/repo/node_modules"; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/$1" "$1" 2>/dev/null; }
+swap symlink
+check "a repo swapped for a symlink to elsewhere before the deletion: neither node_modules is deleted" "kept kept" "$(there "$T/symlink/outside/node_modules/only-copy.txt") $(there "$T/symlink/repo-old/node_modules/x")"
+swap dir
+check "a repo swapped for another real directory before the deletion: neither node_modules is deleted" "kept kept" "$(there "$T/dir/repo/node_modules/only-copy.txt") $(there "$T/dir/repo-old/node_modules/x")"
 
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
 F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"
