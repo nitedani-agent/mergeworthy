@@ -9,7 +9,9 @@ or loose parent a process works in, holds a file open in or a job names right be
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
 - d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
-  Docker reports, `?` in a dry run. Only when HOME is the account's home: a run with another HOME is a test or a probe."""
+  Docker reports, `?` in a dry run.
+Deleting under the account's home and pruning Docker happen only when the watcher daemon of the main watch dir started the sweep
+(from_daemon); anything else deletes only in folders outside that home, a test's temp roots."""
 import datetime, fcntl, glob, os, pwd, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import agent_jobs
@@ -22,6 +24,50 @@ DAY = 86400
 VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
 STATE = os.path.join(HOME, '.mergeworthy')
+ACCOUNT_HOME = os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir)  # from the password database: a probe's HOME can't move it
+INSTALLED = os.path.realpath(os.path.join(ACCOUNT_HOME, '.mergeworthy', 'current'))
+
+
+def inside(path, top):
+    return path == top or path.startswith(top + '/')
+
+
+def main_watch_dir():
+    """The account's main watch dir, as the watcher's main_dir() picks it: ~/.mergeworthy/main-watch while its watcher runs,
+    else the first live dir in ~/.claude/gh-watch-dirs.txt."""
+    def live(d):
+        try:
+            os.kill(int(open(os.path.join(d, 'gh-watch.pid')).read().strip()), 0)
+            return True
+        except (OSError, ValueError):
+            return False
+    try:
+        dirs = [open(os.path.join(ACCOUNT_HOME, '.mergeworthy', 'main-watch')).read().strip()]
+    except OSError:
+        dirs = []
+    try:
+        dirs += [l.strip() for l in open(os.path.join(ACCOUNT_HOME, '.claude', 'gh-watch-dirs.txt'))]
+    except OSError:
+        pass
+    return next((os.path.realpath(d) for d in dirs if d and live(d)), None)
+
+
+def from_daemon(installed, main):
+    """Whether the watcher daemon of the watch dir main, running from installed, started this process: this file is inside
+    installed, its parent runs installed's gh-watch.py with main as its working dir, and main's gh-watch.pid names the
+    parent's parent, the daemon's loop. A test, a probe or an imported main() has another parent, another copy or no pid file."""
+    if not main or not inside(os.path.realpath(__file__), installed):
+        return False
+    ppid = os.getppid()
+    try:
+        here = os.readlink(f'/proc/{ppid}/cwd')
+        argv = open(f'/proc/{ppid}/cmdline', 'rb').read().decode(errors='replace').split('\0')
+        loop = int(open(f'/proc/{ppid}/stat').read().rsplit(')', 1)[1].split()[1])
+        pid = int(open(os.path.join(here, 'gh-watch.pid')).read().strip())
+    except (OSError, ValueError, IndexError):
+        return False
+    script = next((a for a in argv if os.path.basename(a) == 'gh-watch.py'), None)
+    return bool(script) and inside(os.path.realpath(os.path.join(here, script)), installed) and here == main and pid == loop
 
 
 def record(nbytes, what, rule, state):
@@ -181,6 +227,9 @@ def delete(path, owner, dev, rule):
     if not DRY:
         if busy(owner):  # a process or a job may have started in owner since its selection
             return
+        if inside(path, ACCOUNT_HOME) and not from_daemon(INSTALLED, main_watch_dir()):
+            print(f'disk-sweep: {path}: only the watcher daemon of the main watch dir deletes under {ACCOUNT_HOME}', file=sys.stderr)
+            return
         record(nbytes, path, rule, 'deleting')
         try:
             remove(path, st)
@@ -236,27 +285,34 @@ def sweep_files():
                 delete(nm, parent, dev, 'c-node_modules')
 
 
-def docker_answers():
-    try:
-        return bool(shutil.which('docker')) and not subprocess.run(['docker', 'version'], capture_output=True, timeout=60).returncode
-    except subprocess.TimeoutExpired:
-        return False
+PRUNES = ('image', 'builder')  # no containers: until= is their creation time, so a stack stopped a minute ago would go
 
 
-
-def prune_docker(account_home):
-    """d-docker, when HOME is account_home; 1 when a prune fails, else 0."""
-    if os.path.realpath(HOME) != os.path.realpath(account_home):
-        print(f'disk-sweep: HOME is {HOME}, not the account home {account_home}: Docker skipped', file=sys.stderr)
+def prune_docker():
+    """d-docker; 1 when a prune fails, else 0. A dry run lists the prunes without calling Docker; a deleting run prunes only
+    when the watcher daemon of the main watch dir started it, since the machine's Docker is shared with every test and probe."""
+    if not shutil.which('docker'):
         return 0
-    if not docker_answers():
-        return 0
-    failed = 0
-    for what in ('image', 'builder'):  # no containers: until= is their creation time, so a stack stopped a minute ago would go
-        if DRY:
+    if DRY:
+        for what in PRUNES:
             record('?', f'docker:{what}', 'd-docker', 'deleted')
-            continue
-        r = subprocess.run(['docker', what, 'prune', '-f', '--filter', 'until=24h'], capture_output=True, text=True)
+        return 0
+    if not from_daemon(INSTALLED, main_watch_dir()):
+        print('disk-sweep: not started by the watcher daemon of the main watch dir: Docker skipped', file=sys.stderr)
+        return 0
+    try:
+        if subprocess.run(['docker', 'version'], capture_output=True, timeout=60).returncode:
+            return 0
+    except subprocess.TimeoutExpired:
+        return 0
+    return run_prunes('docker')
+
+
+def run_prunes(docker):
+    """docker's image and builder prunes, each logged with the size it reports; 1 when one fails, else 0."""
+    failed = 0
+    for what in PRUNES:
+        r = subprocess.run([docker, what, 'prune', '-f', '--filter', 'until=24h'], capture_output=True, text=True)
         if r.returncode:
             print(f'disk-sweep: docker {what} prune exited {r.returncode}: {r.stderr.strip()}', file=sys.stderr)
             failed = 1
@@ -271,6 +327,10 @@ def main():
     if sys.argv[1:] not in ([], ['--delete']):
         sys.exit('usage: disk-sweep [--delete]')
     DRY = sys.argv[1:] != ['--delete']
+    home = os.path.realpath(HOME)
+    if not DRY and (inside(home, ACCOUNT_HOME) or inside(ACCOUNT_HOME, home)) and not from_daemon(INSTALLED, main_watch_dir()):
+        print(f'disk-sweep: --delete under {ACCOUNT_HOME} runs only from the watcher daemon of the main watch dir', file=sys.stderr)
+        sys.exit(2)
     os.makedirs(STATE, exist_ok=True)
     lock = open(os.path.join(STATE, 'disk-sweep.lock'), 'a')
     try:
@@ -278,7 +338,7 @@ def main():
     except OSError:
         sys.exit('disk-sweep: another sweep is running')
     sweep_files()
-    sys.exit(prune_docker(pwd.getpwuid(os.getuid()).pw_dir))
+    sys.exit(prune_docker())
 
 
 if __name__ == '__main__':
