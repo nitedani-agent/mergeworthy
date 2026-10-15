@@ -901,6 +901,19 @@ L='- %s: cancelled the reader mid-stream, source stopped\n'; printf "slice 1\n##
 check "BLOCK: a body-touching diff's Loop A without the list, then without one item (named), then with one-word answers; with a probe per item, records" "1 1 1 1 0" "$(prs3 verify "$T/vb0.md") $(prs3 verify "$T/vb1.md") $(grep -c 'too short: Cancellation, .*Second copy$' "$T/prs3.err") $(prs3 verify "$T/vb2.md") $(prs3 verify "$T/vb3.md")"
 echo 'Response.prototype.text = f' > "$G3/a.ts"; git -C "$G3" -c user.name=t -c user.email=t@t commit -qam c
 check "BLOCK: a patch onto a built-in's prototype also needs the list" 1 "$(prs3 verify "$T/vb0.md")"
+# pr-steps gates: each changeset the branch adds is a sentence or two, and names every package whose files the branch changed
+G5="$T/prs5"; mkdir -p "$G5/packages/a" "$G5/packages/b" "$G5/examples/e" "$G5/.changeset"; git -C "$G5" init -q -b main
+echo '{"name": "root"}' > "$G5/package.json"; echo '{"name": "@x/a"}' > "$G5/packages/a/package.json"; echo '{"name": "@x/b"}' > "$G5/packages/b/package.json"
+echo '{"name": "e", "private": true}' > "$G5/examples/e/package.json"; seq 1 80 | tr '\n' ' ' > "$G5/.changeset/README.md"
+git -C "$G5" add -A; git -C "$G5" -c user.name=t -c user.email=t@t commit -q -m a; git -C "$G5" update-ref refs/remotes/origin/main HEAD; git -C "$G5" checkout -q -b fix
+for f in packages/a/src.ts packages/b/x.ts examples/e/y.ts README.md; do echo x > "$G5/$f"; done
+printf -- '---\n"@x/a": patch\n---\n\n%s\n' "$(seq 1 61 | sed 's/^/word/' | tr '\n' ' ')" > "$G5/.changeset/c.md"
+git -C "$G5" add -A; git -C "$G5" -c user.name=t -c user.email=t@t commit -q -m b
+prs5() { (cd "$G5" && bash "$R/bin/pr-steps" "$@" 2>"$T/prs5.err" >/dev/null; echo $?); }
+printf 'pnpm lint -> exit 0\n' | tee "$T/g5a.md" > "$T/g5b.md"
+check "BLOCK: gates with a changeset of 61 words that misses a changed package, naming both (not the private example's, not the root's)" "1 1 1 0" "$(prs5 gates "$T/g5a.md") $(grep -c 'c.md: its body has 61 words' "$T/prs5.err") $(grep -c 'no bump for @x/b,' "$T/prs5.err") $(grep -c '\(root\|e\),' "$T/prs5.err")"
+printf -- '---\n"@x/a": patch\n"@x/b": patch\n---\n\nFix the thing users saw.\n' > "$G5/.changeset/c.md"; git -C "$G5" -c user.name=t -c user.email=t@t commit -qam c
+check "a short changeset naming each changed package records" 0 "$(prs5 gates "$T/g5b.md")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

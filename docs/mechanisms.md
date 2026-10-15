@@ -79,6 +79,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `shape`: Loop B's shape report: the ✅ list and old ⇒ new ratings ending `CLEAN`, or `carries the pass of <sha>` with ≤ 80 changed lines. Old heads' `loopb` and `refactor` records together count as one.
 - A new `approach` record ends with `contract: 2`. A branch whose latest approach record lacks it started before the shape pass and finishes under the old contract: `loopb` (trailing `CLEAN`) and `refactor` still record, a `fresh` report needs no `Maintainer:` line, and a `shape` record may carry an old head that has both a `loopb` ending `CLEAN` and a `refactor` pass.
 - `gates`: `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0.
+- `gates`, in a repo with `.changeset/`: each changeset the branch adds or changes has at most 60 words after its front matter, and together they name every package (the nearest `package.json` with a name, not the root's or a private one's) whose files the branch changed.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
 
 ## The watcher daemon: `watcher/gh-watch.py` (`reply`, `task` step 5)

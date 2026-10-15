@@ -71,6 +71,7 @@ carries() {
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
 if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
+base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
     [ "$last" = "NO BUGS" ] || [ "$step" = reverify -a "$last" = "NO LOOP B COMMITS" ] || { echo "$out does not end with a line NO BUGS: Loop A is done only when every slice has a dry pass after its last fix" >&2; exit 1; }
@@ -87,7 +88,6 @@ EOF
 )
     [ -z "$unruled" ] || { printf '%s\n' "a reproduced behavior dropped for this reason goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }
     # A diff that touches bodies, buffers, streams or cancellation gets code §No regressions' list answered item by item
-    base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
     if [ "$step" = verify ] && [ -n "$base" ] && git diff "$base" HEAD | grep -Eq '^\+.*(ReadableStream|WritableStream|TransformStream|arrayBuffer\(|\.bytes\(|\.body\b|bodyUsed|\btee\(|\.clone\(|AbortSignal|AbortController|ArrayBuffer|(Int|Uint|Float|BigInt|BigUint)[0-9]+Array|Buffer\.|defineProperty|prototype\.[A-Za-z_]+ *=)'; then
       sec=$(awk '/^## Bodies and streams/{f=1;next} /^## /{f=0} f' "$out")
       miss=$(for w in Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy'; do printf '%s\n' "$sec" | grep -Eqi "^- \*{0,2}$w\*{0,2}: +[^ ]+ +[^ ]+ +[^ ]+" || printf '%s, ' "$w"; done)
@@ -125,7 +125,32 @@ EOF
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
     # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)'
     bad=$(grep -E ' -> exit [0-9]+' "$out" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) tests?\)$' | head -n3 || true)
-    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates): $bad" >&2; exit 1; } ;;
+    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates): $bad" >&2; exit 1; }
+    # a changeset is a sentence or two on what changed for users, naming every package whose files the branch changed (a maintainer's ask)
+    if [ -n "$base" ] && [ -d "$(git rev-parse --show-toplevel)/.changeset" ]; then
+      bad=$(cd "$(git rev-parse --show-toplevel)" && python3 - "$base" <<'EOF'
+import json, os, re, subprocess, sys
+diff = lambda *a: [f for f in subprocess.run(['git', 'diff', '--name-only', *a], capture_output=True, text=True).stdout.splitlines() if f]
+sets, named = [f for f in diff('--diff-filter=AM', sys.argv[1], 'HEAD', '--', '.changeset/*.md') if f != '.changeset/README.md'], set()
+for f in sets:
+    m = re.match(r'---\n(.*?)^---\n?(.*)', open(f).read(), re.M | re.S)
+    front, body = m.groups() if m else ('', open(f).read())
+    named |= set(re.findall(r'^\s*["\']?([^"\'\s:]+)["\']?\s*:', front, re.M))
+    if len(body.split()) > 60:
+        print(f"{f}: its body has {len(body.split())} words, at most 60 (a sentence or two on what changed for users)")
+pkgs = set()
+for f in diff(sys.argv[1], 'HEAD') if sets else ():
+    d = os.path.dirname(f)
+    while d and not (os.path.isfile(os.path.join(d, 'package.json')) and json.load(open(os.path.join(d, 'package.json'))).get('name')):
+        d = os.path.dirname(d)
+    if d and not (j := json.load(open(os.path.join(d, 'package.json')))).get('private'):
+        pkgs.add(j['name'])
+if pkgs - named:
+    print("the changesets name no bump for " + ', '.join(sorted(pkgs - named)) + ", whose files the branch changed")
+EOF
+)
+      [ -z "$bad" ] || { echo "$bad" >&2; exit 1; }
+    fi ;;
 esac
 fi
 grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha: each step has its own output" >&2; exit 1; }
