@@ -437,7 +437,7 @@ def sweep_disk(state):
         return
     state['sweep_at'] = now
     with open(os.path.join(HERE, 'disk-sweep.out'), 'w') as out:
-        subprocess.Popen(['nice', '-n', '19', 'ionice', '-c3', SWEEP], stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
+        subprocess.Popen(['nice', '-n', '19', 'ionice', '-c3', SWEEP, '--delete'], stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
 
 
 def save_state(s):

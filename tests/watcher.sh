@@ -542,9 +542,9 @@ m.subprocess.Popen = lambda cmd, **k: calls.append((cmd, k["stdout"].name))
 m.main_dir = lambda: "/elsewhere"; state = {}; m.sweep_disk(state); a = len(calls)
 m.main_dir = lambda: m.HERE; m.sweep_disk(state); m.sweep_disk(state); b = len(calls)
 state["sweep_at"] -= 3600; m.sweep_disk(state)
-print(a, b, len(calls), calls[0][0][:5], os.path.basename(calls[0][0][5]), os.path.basename(calls[0][1]))
+print(a, b, len(calls), calls[0][0][:5], os.path.basename(calls[0][0][5]), calls[0][0][6:], os.path.basename(calls[0][1]))
 ')
-check "disk-sweep runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out" "0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep disk-sweep.out" "$got"
+check "disk-sweep --delete runs hourly from main_dir's daemon only, niced, writing to disk-sweep.out" "0 1 2 ['nice', '-n', '19', 'ionice', '-c3'] disk-sweep ['--delete'] disk-sweep.out" "$got"
 
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

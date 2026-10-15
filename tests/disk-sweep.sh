@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for bin/disk-sweep. Usage: tests/disk-sweep.sh [repo root]
 # Builds a temp HOME with a work folder of worktrees and repos, a ~/.t3/worktrees worktree and a stub `docker` first on PATH,
-# ages their files, runs the sweep with --dry-run and then for real, and checks what each rule removed and kept.
+# ages their files, runs the sweep without --delete (a dry run) and then with it, and checks what each rule removed and kept.
 # Prints "case: <got> (want <want>)"; exits 0 only when every case gives what it wants.
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
@@ -47,14 +47,14 @@ python3 -c 'import json,sys,time; json.dump({"key": "impl proc", "started": time
 printf '{"type":"user","message":{"content":"cd %s"}}\n' "$WF/said" > "$HOME/.claude/projects/p/s.jsonl"
 sleep 0.2  # the sleep's cwd is set
 
-python3 "$R/bin/disk-sweep" --dry-run > "$T/dry.out"; rc=$?
-check "--dry-run exits 0" 0 "$rc"
-check "--dry-run prints the clean worktree's removal and Docker's prunes with unknown sizes" "1 3" "$(grep -c " $WF/clean a-worktree$" "$T/dry.out") $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/dry.out")"
-check "--dry-run deletes nothing, writes no log, runs no prune" "kept kept kept kept no version" "$(there "$WF/clean") $(there "$WF/drafts/node_modules") $(there "$HOME/.t3/worktrees/p/t3wt/node_modules") $(there "$WF/rec/old.webm") $([ -e "$HOME/.mergeworthy/disk-sweep.log" ] && echo yes || echo no) $(tr '\n' ' ' < "$DOCKER_LOG" | xargs)"
-check "a second sweep while one runs is refused" "1 1" "$(flock "$HOME/.mergeworthy/disk-sweep.lock" python3 "$R/bin/disk-sweep" --dry-run 2>"$T/lock.err" >/dev/null; echo $?) $(grep -c 'another sweep is running' "$T/lock.err")"
+python3 "$R/bin/disk-sweep" > "$T/dry.out"; rc=$?
+check "without --delete it exits 0" 0 "$rc"
+check "without --delete it prints the clean worktree's removal and Docker's prunes with unknown sizes" "1 3" "$(grep -c " $WF/clean a-worktree$" "$T/dry.out") $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/dry.out")"
+check "without --delete it deletes nothing, writes no log, runs no prune" "kept kept kept kept no version" "$(there "$WF/clean") $(there "$WF/drafts/node_modules") $(there "$HOME/.t3/worktrees/p/t3wt/node_modules") $(there "$WF/rec/old.webm") $([ -e "$HOME/.mergeworthy/disk-sweep.log" ] && echo yes || echo no) $(tr '\n' ' ' < "$DOCKER_LOG" | xargs)"
+check "a second sweep while one runs is refused" "1 1" "$(flock "$HOME/.mergeworthy/disk-sweep.lock" python3 "$R/bin/disk-sweep" 2>"$T/lock.err" >/dev/null; echo $?) $(grep -c 'another sweep is running' "$T/lock.err")"
 : > "$DOCKER_LOG"
 
-python3 "$R/bin/disk-sweep" > "$T/run.out" 2>&1; rc=$?
+python3 "$R/bin/disk-sweep" --delete > "$T/run.out" 2>&1; rc=$?
 LOG="$HOME/.mergeworthy/disk-sweep.log"
 check "the sweep exits 0 and prints nothing" "0 " "$rc $(cat "$T/run.out")"
 check "a clean, pushed, idle worktree is removed and logged, its branch kept" "removed 1 1" "$(there "$WF/clean") $(grep -c "^[^ ]* [0-9][0-9]* $WF/clean a-worktree$" "$LOG") $(G -C "$T/main" branch --list clean | wc -l)"

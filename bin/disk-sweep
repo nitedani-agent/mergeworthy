@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""disk-sweep [--dry-run]: deletes what can be rebuilt or is finished, under the work folders (~/*-work/), ~/.t3/worktrees/
+"""disk-sweep [--delete]: with --delete, deletes what can be rebuilt or is finished, under the work folders (~/*-work/), ~/.t3/worktrees/
 and Docker, and appends one line per deletion (`<iso time> <bytes> <path or docker object> <rule>`) to
-~/.mergeworthy/disk-sweep.log; --dry-run prints those lines and deletes nothing. It never follows a symlink or leaves a
+~/.mergeworthy/disk-sweep.log; without it, a dry run prints those lines and deletes nothing. It never follows a symlink or leaves a
 root's filesystem, and runs one at a time. "Idle" is no file changed in 24 hours, folders git ignores excluded.
 - a-worktree: a work folder's git worktree, clean (untracked files count), its HEAD on a remote branch, idle, no process
   working in it, no open agent job naming it, no transcript of the last 24 hours naming it: `git worktree remove`; the branch stays.
@@ -15,11 +15,11 @@ import datetime, fcntl, glob, mmap, os, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import agent_jobs
 
-if sys.argv[1:] not in ([], ['--dry-run']):
-    sys.exit('usage: disk-sweep [--dry-run]')
+if sys.argv[1:] not in ([], ['--delete']):
+    sys.exit('usage: disk-sweep [--delete]')
 if not os.path.isdir('/proc/self'):
     sys.exit('disk-sweep: needs /proc to see which processes work where')
-DRY = sys.argv[1:] == ['--dry-run']
+DRY = sys.argv[1:] != ['--delete']
 HOME, NOW = os.path.expanduser('~'), time.time()
 DAY, WEEK, BIG = 86400, 7 * 86400, 10 * 2**20
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
