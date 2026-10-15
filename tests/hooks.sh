@@ -1140,6 +1140,21 @@ printf 'carries the pass of %s: a merge of main\nCLEAN\n' "${SH:0:10}" > "$T/sp-
 python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":"Fixes the leak."}))' "$CH" > "$FX/repos_o_r_pulls_7"
 check "BLOCK: a head whose shape record carries a real pass needs that pass's table, naming both" 1 "$(sguard 'gh pr ready 7 -R o/r' >/dev/null; grep -c "shape pass on ${SH:0:10} (carried to ${CH:0:10}) isn't shown" "$T/err")"
 rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$SH" "$HOME/.claude/pr-steps/$CH"
+# ...and only that pass's own rows show it: an older pass's table in the body doesn't stand in for the head's newer pass
+OH=$(printf 'd%.0s' $(seq 40)); NH=$(printf 'e%.0s' $(seq 40))
+printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 6 ⇒ 7 | one owner |\n| 2 | `save()` | 8 ⇒ 8 | stable |\n✅ load(), save()\nCLEAN\n' > "$T/sp-old.md"
+printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 7 ⇒ 9 | split the parser from the loader |\n| 2 | `save()` | 8 ⇒ 8 | stable |\n✅ load(), save()\nCLEAN\n' > "$T/sp-new.md"
+echo "shape $T/sp-old.md 2026-10-14T08:00:00Z" > "$HOME/.claude/pr-steps/$OH"; echo "shape $T/sp-new.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$NH"
+OLDT=$'| Item | Old ⇒ new |\n|---|---|\n| `load()` | 6 ⇒ 7 |\n| `save()` | 8 ⇒ 8 |'
+pr7() { python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":sys.argv[2]}))' "$1" "$2" > "$FX/repos_o_r_pulls_7"; }
+gated() { printf '%s\n' "$2" > "$T/$1.md"; sha256sum "$T/$1.md" | cut -d' ' -f1 > "$T/$1.md.gate"; echo "$T/$1.md"; }
+shown() { sguard "$1" >/dev/null; grep -c "isn't shown" "$T/err"; }
+pr7 "$NH" "Fixes the leak."$'\n\n'"$OLDT"
+NEWR=$(gated sp-new-r "Done in abc1234."$'\n\n| Item | Old ⇒ new | Commit | Why |\n|---|---|---|---|\n| `load()` | 7 ⇒ 9 | abc1234 | split the parser from the loader |')
+REWR=$(gated sp-rew-r "Done in abc1234."$'\n\n| What | Old ⇒ new | Why |\n|---|---|---|\n| `src/load.ts` | 7 ⇒ 9 | the loader no longer parses |\n| `save()` | 8 ⇒ 8 | nothing to change |')
+check "BLOCK: an older pass's table in the body, with a newer pass on the head: gh pr ready and a reply without the new rows" "1 1" "$(shown 'gh pr ready 7 -R o/r') $(shown "gh pr comment 7 -R o/r --body-file $T/sp-r.md")"
+check "the newer pass's rows in the reply pass, the body's old table notwithstanding; so do they with a reworded reason" "0 0" "$(shown "gh pr comment 7 -R o/r --body-file $NEWR") $(shown "gh pr comment 7 -R o/r --body-file $REWR")"
+rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$OH" "$HOME/.claude/pr-steps/$NH"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }

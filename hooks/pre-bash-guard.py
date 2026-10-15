@@ -181,10 +181,10 @@ def check_context(thread, files):
         if r.returncode != 0 and r.stderr.strip():
             block(f"{r.stderr.strip()} (mergeworthy:post step 1: draft from thread-context.md, give the reviewer the same file)")
 
-RATED = re.compile(r'^\s*\|.*[0-9]+ *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # an old ⇒ new rating row (pr-steps' is_pass)
 def check_shape_shown(repo, num, texts, head=None, live=True):
-    """delegate/shape.md: the maintainer is shown the shape pass. When the PR's head has a recorded shape pass (`pr-steps shape`, not a
-    carry), the post or the live PR body has its old ⇒ new table. The head is the PR's (gh api), else the one given; a PR gh can't read is not checked."""
+    """delegate/shape.md: the maintainer is shown the shape pass. When the PR's head has a recorded shape pass (`pr-steps shape`, a carry
+    followed to its pass), the post or the live PR body has a table of that pass's own rows, so an older pass's table doesn't stand in for it.
+    The head is the PR's (gh api), else the one given; a PR gh can't read is not checked."""
     body = ''
     if repo and str(num).isdigit():
         try:
@@ -193,21 +193,48 @@ def check_shape_shown(repo, num, texts, head=None, live=True):
         except (subprocess.TimeoutExpired, ValueError): pr = None
         if not isinstance(pr, dict): return
         head, body = (pr.get('head') or {}).get('sha') or head, (pr.get('body') or '') if live else ''
-    passed = shape_pass(head) if head else None
-    if passed and not any(RATED.search(t) for t in texts + [body]):
+    passed, out = shape_pass(head) if head else (None, None)
+    if passed and not any(shows(t, out) for t in texts + [body]):
         on = passed[:10] + (f' (carried to {head[:10]})' if passed != head else '')
         block(f"the shape pass on {on} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
 
 def shape_pass(sha, seen=()):
-    """The commit whose recorded shape pass stands for sha: sha itself, or, through each `carries the pass of <sha>` record, the pass it carries."""
+    """(commit, its shape report) of the pass that stands for sha: sha's own, or, through each `carries the pass of <sha>` record, the
+    pass it carries; (None, None) without one."""
     rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
-    if sha in seen or not os.path.isfile(rec): return None
+    if sha in seen or not os.path.isfile(rec): return None, None
     for k, f, *_ in (l.split() for l in open(rec) if len(l.split()) >= 2):
         if k != 'shape' or not os.path.isfile(f): continue
         c = re.search(r'carries the pass of ([0-9a-f]{7,40})', open(f, errors='replace').read())
-        if not c: return sha
+        if not c: return sha, f
         for full in glob.glob(os.path.expanduser(f'~/.claude/pr-steps/{c[1]}*')):
-            if (p := shape_pass(os.path.basename(full), (*seen, sha))): return p
+            if (p := shape_pass(os.path.basename(full), (*seen, sha)))[0]: return p
+        return None, None
+    return None, None
+
+RATING = re.compile(r'(\d+)(?:/10)? *(?:⇒|=>) *(\d+|removed|new|n/a)')
+def rated_rows(text):
+    """Each table's rated rows as (item names, old, new): the names are the backticked spans of the cells before the rating (else
+    their plain text), so the row's reason and commit cells don't take part."""
+    tables = []
+    for t in re.findall(r'(?:^[ \t]*\|.*(?:\n|$))+', text, re.M):
+        rows = []
+        for l in t.splitlines():
+            cells = l.strip().strip('|').split('|')
+            i = next((i for i, c in enumerate(cells) if RATING.search(c)), None)
+            if i is None: continue
+            item = ' '.join(c for c in cells[:i] if not c.strip().isdigit())
+            names = set(re.findall(r'`([^`]+)`', item)) or {re.sub(r'[*`]', '', ' '.join(item.split())).lower()}
+            rows.append((names, *RATING.search(cells[i]).groups()))
+        if rows: tables.append(rows)
+    return tables
+
+def shows(text, out):
+    """text holds a table whose every rated row is a row of the pass report out: the same old ⇒ new for an item it names (a path matches its tail)."""
+    same = lambda a, b: a == b or a.endswith('/' + b) or b.endswith('/' + a)
+    theirs = [r for t in rated_rows(open(out, errors='replace').read()) for r in t]
+    return any(all(any(o == po and n == pn and any(same(a, b) for a in names for b in pnames) for pnames, po, pn in theirs)
+                   for names, o, n in rows) for rows in rated_rows(text))
 
 def cwd_repo(run_dir):
     import subprocess

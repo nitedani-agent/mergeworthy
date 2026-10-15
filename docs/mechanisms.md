@@ -87,7 +87,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `gates`: `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0.
 - `gates`, in a repo with `.changeset/`: each changeset the branch adds or changes has at most 60 words after its front matter, and together they name every package (the nearest `package.json` with a name, not the root's or a private one's) whose files the branch changed.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
-- `gh pr create`, `gh pr ready`, a PR body edit and a comment on a PR are blocked when the PR's head has a `shape` pass (a carry record is followed to the pass it carries) and neither the post nor the live PR body (a comment's case) has an old ⇒ new row: the maintainer is shown the pass (`delegate/shape.md`). A PR `gh api` can't read is not checked.
+- `gh pr create`, `gh pr ready`, a PR body edit and a comment on a PR are blocked when the PR's head has a `shape` pass (a carry record is followed to the pass it carries) and neither the post nor the live PR body (a comment's case) has a table whose every old ⇒ new row is one of that pass's own: the same numbers for an item its report names (a backticked name, a path matching by its tail), whatever the reason says. An older pass's table doesn't count. The maintainer is shown the pass (`delegate/shape.md`). A PR `gh api` can't read is not checked.
 
 ## The watcher daemon: `watcher/gh-watch.py` (`reply`, `task` step 5)
 
