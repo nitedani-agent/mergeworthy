@@ -593,6 +593,8 @@ cap() { cap_in "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; lo
 check "BLOCK: a fourth agent open at once in one session, naming the three" "0 0 0 2 3" "$(cap capS 'Execute /tmp/x/cap1.md') $(cap capS 'Execute /tmp/x/cap2.md') $(cap capS 'Execute /tmp/x/cap3.md') $(cap capS 'Execute /tmp/x/cap4.md') $(grep -c '^/tmp/x/cap[123].md' "$T/err")"
 check "another session, and a memory refresh in this one, pass" "0 0" "$(cap capT 'Execute /tmp/x/cap5.md') $(cap capS 'Follow skills/delegate/memory-refresh.md on /tmp/x/mem-lines.md')"
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
+cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
 python3 "$R/bin/agent-job" done /tmp/x/cap8.md >/dev/null; python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
 check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
