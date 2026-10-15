@@ -1223,6 +1223,9 @@ check "BLOCK: gh pr comment by URL or branch, gh issue comment on the PR's numbe
 newpass
 check "the same forms pass once the pass is recorded and shown" "0 0 0" "$(shown "gh pr comment https://github.com/o/r/pull/7 --body-file $NEWR") $(shown "gh pr comment feature -R o/r --body-file $NEWR") $(shown "gh issue comment 7 -R o/r --body-file $NEWR")"
 rm -f "$FX/pr_view_current" "$FX/pr_view_feature"
+HIDR=$(gated sp-hid-r "Done in abc1234."$'\n\n<!--\n| `load()` | 7 ⇒ 9 | abc1234 |\n-->')
+CODR=$(gated sp-cod-r "Done in abc1234."$'\n\n```\n| `load()` | 7 ⇒ 9 | abc1234 |\n```')
+check "BLOCK: the pass's rows inside an HTML comment or fenced code don't show it" "1 1" "$(shown "gh pr comment 7 -R o/r --body-file $HIDR") $(shown "gh pr comment 7 -R o/r --body-file $CODR")"
 rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat

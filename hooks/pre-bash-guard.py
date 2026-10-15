@@ -271,9 +271,11 @@ def rated_rows(text):
     return tables
 
 def shows(text, out):
-    """text holds a table whose every rated row is a row of the pass report out: the same old ⇒ new for an item it names (a path matches its tail)."""
+    """text, as GitHub renders it (no HTML comments or fenced code), holds a table whose every rated row is a row of the pass report out: the same
+    old ⇒ new for an item it names (a path matches its tail)."""
     same = lambda a, b: a == b or a.endswith('/' + b) or b.endswith('/' + a)
     theirs = [r for t in rated_rows(open(out, errors='replace').read()) for r in t]
+    text = re.sub(r'^(?P<f>```|~~~)[^\n]*\n[\s\S]*?^(?P=f)[^\n]*$', '', re.sub(r'<!--[\s\S]*?-->', '', text), flags=re.M)  # what the maintainer sees
     return any(all(any(o == po and n == pn and any(same(a, b) for a in names for b in pnames) for pnames, po, pn in theirs)
                    for names, o, n in rows) for rows in rated_rows(text))
 
