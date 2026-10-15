@@ -27,8 +27,10 @@ kind = {'comment': 'reply'}.get(kind, kind)
 _repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the language only: the other repo checks keep needing --repo
 W = post_words.words(_repo)  # the words the checks look for, in the repo's language
 RATED = re.compile(r'^\s*\|.*[0-9]+ *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # an old ⇒ new rating row (pr-steps' is_pass)
-def unrated(s):  # an old ⇒ new rating table is the pass's result: it counts toward no word cap
-    return re.sub(r'(?:^[ \t]*\|.*\n?)+', lambda t: '' if RATED.search(t.group(0)) else t.group(0), s, flags=re.M)
+REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table (reply §Maintainer commits)
+def rated(s): return RATED.search(s) or REVIEWED.search(s)
+def unrated(s):  # an old ⇒ new table or a commit-review table is the result asked for: it counts toward no word cap
+    return re.sub(r'(?:^[ \t]*\|.*\n?)+', lambda t: '' if rated(t.group(0)) else t.group(0), s, flags=re.M)
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
@@ -216,7 +218,7 @@ if _pp and os.path.exists(_pp):
     _pwords = len(re.findall(r"[A-Za-z0-9][\w'’-]*", re.sub(r'<[^>]+>|\*[^*\n]*\*', '', _q)))
     # a short comment (a question or an instruction in a line or two) gets a short answer: the result and its commit
     _cap = 80 + 60 * max(_asked - 1, 0)
-    if kind == 'reply' and _pwords <= 25 and words > _cap and not RATED.search(text):  # a pass's result answers "Apply <skill>": its reasons go with the table
+    if kind == 'reply' and _pwords <= 25 and words > _cap and not rated(text):  # a pass's result answers "Apply <skill>": its reasons go with the table
         findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}): give the answer and its commit in a few sentences; "
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")
 extra = 0  # however many questions: one plan, the rest linked
@@ -358,7 +360,7 @@ if not record:
     _parent = arg('--parent', None) if arg('--parent', None) not in (None, 'none') else _parent
     # ...and so does the commit-review table itself (| Commit | What it does, and the idea behind it | Rating |), whatever else the reply answers,
     # and a shape pass's old ⇒ new table, the result the maintainer is owed (delegate/shape.md)
-    if re.search(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', text, re.M) or RATED.search(text) or \
+    if rated(text) or \
             (__import__('os').path.exists(_parent) and re.search(r'\breview\b', open(_parent).read(), re.I)):
         PROCESS = [b for b in PROCESS if '/10' not in b and not ('rated' in b and RATED.search(text))]
     # A maintainer who asks how the work was made (models, agents, orchestration, the harness) gets that answer: allowed then
