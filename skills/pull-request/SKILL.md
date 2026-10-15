@@ -5,7 +5,7 @@ description: "A change that will land in a PR, from an issue or not, until it me
 
 # Pull request
 
-From an issue or a problem to one merge-ready PR. Run `task` first. A Tier M or L change runs these steps once per PR. Every post and edit on the way goes through `post`.
+Run `task` first. A Tier M or L change runs these steps once per PR.
 
 ## Steps
 
