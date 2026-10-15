@@ -141,6 +141,9 @@ check "the recorded ask: time, the PR's head, the PR, the comment" "2026-10-15T0
 check "a comment without the URL marks nothing, even one asking for a refactor in words" 0 "$(ask "$P" 'Please run the refactor skill again' MEMBER)"
 check "a project file without a refactor prompt URL marks nothing" 0 "$(ask 'Run the refactor pass on the whole PR before every ready.' 'Apply https://example.invalid/skills/refactor/SKILL.md' MEMBER)"
 check "a non-maintainer's comment with the URL marks nothing" 0 "$(ask "$P" 'Apply https://example.invalid/skills/refactor/SKILL.md' NONE)"
+edit() { BODY='Apply https://example.invalid/skills/refactor/SKILL.md' py "m.note_refactor_ask('o/r', 'o/r#5', {'login': 'brillout', 'assoc': 'MEMBER'}, 'https://example.invalid/c9', os.environ['BODY'], '$1', 'abcdef1234')" >/dev/null 2>&1; }
+ask "$P" 'Apply https://example.invalid/skills/refactor/SKILL.md' MEMBER >/dev/null; edit 2026-10-15T10:41:46Z; edit 2026-10-15T10:41:46Z; edit 2026-10-15T09:00:00Z
+check "the same ask edited later asks again, once per edit: its newest time is recorded" "2 2026-10-15T10:41:46Z" "$(wc -l < "$HOME/.claude/refactor-asks.txt") $(tail -1 "$HOME/.claude/refactor-asks.txt" | cut -d' ' -f1)"
 rm -f "$HOME/.claude/refactor-asks.txt" "$HOME/.mergeworthy/projects/o/r.md"
 
 # WAIT PING DUE: our last comment, older than the threshold on an open thread, emits once per comment; someone's later comment doesn't

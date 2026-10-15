@@ -509,8 +509,8 @@ def note_refactor_ask(repo, key, user, url, body, upd, head):
     head at the ask, so pr-steps ties it to the branch by ancestry, with no PR number or network."""
     if not head or (user or {}).get('assoc') not in MAINTAINER or not any(u in (body or '') for u in refactor_prompts(repo)):
         return
-    asks = open(ASKS).read().split() if os.path.exists(ASKS) else []
-    if url not in asks:
+    seen = [l.split()[0] for l in (open(ASKS) if os.path.exists(ASKS) else []) if l.split()[3:4] == [url]]
+    if not seen or upd > max(seen):  # an edited ask (a newer updated_at) asks again
         with open(ASKS, 'a') as f: f.write(f"{upd} {head} {key} {url}\n")
 
 
