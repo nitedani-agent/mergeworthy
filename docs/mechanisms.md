@@ -169,7 +169,7 @@ Read-only commands pass.
 **`pre-agent-dedupe`** registers launches that ran by ticket and title and blocks duplicate jobs (`delegate` step 1). A `clientRequestId` may retry within ten minutes; later reuse is blocked. It also blocks:
 - a brief with any role but `research` or `test` that names a repo (`owner/repo`, its URL or a path in its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`;
 - an `implementation` brief for such a repo that doesn't name `skills/code/SKILL.md`, and a brief that reads a `thread-context.md` but doesn't name `skills/writing/SKILL.md`;
-- a brief naming a linked worktree (not the launcher's own), in its launch text or the brief file it follows, that a process has as its cwd or an agent transcript written in the last five minutes names;
+- a brief naming a linked worktree (not the launcher's own), in its launch text or the brief file it follows, that a process has as its cwd or an agent transcript written in the last five minutes names, unless T3's state shows that transcript's task completed, with no run of it queued or running and no task it started still running;
 - a fourth agent open at once for the same session (`delegate` step 1): a job is open until `agent-job done` releases it or its agent finished (`agent_jobs.py`); memory-refresh jobs don't count;
 - an implementation, drafter (`thread-context.md`) or fresh-reader (`MERGE AS IS`) brief for a repo whose project file's `## Who decides` links no `<repo>.study.md` with a first line `Studied: <date>` within 30 days (`task` step 4);
 - a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list;

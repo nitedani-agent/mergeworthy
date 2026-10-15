@@ -23,6 +23,19 @@ def threads(session_id):
         pass
     return out
 
+def task_done(session_id):
+    """True when the Claude session is a T3 delegated task that completed, with no run of its thread queued or running and no
+    task it delegated still running: T3 won't wake it again."""
+    try:
+        c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
+        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
+                      (session_id,)).fetchone()
+        return bool(r) and c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", r).fetchone() == ('completed',) \
+            and not c.execute("select 1 from orchestration_v2_projection_runs where thread_id = ? and status in ('queued', 'running')", r).fetchone() \
+            and not c.execute("select 1 from orchestration_v2_projection_subagents where thread_id = ? and status = 'running'", r).fetchone()
+    except sqlite3.Error:
+        return False
+
 def first(path):
     try: return open(path).read().split()[0]
     except (OSError, IndexError): return ''

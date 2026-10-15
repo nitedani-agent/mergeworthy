@@ -757,6 +757,21 @@ check "a transcript naming a longer sibling path ($T/aw-r) doesn't make the work
 rm -f "$AD/sibling.jsonl"; touch "$AD/agent.jsonl"
 touch -d '10 minutes ago' "$AD/agent.jsonl"
 check "a worktree with no process and only an old transcript passes" 0 "$(alive "Run e2e in $T/aw again")"
+mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
+c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'review-1', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3review"}}')""")
+c.execute("insert into orchestration_v2_projection_subagents values ('s1', 'main-thread', 'review-1', 'completed')")
+c.execute("insert into orchestration_v2_projection_runs values ('r1', 'review-1', 'completed')"); c.commit()
+EOF2
+echo "{\"cwd\":\"$T/aw\"}" > "$AD/t3review.jsonl"
+check "a fresh transcript of a T3 task that completed, with no run pending, doesn't make the worktree busy" 0 "$(alive "Review round 2 in $T/aw")"
+python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("insert into orchestration_v2_projection_runs values (?, ?, ?)", ("r2", "review-1", "queued")); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+check "BLOCK: the same task woken again (a run queued)" 2 "$(alive "Review round 3 in $T/aw")"
+rm -f "$AD/t3review.jsonl" "$HOME/.t3/userdata/statev2.sqlite"
 # a finished agent is reported: the watcher's AGENT DONE once per finish, and stop-lint while its job is open
 JD="$HOME/.claude/projects/-jobs"; WJ="$T/wj"; mkdir -p "$JD" "$WJ"; echo orch > "$WJ/session"
 reg() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"orch","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":sys.argv[1][:40]}}))' "$1" "$T/tr.jsonl" \
