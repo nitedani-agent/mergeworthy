@@ -491,6 +491,49 @@ printf '%s\nRoutes after vike(app) skip the auth +middleware. This PR runs it fi
 check "BLOCK: gh pr create --draft with a body that doesn't say why it's a draft" "2 1" "$(dguard "$T/dg.md") $(grep -c 'State: draft' "$T/err")"
 printf '%s\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/dg.md"; sha256sum "$T/dg.md" | cut -d' ' -f1 > "$T/dg.md.gate"
 check "gh pr create --draft with the State line, gated, passes" 0 "$(dguard "$T/dg.md")"
+# ---------- post-lint + pre-bash-guard: a repo whose project file says `Language: hu` gets its checks in Hungarian ----------
+mkdir -p "$HOME/.mergeworthy/projects/acme"; HUP="$HOME/.mergeworthy/projects/acme/hu.md"
+cat > "$T/hu.md" <<'EOF'
+<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Az Opus 5.5 (közepes erőfeszítés) írta ezt és a kódot; egy második Opus 5.5 (nagyon magas erőfeszítés) ellenőrizte.*
+**Állapot: piszkozat** (a CI futtatója nem működik)
+
+A feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.
+
+| Megjegyzés | Fajta | Blokkolja a beolvasztást | Következő |
+|---|---|---|---|
+| A régi kliens nem darabol | hiba | nem | javítva: abc1234 |
+
+### Döntés: darabméret
+
+```py
+CHUNK = 5 * 1024 * 1024
+```
+
+(a) 5 MB: kevesebb kérés.
+(b) 1 MB: gyorsabb újrapróbálás.
+
+Az (a) lehetőséget választottam, mert kevesebb kérést küld.
+
+<details>
+<summary>Ellenőrzések (head abc1234)</summary>
+
+pytest unit_tests -> exit 0
+</details>
+EOF
+hulint() { MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/hu.md" --kind pr --draft --repo acme/hu --parent none >"$T/hu.out" 2>&1; echo $?; }
+printf '# acme/hu\n\n## PR conventions\n- Language: hu\n' > "$HUP"
+check "a Hungarian draft PR body passes post-lint under Language: hu" 0 "$(hulint)"
+printf '# acme/hu\n\n## PR conventions\n- Titles: sentence case.\n' > "$HUP"
+check "BLOCK: the same body with no Language line, on its State line and effort words" "1 1 1" "$(hulint) $(grep -c 'State: draft' "$T/hu.out") $(grep -c 'model line without effort' "$T/hu.out")"
+printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
+check "BLOCK: under Language: hu, an English State line and a decision without its Hungarian pick" "1 1 1" "$(sed -i 's/^\*\*Állapot: piszkozat\*\*/**State: draft**/; s/^Az (a) lehetőséget választottam/I picked (a)/' "$T/hu.md"; hulint) $(grep -c 'Állapot: piszkozat' "$T/hu.out") $(grep -c 'választottam' "$T/hu.out")"
+printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
+check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
+hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" \
+    | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
+check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
+rm -f "$HUP"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"
 # the budget grows with the questions in the comment answered

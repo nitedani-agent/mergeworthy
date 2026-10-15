@@ -68,7 +68,7 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 - **What already guarantees things:** validation layers, generated type shields, authorizers, schema constraints, each with its file and function.
 - **Security surfaces:** what is publicly reachable, how auth is checked per call, rate limiting, where admin actions and secrets live, which changes are a team decision.
 - **Issue tracker:** anything that makes `git log --grep <issue>` miss (a migrated tracker, different numbering in commits).
-- **PR conventions:** labels, title format, required reviewers, changeset or changelog expectations.
+- **PR conventions:** labels, title format, required reviewers, changeset or changelog expectations, `Language: hu` for non-English posts.
 - **Feature-scale precedent:** how bigger changes have landed before, with an example.
 - **Running the app:** *Preflight*: one command that checks everything the app needs and prints every failure together, plus install commands for what doesn't need root. *Start*: an isolated copy that disturbs nobody (a compose override with Docker-assigned ports, derived into the work folder when the repo has none), and how to tell it is ready (the HTTP status). *Drive it*: URLs, test accounts, seed data, how to reach the screen an issue is about. *Stop*: how to tear it all down, including after an abort.
 - **Who decides:** who merges PRs and who wrote most of each area, with the link to the repo study.

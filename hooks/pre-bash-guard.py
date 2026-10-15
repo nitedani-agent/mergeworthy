@@ -5,7 +5,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight
-import steward
+import steward, post_words
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
     rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
@@ -391,12 +391,13 @@ def check(t, has_cd):
                 need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
             if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
+                w = post_words.words((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
                 for f in files:
                     f = os.path.join(cwd, os.path.expandvars(os.path.expanduser(f)))
                     lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
                     lead = lines[1:2] if lines[:1] and lines[0].startswith('<img') else lines[:1]  # under the badge
-                    if lines and draft != bool(re.match(r'\*\*State: draft\*\* \(.*\S.*\)$', (lead or [''])[0])):
-                        block(f"{f}: a draft PR's body starts, right under the badge, with '**State: draft** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
+                    if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
+                        block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
                               f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
             if sub == 'comment' and '--edit-last' not in rest:
                 num = next((x for x in rest if x.isdigit()), None)

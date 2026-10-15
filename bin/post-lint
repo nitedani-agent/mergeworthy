@@ -7,6 +7,8 @@ A reply or inline comment needs the comment it answers: <draft stem>.parent.md n
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import hashlib, os, re, sys, subprocess, urllib.parse
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
+import post_words
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -22,6 +24,7 @@ def arg(name, default):
 if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 kind = {'comment': 'reply'}.get(kind, kind)
+W = post_words.words(repo)  # the words the checks look for, in the repo's language
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
@@ -58,7 +61,7 @@ if _asked_list:
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
-prose = re.sub(r'<details>\s*<summary>(?:Approach|Loop A|Loop B|Refactor pass|Fresh read|Gates)[^<]*</summary>.*?</details>', '', prose, flags=re.S)
+prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 code = '\n'.join(m.group(2) for m in re.finditer(r'^(```|~~~)[^\n]*\n(.*?)^\1[^\n]*$', prose, flags=re.S | re.M))
 prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', prose, flags=re.S | re.M)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
@@ -217,22 +220,22 @@ pr_budget = 300  # what's broken and what the PR changes need room; data tables,
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
 # A draft PR's body says why it's a draft on a bold line right under the badge; a ready PR's body has no such line (mergeworthy:writing)
-STATE = re.compile(r'^\*\*State: draft\*\* \(.*\S.*\)$')
+STATE = post_words.state_line(W); _state = f"**{W['state'][0]}: {W['state'][1]}**"
 if kind == 'pr' and draft and not STATE.match(next((l.strip() for l in text.split('\n') if l.strip()), '')):
-    findings.append("a draft PR's body starts, right under the badge, with '**State: draft** (<why it's a draft, in plain words>)'")
-if kind == 'pr' and not draft and re.search(r'^\s*\*\*State:', prose, re.M):
+    findings.append(f"a draft PR's body starts, right under the badge, with '{_state} (<why it's a draft, in plain words>)'")
+if kind == 'pr' and not draft and re.search(rf'^\s*\*\*{re.escape(W["state"][0])}:', prose, re.M):
     findings.append("this PR isn't a draft: remove the State line (or lint the draft's body with --draft)")
 # A PR body opens with what's broken and what the PR changes, never with its status (mergeworthy:writing); the State line comes before that opening
-_first = next((l for l in prose.split('\n') if l.strip() and not l.lstrip().startswith(('#', '|', '<', '![', '**State:'))), '')
+_first = next((l for l in prose.split('\n') if l.strip() and not l.lstrip().startswith(('#', '|', '<', '![', f"**{W['state'][0]}:"))), '')
 if kind == 'pr' and re.match(r'\s*(Draft|Depends|Blocked|Waiting|Stacked|WIP|Status|Note)\b', _first, re.I):
     findings.append(f"the PR body opens with its status ({_first.strip()[:40]!r}): open with what's broken and what this PR changes, in a user's words; status goes after")
 # pull-request §Body's template: a ready PR's body shows what you should see, as numbered evidence (a request and its
 # response, an image) outside the collapsed blocks (magne4000/universal-middleware#432 comment 6111310596)
 if kind == 'pr' and not draft:
     _open = re.sub(r'<details\b.*?</details>', '', text, flags=re.S)
-    _see = re.search(r'^###\s+What you should see\s*$(.*?)(?=^###\s|\Z)', _open, re.M | re.S)
+    _see = re.search(rf'^###\s+{re.escape(W["see"])}\s*$(.*?)(?=^###\s|\Z)', _open, re.M | re.S)
     if not _see or not re.search(r'^\*\*1\.\*\*', _see.group(1), re.M) or not re.search(r'```|!\[|<img\b', _see.group(1)):
-        findings.append("pull-request §Body: the body has '### What you should see' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
+        findings.append(f"pull-request §Body: the body has '### {W['see']}' with numbered items (**1.** …), each showing the evidence itself: a real request and response, or an image")
 # A PR's screenshots and videos come in base/head pairs: screenshots in a before/after table, videos under Before/After labels (evidence step 4)
 _ls = text.split('\n')
 _prev = lambda k: next((l.strip() for l in reversed(_ls[:k]) if l.strip()), '')
@@ -275,24 +278,26 @@ if kind == 'issue':
 if kind == 'inline' and sentences > 2:
     findings.append(f"{sentences} sentences > 2 for an inline comment")
 # maintainer notes must be classified
-for m in re.finditer(r'^\s*(?:[-*]|\d+\.)?\s*\*\*(Note|Remark)[^\n]*', text, flags=re.M | re.I):
+_blocks = W['notes'][2].split()[0].lower()  # the notes table's "Blocks merge" column, its first word
+for m in re.finditer(rf'^\s*(?:[-*]|\d+\.)?\s*\*\*({post_words.alt(W["note"])})[^\n]*', text, flags=re.M | re.I):
     line = m.group(0)
-    if not re.search(r'\b(bug|limitation|not a regression)\b', line, re.I) or not re.search(r'blocks', line, re.I):
-        findings.append(f"unclassified note: {line.strip()[:70]!r} needs <bug|limitation|not a regression> · blocks …: yes/no · next: …, or is a '### Decision:' block (writing)")
-if len(re.findall(r'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*blocks', text, flags=re.M | re.I)) >= 2:
-    findings.append("notes as a list of 'kind · blocks · next' lines: put them in one table | Note | Kind | Blocks merge | Next |")
+    if not re.search(rf'\b({post_words.alt(W["kinds"])})\b', line, re.I) or not re.search(re.escape(_blocks), line, re.I):
+        findings.append(f"unclassified note: {line.strip()[:70]!r} needs <{'|'.join(W['kinds'])}> · {_blocks} …: yes/no · next: …, or is a '### {W['decision']}:' block (writing)")
+if len(re.findall(rf'^\s*(?:[-*]|\d+\.)\s+[^\n|]*·\s*{re.escape(_blocks)}', text, flags=re.M | re.I)) >= 2:
+    findings.append(f"notes as a list of 'kind · {_blocks} · next' lines: put them in one table | {' | '.join(W['notes'])} |")
 # a decision is code, the output per lettered option, then our pick; never a table row (writing; magne4000/universal-middleware#434 comment 6112728923)
-DECIDE = "a '### Decision: <the choice>' block: the smallest code that shows it, then (a), (b) with each output, then 'I picked (x) because …' (writing)"
+DECIDE = f"a '### {W['decision']}: <the choice>' block: the smallest code that shows it, then (a), (b) with each output, then '{W['picked'][0]}' (writing)"
 if kind in ('pr', 'proposal', 'reply'):
     for row in re.findall(r'^\|[^|\n]*\|\s*decision[ -]needed\s*\|[^\n]*$', text, flags=re.M | re.I):
         findings.append(f"decision as a table row ({row.strip()[:50]!r}): make it {DECIDE}")
     _unhead = re.sub(r'^(```|~~~).*?^\1[^\n]*$', lambda c: re.sub(r'^#', ' ', c.group(0), flags=re.M), text, flags=re.S | re.M)  # a '#' line in code isn't a heading
-    for m in re.finditer(r'^(?:#{1,6}\s+|\*\*)(?:decision\b|[^\n]*\b(?:decision needed|for you to decide|left to you|choose one)\b)[^\n]*\n(.*?)(?=^#{1,6}\s|\Z)', _unhead, flags=re.M | re.S | re.I):
+    _head = r'decision\b|[^\n]*\b(?:decision needed|for you to decide|left to you|choose one)\b' if W['decision'] == 'Decision' else rf'{re.escape(W["decision"])}\b'
+    for m in re.finditer(rf'^(?:#{{1,6}}\s+|\*\*)(?:{_head})[^\n]*\n(.*?)(?=^#{{1,6}}\s|\Z)', _unhead, flags=re.M | re.S | re.I):
         body = m.group(1)
         code = re.search(r'^(```|~~~).*?^\1[^\n]*$', body, flags=re.S | re.M)
         after = body[code.end():] if code else ''
         if not (code and re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?\(a\)', after, re.M) and re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?\(b\)', after, re.M)
-                and re.search(r'\bI picked \([a-z]\)', after)):
+                and re.search(W['picked'][1], after)):
             findings.append(f"decision block {m.group(0).splitlines()[0].strip()[:50]!r} isn't {DECIDE}")
 # evidence carries no secret (post §Thread rules): checked on the whole text, code blocks included, where logs usually sit
 SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}'
@@ -301,10 +306,10 @@ SECRET = re.compile(r'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-
 for m in SECRET.finditer(text):
     findings.append(f"secret-shaped text {m.group(0)[:12]!r}...: write <REDACTED> in its place")
 # a limitation names what imposes it: one our own design creates is a defect (code §No regressions)
-for row in re.findall(r'^\|([^|\n]*)\|\s*limitation\s*\|[^\n]*$', text, flags=re.M | re.I):
+for row in re.findall(rf'^\|([^|\n]*)\|\s*{re.escape(W["kinds"][1])}\s*\|[^\n]*$', text, flags=re.M | re.I):
     whole = re.search(r'^\|' + re.escape(row) + r'\|[^\n]*$', text, flags=re.M).group(0)
-    if not re.search(r'imposed by', whole, re.I):
-        findings.append(f"limitation {row.strip()[:50]!r} names nothing that imposes it: say 'imposed by <runtime, provider or protocol>', or fix it, since a limit our own design creates is a defect (code §No regressions)")
+    if not re.search(re.escape(W['imposed']), whole, re.I):
+        findings.append(f"limitation {row.strip()[:50]!r} names nothing that imposes it: say '{W['imposed']} <runtime, provider or protocol>', or fix it, since a limit our own design creates is a defect (code §No regressions)")
 # a follow-up is opened before the post, never parked as advice (mergeworthy:writing §Forms, task §Dispositions)
 for row in re.findall(r'^\|(?:[^|\n]*\|){3}([^|\n]*)\|\s*$', text, flags=re.M):
     if re.search(r'\b(recommend|follow-up|follow up|later)\b', row, re.I):
@@ -328,9 +333,11 @@ if has_badge and kind != 'tracker' and '*' not in _m.group(0):
 # each model in the model line carries its reasoning effort: "Opus 5.5 (high effort)", "GPT-6.1-Sol (Codex, high effort)"
 if has_badge and kind != 'tracker' and '*' in _m.group(0):
     _line = re.sub(r'\]\([^)]*\)', ']', _m.group(0).split('*', 1)[1])  # link targets aren't model names
-    _bare = [m.group(1) for m in re.finditer(r'\b([A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*)(?![\w-]|\.\w)(?!\s*\([^()]*\b(?:low|medium|high|xhigh|max|ultra) effort\b[^()]*\))', _line)]
-    if _bare or not re.search(r'\b(?:low|medium|high|xhigh|max|ultra) effort\b', _line):
-        findings.append(f"model line without effort{' for ' + ', '.join(_bare) if _bare else ''}: add each model's configured reasoning effort right after its name, \"Opus 5.5 (high effort)\" or inside its parenthesis, \"GPT-6.1-Sol (Codex, high effort)\" (writing, the badge)")
+    _effort = rf'\b(?:{post_words.alt(W["effort"])}) {re.escape(W["effort_word"])}\b'
+    _bare = [m.group(1) for m in re.finditer(rf'\b([A-Z][A-Za-z]*[ -]?\d+(?:\.\d+)*(?:-[A-Za-z0-9]+)*)(?![\w-]|\.\w)(?!\s*\([^()]*{_effort}[^()]*\))', _line)]
+    if _bare or not re.search(_effort, _line):
+        _e = f"{W['effort'][2]} {W['effort_word']}"
+        findings.append(f"model line without effort{' for ' + ', '.join(_bare) if _bare else ''}: add each model's configured reasoning effort right after its name, \"Opus 5.5 ({_e})\" or inside its parenthesis, \"GPT-6.1-Sol (Codex, {_e})\" (writing, the badge)")
 if has_badge and 'alt="Codex"' not in _m.group(0) and any(_codex_trace(f) for f in os.listdir(_dir) if os.path.isfile(os.path.join(_dir, f))):
     findings.append('badge without Codex: Codex worked on this post (a codex run left its log next to the draft), so add <img src="https://github.com/openai.png" width="20" height="20" alt="Codex">')
 # the process stays in the work folder: the reader gets results, not how the agent produced them
@@ -354,7 +361,7 @@ if not record:
             findings.append(f"process in the thread: {m.group(0)!r}: give the result, keep reviews, rounds and ratings in the work folder")
 # a question to the reader carries our recommendation
 asks = [q.strip() for q in re.findall(r'[^.!?\n]*\?(?=\s|$)', prose)]
-if not record and asks and not re.search(r"\b(I recommend|recommend|I'd|I would|I propose|I suggest|I'll go with|I picked)\b|^GENUINE-FORK:", prose, re.I | re.M):
+if not record and asks and not re.search(rf"\b({W['recommend']})\b|^GENUINE-FORK:", prose, re.I | re.M):
     findings.append(f"question without your recommendation ({asks[0][-60:]!r}): decide or measure it yourself, or say what you'd pick and why")
 # a bare "Done" to a question or a soft suggestion: say what you checked, or push back
 if kind in ('reply', 'inline'):

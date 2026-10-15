@@ -5,7 +5,7 @@ description: "Woken by the Monitor, a `/ai` comment or a resume; a comment to an
 
 # Reply
 
-The watcher (`task` step 5) writes each comment you owe to `events.log` and `replies-owed.md` and reacts 👀 to it. You answer; agents only draft a reply or sort a follow-up. A maintainer's comment is handled like the user typing in this chat: highest priority, full effort. A `/ai` or `/agent` comment is the user typing: start it at once, in parallel with what's running, through `task`, and tell the user in chat.
+The watcher (`task` step 5) writes each comment you owe to `events.log` and `replies-owed.md` and reacts 👀 to it. You answer; agents only draft a reply or sort a follow-up. A maintainer's comment counts as the user typing in this chat: highest priority, full effort. A `/ai` or `/agent` comment is the user typing: start it at once, in parallel with what's running, through `task`, and tell the user in chat.
 
 ## Steps
 
@@ -71,4 +71,4 @@ A 👍 or 👎 from the user or a maintainer on one of your comments is feedback
 
 ### Wait ping
 
-The watcher owes a `WAIT PING DUE` in `replies-owed.md` after 3 hours of silence on your last comment. Post it only when the wait blocks your work now: your next step can't move without it. A release or review your own unmerged work will need later blocks nothing yet: clear the line with that reason. The ping is one @-mention on that PR with the decisions you need, each with your pick and its link; once per thread per wait, never while they're mid-review (a maintainer who commented, reviewed or pushed in any of your threads since your ask is mid-review). In a long design thread, update the WIP comment instead (`design §WIP comment`).
+The watcher owes a `WAIT PING DUE` in `replies-owed.md` after 3 hours of silence on your last comment. Post it only when your next step can't move without it. A release or review your own unmerged work will need later blocks nothing yet: clear the line with that reason. The ping is one @-mention on that PR with the decisions you need, each with your pick and its link; once per thread per wait, never while they're mid-review (a maintainer who commented, reviewed or pushed in any of your threads since your ask). In a long design thread, update the WIP comment instead (`design §WIP comment`).
