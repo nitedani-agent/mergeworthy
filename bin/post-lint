@@ -24,7 +24,8 @@ def arg(name, default):
 if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
 kind = {'comment': 'reply'}.get(kind, kind)
-W = post_words.words(repo)  # the words the checks look for, in the repo's language
+_repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the language only: the other repo checks keep needing --repo
+W = post_words.words(_repo)  # the words the checks look for, in the repo's language
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
@@ -81,7 +82,7 @@ counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M) + '\n' + '\n'.join(cells +
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
-findings = []
+findings = [_why] if _why else []
 if _label:
     findings.append("badge label: drop the '**Name:**' label; the icons, then a line break, then the text")
 BANNED = [r'\bin this run\b', r"\bdoesn't establish\b", r'\bworth noting\b', r'\bhappy to\b', r'\blet me know\b',
@@ -143,17 +144,18 @@ for m in re.finditer(r'(?<![\w/.-])#(\d+)\b', prose):
 # the umbrella issue's format (mergeworthy:task §Umbrella; reference nitedani/vike-react-rsc#9)
 if kind == 'tracker':
     head = re.sub(r'^\s*(?:<img [^>]*>[ \t]*)+\n\s*', '', text)  # after the agent badge
-    if head.startswith('## Decisions'):
-        for h in ('Process and requirements', 'Agreed', 'Open'):
-            if not re.search(rf'^### [^\n]*{h}', text, flags=re.M):
-                findings.append(f"tracker: the Decisions comment needs a '### {h}' section (task §Umbrella)")
+    _tt, _td, _ts = W['tracker']
+    if head.startswith(f'## {_td}'):
+        for h in _ts:
+            if not re.search(rf'^### [^\n]*{re.escape(h)}', text, flags=re.M):
+                findings.append(f"tracker: the {_td} comment needs a '### {h}' section (task §Umbrella)")
         if re.search(r'^### [^\n]*\bPRs\b', text, flags=re.M):
             findings.append("tracker: no '### PRs' in the Decisions comment: PR states live only in the body (task §Umbrella)")
     elif head.startswith('## '):
         pass  # a long record the body links to (e.g. an audit's findings): no list format
     else:
-        if title is not None and not title.startswith('Tracking: '):
-            findings.append(f"tracker: the title starts 'Tracking: ' and names the goal, not {title[:50]!r} (task §Umbrella)")
+        if title is not None and not title.startswith(_tt):
+            findings.append(f"tracker: the title starts '{_tt}' and names the goal, not {title[:50]!r} (task §Umbrella)")
         if re.search(r'^\s*\|.*\|\s*$', prose, flags=re.M):
             findings.append("tracker: items are checkboxes under '##' sections, not a table (task §Umbrella)")
         if not re.search(r'^## ', text, flags=re.M) or not re.search(r'^\s*- \[[ x]\] ', text, flags=re.M):

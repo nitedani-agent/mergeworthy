@@ -520,6 +520,7 @@ Az (a) lehetőséget választottam, mert kevesebb kérést küld.
 pytest unit_tests -> exit 0
 </details>
 EOF
+cp "$T/hu.md" "$T/hu0.md"
 hulint() { MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/hu.md" --kind pr --draft --repo acme/hu --parent none >"$T/hu.out" 2>&1; echo $?; }
 printf '# acme/hu\n\n## PR conventions\n- Language: hu\n' > "$HUP"
 check "a Hungarian draft PR body passes post-lint under Language: hu" 0 "$(hulint)"
@@ -533,6 +534,22 @@ hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"comman
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
+# without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
+LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
+lkgp() { (cd "$T" && MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$LK/drafts/mr.md" --kind pr --draft >/dev/null 2>&1; touch -d '+1 minute' "$LK/drafts/mr.review.out"; MERGEWORTHY_BADGE=on GATED_POSTS="$T/gp.txt" bash "$R/bin/gate-pass" "$LK/drafts/mr.md" "$LK/drafts/mr.review.out" >"$T/lk.out" 2>&1; echo $?); }  # gate-pass reruns post-lint with the flags it passed with
+echo 'gitlab.com/acme/hu' > "$LK/repos.txt"
+check "a Hungarian draft linted and gate-passed with --kind pr --draft and no --repo passes: its watch dir's repos.txt names the repo" 0 "$(lkgp)"
+printf 'gitlab.com/acme/hu\nacme/en\n' > "$LK/repos.txt"; printf 'acme/en 3\n' > "$LK/threads.txt"
+check "BLOCK: a watch dir with two repos where threads.txt names the English one, so the English checks apply" "1 1" "$(lkgp) $(grep -c 'State: draft' "$T/lk.out")"
+printf 'gitlab.com/acme/hu 184\nacme/en 3\n' > "$LK/threads.txt"
+check "BLOCK: two repos that threads.txt doesn't single out: a finding asking for --repo" "1 1" "$(lkgp) $(grep -c 'pass --repo' "$T/lk.out")"
+printf 'gitlab.com/acme/hu 184\n' > "$LK/threads.txt"
+check "two repos, threads.txt naming one: that one's language" 0 "$(lkgp)"
+# the umbrella's headings in the repo's language (task §Umbrella)
+printf '## Döntések\n\nMinden eddigi döntés, a forrásával.\n\n### Folyamat és követelmények\n- Minden magyarul ([link](https://example.invalid/1))\n\n### Elfogadva\n- A darabméret 5 MB ([link](https://example.invalid/2))\n' > "$T/hud.md"
+check "BLOCK: a Hungarian Decisions comment without its '### Nyitott' section, under Language: hu" 1 "$(python3 "$R/bin/post-lint" "$T/hud.md" --kind tracker --repo acme/hu --parent none 2>&1 | grep -c "needs a '### Nyitott' section")"
+printf 'Title: Követés: kárbejelentés\n\n## Folyamatban\n- [ ] gitlab.com/acme/hu!3: a feltöltés\n' > "$T/hut.md"
+check "a Hungarian umbrella title 'Követés: …' passes under Language: hu" 0 "$(python3 "$R/bin/post-lint" "$T/hut.md" --kind tracker --repo acme/hu --parent none 2>&1 | grep -c "the title starts")"
 rm -f "$HUP"
 printf '%s Two fundamental issues remain.\n' "$B" > "$T/fund.md"
 check "a difficulty word without its scope is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/fund.md" --kind issue --parent none 2>&1 | grep -c 'what it.s hard for')"

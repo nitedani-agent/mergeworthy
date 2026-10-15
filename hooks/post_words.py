@@ -12,6 +12,7 @@ WORDS = {
         'imposed': 'imposed by',
         'decision': 'Decision', 'picked': ('I picked (x) because …', r'\bI picked \([a-z]\)'),
         'see': 'What you should see',  # pull-request §Body
+        'tracker': ('Tracking: ', 'Decisions', ('Process and requirements', 'Agreed', 'Open')),  # task §Umbrella: title, Decisions comment, its sections
         'recommend': "I recommend|recommend|I'd|I would|I propose|I suggest|I'll go with|I picked",  # a question carries our pick
     },
     'hu': {
@@ -23,6 +24,7 @@ WORDS = {
         'imposed': 'szabja meg',
         'decision': 'Döntés', 'picked': ('Az (x) lehetőséget választottam, mert …', r'\([a-z]\)[^\n]*\bválasztottam\b'),
         'see': 'Amit látni fogsz',
+        'tracker': ('Követés: ', 'Döntések', ('Folyamat és követelmények', 'Elfogadva', 'Nyitott')),
         'recommend': 'javaslom|javasolnám|választanám|választottam',
     },
 }
@@ -36,6 +38,29 @@ def language(repo):
 
 def words(repo):
     return WORDS[language(repo)]
+
+def draft_repo(path):
+    """(repo, why not) for a draft linted without --repo: its watch dir's repo (the first folder above the draft holding repos.txt; when
+    that lists several, the one threads.txt names), else the git origin of the cwd."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        f = os.path.join(d, 'repos.txt')
+        if os.path.isfile(f):
+            repos = list(dict.fromkeys(l.split()[0] for l in open(f, errors='replace') if l.strip()))
+            if len(repos) > 1:
+                t = os.path.join(d, 'threads.txt')
+                named = {l.split()[0] for l in open(t, errors='replace') if l.strip()} if os.path.isfile(t) else set()
+                repos = [r for r in repos if r in named] or repos
+            if len(repos) > 1:
+                return None, f"{f} lists {', '.join(repos)} and threads.txt doesn't single one out: pass --repo <owner/repo>, so the checks use its language"
+            if repos: return repos[0], None
+            break
+        if os.path.dirname(d) == d: break
+        d = os.path.dirname(d)
+    import subprocess
+    url = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+    m = re.search(r'(gitlab\.com)[:/](.+?)(?:\.git)?$|github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', url)
+    return (m and ('gitlab.com/' + m[2] if m[1] else m[3])), None
 
 def alt(items):
     """A regex alternation of literal words."""
