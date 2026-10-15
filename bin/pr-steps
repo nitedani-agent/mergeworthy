@@ -130,7 +130,7 @@ EOF
       [ -n "$carried" ] || [ -z "$copied" ] || { echo "$out is not a shape pass: a row's rating is copied ('$copied'); rate every file and function afresh as old ⇒ new, with the reason in your own words (mergeworthy delegate/shape.md)" >&2; exit 1; }
       lacks=$(grep -q '✅' "$out" || printf 'the ✅ coverage list, '; grep -Eq '[0-9]+ *(⇒|=>) *([0-9]+|removed|new|n/a)' "$out" || printf 'old ⇒ new ratings, '
               grep -q '^## Standards read' "$out" || printf "'## Standards read', "; [ "$last" = CLEAN ] || printf 'a last line CLEAN, ')
-      [ -n "$carried" ] || { echo "$out is not a shape pass: it lacks ${lacks%, } (mergeworthy delegate/shape.md). A pass that changes nothing is one too: it rates each item N ⇒ N and records on the unchanged head. A small follow-up says 'carries the pass of <sha>' instead" >&2; exit 1; }
+      [ -n "$carried" ] || { echo "$out is not a shape pass: it lacks ${lacks%, } (mergeworthy delegate/shape.md). A pass that changes nothing is one too: it rates each item N ⇒ N and records on the unchanged head. A small follow-up with no maintainer's refactor ask after the pass it carries says 'carries the pass of <sha>' instead" >&2; exit 1; }
       full=$(git rev-parse "$carried")
       rec=~/.claude/pr-steps/"$full"
       prev=$(awk -v s="$step" '$1=="shape"||$1==s{print $2}' "$rec" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)

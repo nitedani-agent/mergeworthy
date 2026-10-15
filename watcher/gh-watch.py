@@ -505,8 +505,8 @@ def refactor_prompts(repo):
 
 
 def note_refactor_ask(repo, key, user, url, body, upd, head):
-    """A maintainer's comment carrying a refactor prompt URL its project file names asks for a pass: one line in ASKS, with the PR's
-    head at the ask, so pr-steps ties it to the branch by ancestry, with no PR number or network."""
+    """A maintainer's comment carrying a refactor prompt URL its project file names asks for a pass: one line in ASKS with the comment's
+    updated_at, the PR head this scan saw, repo#N and the comment URL; pr-steps tests that head's ancestry locally, the guard reads repo#N."""
     if not head or (user or {}).get('assoc') not in MAINTAINER or not any(u in (body or '') for u in refactor_prompts(repo)):
         return
     seen = [l.split()[0] for l in (open(ASKS) if os.path.exists(ASKS) else []) if l.split()[3:4] == [url]]

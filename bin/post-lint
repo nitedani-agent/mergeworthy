@@ -94,9 +94,9 @@ code = '\n'.join(m.group(2) for m in re.finditer(r'^(```|~~~)[^\n]*\n(.*?)^\1[^\
 prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', prose, flags=re.S | re.M)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
-# Prose moved into a table or a code block is still prose (mergeworthy:writing), so it counts: a sentence-long cell (more than 15
-# words besides numbers and inline code) or the only cell of its row, and a code line of six or more words with no flag,
-# path, code symbol or `->` that isn't mostly numbers
+# A PR body counts, outside its evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long cell
+# (more than 15 words besides numbers and inline code) or a row's only cell, except a rated row's and its header's first BOUND words a
+# cell (unrated()), and a code line of six or more words with no flag, path, code symbol or `->` that isn't mostly numbers
 cells, (unrated_prose, n_rated) = [], unrated(prose)
 for l in re.findall(r'^\s*\|(.*)$', unrated_prose, flags=re.M):
     row = l.rstrip().rstrip('|').split('|')
@@ -192,8 +192,8 @@ if kind == 'tracker':
         ref = r'(?:[\w.-]+/[\w.-]+)?#\d+(?!\d)'
         for m in re.finditer(rf'^\s*- \[x\] (~~)?({ref})(?:(?:,| and) {ref})*(?!(?:~~)? \()(?!(?:,| and) {ref})', text, flags=re.M):  # a ticked item (or a group of them) says how it ended
             findings.append(f"tracker: say how {m.group(2)} ended, in parentheses right after it, e.g. '{m.group(2)} (merged)' (task §Umbrella)")
-# Reading cost (mergeworthy:writing §Length): outside a PR body's evidence, tables, code and collapsed sections cost the reader as much
-# as prose, so they count
+# Reading cost (mergeworthy:writing §Length): every post but a PR body is counted from its own text, code and collapsed sections included;
+# requested lists, quotes of others, and rated rows with their header (up to BOUND words a cell) are left out
 if kind != 'pr':
     counted = re.sub(r'<!--.*?-->', '', text, flags=re.S)
     if _asked_list:  # the lists the reader asked for: collapsed, or open as a questionnaire (GitHub closes <details> on every box ticked)
@@ -240,7 +240,7 @@ if _pp and os.path.exists(_pp):
     # a short comment (a question or an instruction in a line or two) gets a short answer: the result and its commit
     _cap = 80 + 60 * max(_asked - 1, 0) + 20 * n_rated  # 20 words per rated row the count left out: a pass's commits and what stays below the bar
     if kind == 'reply' and _pwords <= 25 and words > _cap:
-        findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}): give the answer and its commit in a few sentences; "
+        findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}" + (f" with {20 * n_rated} words for its {n_rated} rated row{'s' * (n_rated > 1)}" if n_rated else '') + "): give the answer and its commit in a few sentences; "
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")
 extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
@@ -380,8 +380,8 @@ if not record:
     # A maintainer who asks for a review ("Review each of my commits") wants per-item ratings: allowed then
     _parent = re.sub(r'\.md$', '', path) + '.parent.md'
     _parent = arg('--parent', None) if arg('--parent', None) not in (None, 'none') else _parent
-    # ...and so does the commit-review table itself (| Commit | What it does, and the idea behind it | Rating |), whatever else the reply answers,
-    # and a shape pass's old ⇒ new table, the result the maintainer is owed (delegate/shape.md)
+    # ...and so does a shown commit-review table (| Commit | What it does, and the idea behind it | Rating |); a shown old ⇒ new row
+    # (delegate/shape.md) also allows "rated every/each"
     if RATED.search(VISIBLE(text)) or REVIEWED.search(VISIBLE(text)) or \
             (__import__('os').path.exists(_parent) and re.search(r'\breview\b', open(_parent).read(), re.I)):
         PROCESS = [b for b in PROCESS if '/10' not in b and not ('rated' in b and RATED.search(text))]

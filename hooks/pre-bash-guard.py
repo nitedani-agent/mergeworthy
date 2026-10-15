@@ -217,12 +217,13 @@ def promised(repo, num, drafts):
     line = re.compile(rf'^PROMISED\s+(?:{re.escape(repo)})?#{num}\b.*\brefactor', re.I | re.M)
     return any(os.path.isfile(po := os.path.join(w, 'proposals-open.md')) and line.search(open(po).read()) for w in dirs)
 
-ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # the watcher's: <time> <PR head then> <owner/repo#N> <comment URL>
+ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # the watcher's: <time> <PR head the scan saw> <owner/repo#N> <comment URL>
 def check_shape_shown(repo, num, texts, head=None, live=True, drafts=()):
     """delegate/shape.md: the maintainer is shown the shape pass. When the PR's head has a recorded shape pass (`pr-steps shape`, a carry
-    followed to its pass), the post or the live PR body has a table of that pass's own rows, so an older pass's table doesn't stand in for it.
-    A maintainer's refactor ask on the PR needs a real pass recorded after it, on any of the PR's commits, and that pass is the one shown;
-    until then only a post whose session has promised the result (promised()) goes out.
+    followed to its pass), the post, or for a comment or ready the live PR body too, renders a table whose rated rows all match that pass's
+    report, a subset included; this doesn't prove the table is complete or unique to the pass. The newest entry for this PR in
+    refactor-asks.txt (the watcher's record of a maintainer's ask) needs a non-carry shape record with a later time on the head or on the
+    first page of the PR's commits; that pass is the one shown, and until it exists only a post whose session promised the result goes out.
     The head is the PR's (gh api), else the one given; a PR gh can't read is not checked."""
     body, asks = '', []
     if repo and str(num).isdigit():
@@ -243,10 +244,14 @@ def check_shape_shown(repo, num, texts, head=None, live=True, drafts=()):
                   f"To post before it (a holding reply, a commit review), first add 'PROMISED {repo}#{num}: the refactor pass's result by <time> (<draft>)' "
                   "to proposals-open.md in your watch dir")
         _, passed, out = passes[-1]
+        on = passed[:10] + (f' (recorded on a PR commit; current head {head[:10]})' if passed != head else '')
+    else:
+        on = (passed or '')[:10] + (f' (carried to {head[:10]})' if passed and passed != head else '')
     if passed and not any(shows(t, out) for t in texts + [body]):
-        on = passed[:10] + (f' (carried to {head[:10]})' if passed != head else '')
-        block(f"the shape pass on {on} isn't shown: add a table of the old ⇒ new rows in {out} (the same items and numbers) to the PR body or this post, "
-              "with the link to the pass's whole diff (delegate/shape.md: the PR body shows the summary)")
+        where = ('edit the PR body to include them, then retry ready' if not texts else
+                 'include them here or in the live PR body' if live else 'include them in this replacement body')
+        block(f"the shape pass on {on} isn't shown: {where}: a table of the old ⇒ new rows in {out} (the same items and numbers), with the link to "
+              "the pass's whole diff as delegate/shape.md requires (this check compares rows only)")
 
 def shape_pass(sha, seen=()):
     """(commit, its shape report) of the pass that stands for sha: the head's latest shape record, or, through each `carries the pass of
@@ -270,8 +275,8 @@ def real_passes(sha):
 
 RATING = re.compile(r'(\d+)(?:/10)? *(?:⇒|=>) *(\d+|removed|new|n/a)')
 def rated_rows(text):
-    """Each table's rated rows as (item names, old, new): the names are the backticked spans of the cells before the rating (else
-    their plain text), so the row's reason and commit cells don't take part."""
+    """Each table's rated rows as (item names, old, new): the first cell holding an arrow rating gives old and new, the backticked spans of
+    the cells before it (else their plain text) the names; cells after it are ignored, whatever their headers say."""
     tables = []
     for t in re.findall(r'(?:^[ \t]*\|.*(?:\n|$))+', text, re.M):
         rows = []
@@ -514,7 +519,7 @@ def check(t, has_cd):
                     if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
                         block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
                               f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
-            # a PR body or a reply on a PR shows the head's shape pass; an edited body replaces the live one
+            # gh pr create checks the local HEAD's shape pass; every other post checks the PR post_target names, an edited body replacing the live one
             bodies = [open(x).read() for x in (os.path.join(cwd, os.path.expandvars(os.path.expanduser(f))) for f in files) if os.path.isfile(x)]
             if sub == 'create' and a[0] == 'pr':
                 check_shape_shown(None, None, bodies, subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip())
