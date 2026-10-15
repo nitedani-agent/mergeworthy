@@ -25,9 +25,9 @@ check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 G() { git -c user.name=t -c user.email=t@example.invalid "$@"; }
 age() { find "$@" -exec touch -h -d '2 days ago' {} +; }
 there() { [ -e "$1" ] || [ -L "$1" ] && echo kept || echo removed; }
-dsm() { python3 -c 'import importlib.machinery as M, importlib.util as U, os, sys  # bin/disk-sweep as module m, then $1
+dsm() { python3 -c 'import importlib.machinery as M, importlib.util as U, os, sys  # bin/disk-sweep as module m, then the code $1, its arguments after it
 l = M.SourceFileLoader("ds", sys.argv[1]); m = U.module_from_spec(U.spec_from_loader("ds", l)); l.exec_module(m)
-exec(sys.argv[2])' "$R/bin/disk-sweep" "$1"; }
+exec(sys.argv[2])' "$R/bin/disk-sweep" "$@"; }
 
 WF="$HOME/x-work"; mkdir -p "$WF"
 G init -q --bare "$T/origin.git"; G init -q -b main "$T/main"
@@ -35,12 +35,12 @@ printf 'node_modules\n.env\n' > "$T/main/.gitignore"; echo a > "$T/main/README"
 G -C "$T/main" add .gitignore README; G -C "$T/main" commit -qm base
 G -C "$T/main" remote add origin "$T/origin.git"; G -C "$T/main" push -q origin main; G -C "$T/main" fetch -q origin
 wt() { G -C "$T/main" worktree add -q -b "$(basename "$1")" "$1" origin/main 2>/dev/null; }
-for n in clean dirty recent proc job; do wt "$WF/$n"; done
+for n in clean dirty recent proc job writer; do wt "$WF/$n"; done
 wt "$HOME/.t3/worktrees/p/t3wt"
 echo x > "$WF/dirty/untracked.txt"
-mkdir -p "$T/outside/node_modules" "$WF/clean/node_modules" "$WF/proc/node_modules" "$WF/job/node_modules" "$WF/recent/node_modules" "$WF/drafts/node_modules" "$WF/fresh/node_modules" "$WF/rec"
+mkdir -p "$T/outside/node_modules" "$WF/clean/node_modules" "$WF/proc/node_modules" "$WF/job/node_modules" "$WF/writer/node_modules" "$WF/recent/node_modules" "$WF/drafts/node_modules" "$WF/fresh/node_modules" "$WF/rec"
 echo x > "$T/outside/node_modules/x"; ln -s "$T/outside" "$WF/link"; ln -s "$T/outside/node_modules" "$WF/dirty/node_modules"
-echo x > "$WF/clean/.env"; echo x > "$WF/clean/node_modules/x"; echo x > "$WF/proc/node_modules/x"; echo x > "$WF/job/node_modules/x"; echo x > "$WF/recent/node_modules/x"; echo x > "$WF/drafts/node_modules/x"; echo x > "$WF/drafts/notes.md"; echo x > "$WF/fresh/node_modules/x"
+echo x > "$WF/clean/.env"; echo x > "$WF/clean/node_modules/x"; echo x > "$WF/proc/node_modules/x"; echo x > "$WF/job/node_modules/x"; echo x > "$WF/writer/node_modules/install.log"; echo x > "$WF/recent/node_modules/x"; echo x > "$WF/drafts/node_modules/x"; echo x > "$WF/drafts/notes.md"; echo x > "$WF/fresh/node_modules/x"
 G init -q "$WF/tracked"; mkdir -p "$WF/tracked/node_modules"; echo x > "$WF/tracked/node_modules/x"; G -C "$WF/tracked" add node_modules; G -C "$WF/tracked" commit -qm tracked
 truncate -s 11M "$WF/rec/old.webm" "$WF/rec/old.zip"
 age "$WF" "$HOME/.t3" "$T/outside"
@@ -48,6 +48,7 @@ find "$WF/rec" -exec touch -d '8 days ago' {} +
 mkdir -p "$HOME/.t3/worktrees/p/t3wt/node_modules"; echo x > "$HOME/.t3/worktrees/p/t3wt/node_modules/x"  # fresh, but git ignores it
 touch "$WF/recent/README" "$WF/fresh/new.md"
 bash -c "cd '$WF/proc' && exec sleep 600" & SPID=$!
+(cd "$T" && exec python3 -c 'import sys, time; f = open(sys.argv[1], "a"); time.sleep(600)' "$WF/writer/node_modules/install.log") & WPID=$!
 python3 -c 'import json,sys,time; json.dump({"key": "impl proc", "started": time.time(), "brief": "Work in " + sys.argv[1] + "/src."}, open(sys.argv[2], "w"))' "$WF/job" "$HOME/.claude/agent-jobs/j1.json"
 sleep 0.2  # the sleep's cwd is set
 
@@ -65,7 +66,8 @@ check "a clean, pushed, idle worktree is kept with its ignored .env; its node_mo
 check "a worktree with a file changed in 24 hours is kept, with its node_modules" "kept kept" "$(there "$WF/recent") $(there "$WF/recent/node_modules")"
 check "a worktree a process works in keeps its node_modules" kept "$(there "$WF/proc/node_modules")"
 check "a worktree an open agent job names a path inside of keeps its node_modules" kept "$(there "$WF/job/node_modules")"
-check "a ~/.t3/worktrees worktree is kept; its ignored node_modules, fresh inside, is removed" "kept removed" "$(there "$HOME/.t3/worktrees/p/t3wt") $(there "$HOME/.t3/worktrees/p/t3wt/node_modules")"
+check "a ~/.t3/worktrees worktree is kept, and its ignored node_modules with a file changed in 24 hours" "kept kept" "$(there "$HOME/.t3/worktrees/p/t3wt") $(there "$HOME/.t3/worktrees/p/t3wt/node_modules")"
+check "a node_modules a process outside it holds a file open in is kept" kept "$(there "$WF/writer/node_modules")"
 check "a tracked node_modules is kept" kept "$(there "$WF/tracked/node_modules")"
 check "symlinks to outside the roots are not followed" "kept kept kept" "$(there "$T/outside/node_modules/x") $(there "$WF/link") $(there "$WF/dirty/node_modules")"
 check "node_modules outside repos: idle parent removed, recent parent kept" "removed kept" "$(there "$WF/drafts/node_modules") $(there "$WF/fresh/node_modules")"
@@ -92,6 +94,12 @@ kill "$S2"; wait "$S2" 2>/dev/null
 mkdir -p "$T/t3real/worktrees/p/node_modules"; echo x > "$T/t3real/worktrees/p/node_modules/x"; age "$T/t3real"
 HOME="$H2" dsm 'm.DRY = False; p = os.path.join(m.HOME, ".t3/worktrees/p/node_modules"); m.delete(p, os.lstat(p).st_dev, "c-ignored")'
 check "a candidate with a symlink on its path is not deleted" kept "$(there "$T/t3real/worktrees/p/node_modules")"
-kill "$SPID"; wait "$SPID" 2>/dev/null
+
+# a process that starts working in a candidate after the sweep's start, before its deletion
+mkdir -p "$T/late/node_modules"; echo x > "$T/late/node_modules/x"; age "$T/late"
+bash -c "cd '$T/late/node_modules' && exec sleep 600" & LPID=$!; sleep 0.2
+dsm 'm.DRY = False; p = sys.argv[3]; m.delete(p, os.lstat(p).st_dev, "c-ignored")' "$T/late/node_modules"
+check "a candidate a process started working in after the sweep's start is kept" kept "$(there "$T/late/node_modules")"
+kill "$SPID" "$WPID" "$LPID"; wait "$SPID" "$WPID" "$LPID" 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

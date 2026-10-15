@@ -3,7 +3,8 @@
 and Docker, and appends one line per deletion (`<iso time> <bytes> <path or docker object> <rule>`) to
 ~/.mergeworthy/disk-sweep.log; without it, a dry run prints those lines and deletes nothing. It never follows a symlink or leaves a
 root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
-"Idle" is no file changed in 24 hours, folders git ignores excluded.
+"Idle" is no file changed in 24 hours, folders git ignores excluded. A candidate with a file changed inside it in 24 hours, or one a
+process works in or holds a file open in right before its deletion, is kept.
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
 - d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
@@ -80,13 +81,35 @@ def changed(top, skip):
     return False
 
 
+def in_use(path):
+    """A process has its cwd or an open file inside path, read from /proc now."""
+    for pid in filter(str.isdigit, os.listdir('/proc')):
+        if int(pid) == os.getpid():
+            continue
+        links = [f'/proc/{pid}/cwd']
+        try:
+            links += [f'/proc/{pid}/fd/{fd}' for fd in os.listdir(f'/proc/{pid}/fd')]
+        except OSError:
+            pass
+        for link in links:
+            try:
+                target = os.readlink(link)
+            except OSError:
+                continue
+            if target.startswith('/') and (os.path.realpath(target) + '/').startswith(path + '/'):
+                return True
+    return False
+
+
 def delete(path, dev, rule):
-    if os.path.realpath(path) != path:
+    if os.path.realpath(path) != path or changed(path, lambda rel: False):
         return
     nbytes = reclaim(path, dev)
     if nbytes is None:
         return
     if not DRY:
+        if in_use(path):  # a process may have started using it since the sweep's start
+            return
         try:
             shutil.rmtree(path)
         except OSError as e:
