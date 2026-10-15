@@ -15,7 +15,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
    Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
 3. **Scope.** Write each ask and link as a scope.md checkbox, at the start and whenever the user adds one; under them, the critical path: the goal's open items, in order. Dropping or deferring one, also when a later instruction seems to replace it, needs the user's OK first: ask in one line whether that item holds.
    Open: §Scope · Record: scope.md
-4. **The project file.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing: run the repo study now (§Repo study), and say so in your report.
+4. **The project file and its study.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing, or its `## Who decides` links no repo study whose first line `Studied: <ISO date>` is within 30 days: run §Repo study now (it fills the project file's missing sections and keeps its lines), and say so in your report.
    Open: §Project file; §Repo study · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
 5. **The watcher.** Unless the plugin's `watcher` option is `off` (§Files): `gh-watch-start <work folder> <owner/repo>`, then arm the Monitor it prints with `timeout_ms` 1800000. Every thread you open or post in joins it (the hooks add it).
    Record: `threads.txt`, `repos.txt` · Hook: pre-bash-guard (no issue or PR in a repo no watcher covers), stop-lint (no live Monitor after a post)
@@ -79,8 +79,9 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 Writes a missing project file from the repo's own record, every line quoted or linked:
 - **The base and the gates:** the base branch from `gh repo view --json defaultBranchRef`; the gates from the CI workflows and package scripts; running the app from the README and the contributing guide.
 - **Who decides:** who merged the last 100 PRs and who wrote most of the code each area holds (`gh pr list --state merged --limit 100 --json number,author,mergedBy`; `git shortlog -sn origin/<base> -- <area>`).
-- **What they ask for:** every review and comment those people left on the last 30 merged or closed outside PRs (`gh api repos/<owner>/<repo>/pulls/<N>/comments`, `gh pr view <N> --comments`), sorted into what they ask for, cut and rewrite, each with its link, into the project file's sections.
-- The full study (the data and every quote) goes to `<work folder>/repo-study.md`, linked from `## Who decides`.
+- **What they ask for:** every review and comment those people left on the last 30 merged or closed outside PRs (`gh api repos/<owner>/<repo>/pulls/<N>/comments`, `gh pr view <N> --comments`), and the commits they pushed onto our PRs (`gh pr list --author <our login> --state all`, then each PR's commits not ours), sorted into what they ask for, cut and rewrite, each with its link, into the project file's sections.
+- **The forms they merge:** the last 10 merged PR titles (`gh pr list --state merged --limit 10 --json title`) and the last 5 changesets or changelog entries, quoted, with the form each follows.
+- The full study (the data and every quote) goes to `~/.mergeworthy/projects/<owner>/<repo>.study.md`, first line `Studied: <ISO date>`, linked from `## Who decides`; the main session adds each fresh reader's "New to the study" lines to it (`converge` step 4).
 
 ### Umbrella
 

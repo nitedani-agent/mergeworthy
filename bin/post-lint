@@ -202,10 +202,10 @@ if _pp and os.path.exists(_pp):
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")
 extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
-    findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply: cut what the reader doesn't need to decide, act or check")
+    findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply: cut what the reader doesn't need to decide, act or check, a whole sentence at a time, never single words out of a sentence that stays")
 pr_budget = 300  # what's broken and what the PR changes need room; data tables, code and the collapsed evidence don't count
 if kind == 'pr' and words > pr_budget:
-    findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need, never what's broken or why")
+    findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
 # A draft PR's body says why it's a draft on a bold line right under the badge; a ready PR's body has no such line (mergeworthy:writing)
 STATE = re.compile(r'^\*\*State: draft\*\* \(.*\S.*\)$')
 if kind == 'pr' and draft and not STATE.match(next((l.strip() for l in text.split('\n') if l.strip()), '')):
