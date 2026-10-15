@@ -158,6 +158,24 @@ def thread_of_ref(repo, ref):
     if m: return f'{m.group(1)}#{m.group(2)}'
     return f'{repo}#{ref}' if repo and str(ref).isdigit() else None
 
+# gh issue/pr options that take a value: the word after one is not the command's target
+VALUED = {'-R', '--repo', '-F', '--body-file', '-b', '--body', '-t', '--title', '-B', '--base', '-H', '--head', '-l', '--label', '-a', '--assignee',
+          '-r', '--reviewer', '-p', '--project', '-m', '--milestone', '-c', '--comment', '-T', '--template', '-s', '--state', '-q', '--jq',
+          '--add-label', '--remove-label', '--add-assignee', '--remove-assignee', '--add-reviewer', '--remove-reviewer', '--add-project', '--remove-project'}
+def post_target(group, rest, run_dir):
+    """(owner/repo, N) a `gh issue|pr <sub> <rest>` command acts on: its number or URL argument, or for gh pr its branch argument or the current
+    branch's PR (`gh pr view`); (repo, None) when gh can't tell. Every check of a post on a thread reads its target here."""
+    repo = (opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir)
+    ref = next((x for i, x in enumerate(rest) if not x.startswith('-') and (i == 0 or rest[i - 1] not in VALUED)), None)
+    if t := thread_of_ref(repo, ref): return tuple(t.split('#'))
+    if group != 'pr': return repo, None
+    try:
+        r = subprocess.run(['gh', 'pr', 'view', *([ref] if ref else []), *(['-R', repo] if ref and repo else []), '--json', 'number', '--jq', '.number'],
+                           cwd=run_dir, capture_output=True, text=True, timeout=20)
+        n = r.stdout.strip() if r.returncode == 0 else ''
+    except Exception: n = ''
+    return repo, n if n.isdigit() else None
+
 def check_context(thread, files):
     """post step 1: a post on a thread is drafted from its whole record: <draft dir>/thread-context.md, made by `thread-context <repo#N> --out <dir>/thread-context.md`,
     for this thread and recording its latest human comment (the tool's --verify). Tracker drafts are exempt; a thread gh can't read is not checked."""
@@ -427,10 +445,7 @@ def check(t, has_cd):
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
-        num = next((x for x in a[2:] if x.isdigit()), None)
-        try: num = num or subprocess.run(['gh', 'pr', 'view', '--json', 'number', '--jq', '.number'], cwd=run_dir, capture_output=True, text=True, timeout=20).stdout.strip()
-        except Exception: pass
-        check_shape_shown((opt(a[2:], ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, [])
+        check_shape_shown(*post_target('pr', a[2:], run_dir), [])
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
@@ -486,19 +501,15 @@ def check(t, has_cd):
             bodies = [open(x).read() for x in (os.path.join(cwd, os.path.expandvars(os.path.expanduser(f))) for f in files) if os.path.isfile(x)]
             if sub == 'create' and a[0] == 'pr':
                 check_shape_shown(None, None, bodies, subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip())
-            elif sub in ('comment', 'edit') and files and a[0] == 'pr':
-                num = next((x for x in rest if x.isdigit()), None)
-                try: num = num or subprocess.run(['gh', 'pr', 'view', '--json', 'number', '--jq', '.number'], cwd=run_dir, capture_output=True, text=True, timeout=20).stdout.strip()
-                except Exception: pass
-                check_shape_shown((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, bodies, live=sub == 'comment')
+            target = post_target(a[0], rest, run_dir) if sub != 'create' else (None, None)
+            if sub in ('comment', 'edit') and files:  # gh issue too: an issue number that is a PR reaches the PR's check
+                check_shape_shown(*target, bodies, live=sub == 'comment')
             if sub == 'comment' and '--edit-last' not in rest:
-                num = next((x for x in rest if x.isdigit()), None)
-                check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)
+                check_turn(*target, rest)
             if sub in ('comment', 'review'):
-                check_finality((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), next((x for x in rest if x.isdigit()), None), files)
+                check_finality(*target, files)
             if sub != 'create':
-                r_ = (opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir)
-                check_context(next((thread_of_ref(r_, x) for x in rest if x.isdigit() or 'github.com/' in x), None), files)
+                check_context(f'{target[0]}#{target[1]}' if all(target) else None, files)
             for f in files: gated_file(f, has_cd, create=f in new_post_drafts(t))
     if p == 'gh' and a and a[0] == 'api':
         rest = a[1:]

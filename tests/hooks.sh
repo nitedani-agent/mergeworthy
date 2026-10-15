@@ -9,6 +9,8 @@ T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
+# ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref
+if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; exit 1; fi
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
@@ -1215,6 +1217,12 @@ oldpass
 check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$OLDR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$OLDR")"
 newpass
 check "through gh api, the pass recorded and shown passes; the old table doesn't show it" "0 0 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(shown "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR") $(shown "gh api repos/o/r/issues/7/comments -F body=@$OLDR")"
+# every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target
+oldpass; echo 6 > "$FX/pr_view_current"; echo 7 > "$FX/pr_view_feature"
+check "BLOCK: gh pr comment by URL or branch, gh issue comment on the PR's number, gh pr ready by URL" "1 1 1 1" "$(asked "gh pr comment https://github.com/o/r/pull/7 --body-file $OLDR") $(asked "gh pr comment feature -R o/r --body-file $OLDR") $(asked "gh issue comment 7 -R o/r --body-file $OLDR") $(asked 'gh pr ready https://github.com/o/r/pull/7')"
+newpass
+check "the same forms pass once the pass is recorded and shown" "0 0 0" "$(shown "gh pr comment https://github.com/o/r/pull/7 --body-file $NEWR") $(shown "gh pr comment feature -R o/r --body-file $NEWR") $(shown "gh issue comment 7 -R o/r --body-file $NEWR")"
+rm -f "$FX/pr_view_current" "$FX/pr_view_feature"
 rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
