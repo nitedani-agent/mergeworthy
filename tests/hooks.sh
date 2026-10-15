@@ -466,6 +466,10 @@ printf 'Done in abc1234567.\n\n| Item | Old ⇒ new | Why |\n|---|---|---|\n| `a
 { printf 'Done in abc1234567.\n\n%s|\n' "$WIDE"; printf '|---%.0s' $(seq 1 18); printf '|\n| `a.ts` | 7 ⇒ 9 |\n'; } > "$T/tk9.md"
 { printf 'Done in abc1234567. I rated every file.\n\n| Item | Old ⇒ new | Why |\n|---|---|---|\n'; for n in $(seq 1 20); do echo "| \`f$n.ts\` | new ⇒ 9 | The pass added this file to hold one step the loader did before, now named. |"; done; } > "$T/tk10.md"
 check "BLOCK: 350 words behind escaped pipes in one reason cell, or an 18-cell header, count; 20 added items rated new ⇒ 9 are rated rows" "1 1 0" "$(tk tk8 'words > 300') $(tk tk9 'words > 300') $(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/tk10.md" --kind reply --parent "$T/tk.parent.md" >/dev/null 2>&1; echo $?)"
+# code fences as CommonMark draws them: indented up to 3 spaces, closed only by a fence of the same character at least as long
+printf 'Done in abc1234567. I rated every file.\n\n  ```\n  | a.ts | 7 ⇒ 9 |\n  ```\n' > "$T/tk11.md"; printf 'Done in abc1234567. I rated every file.\n\n````md\n```\n| a.ts | 7 ⇒ 9 |\n````\n' > "$T/tk12.md"
+printf 'Done in abc1234567. I rated every file.\n\n| Commit | What it does, and the idea behind it | Rating |\n|---|---|---|\n| abc1234567 | Splits the loader. | 9/10 |\n\n<!--\n| a.ts | 7 ⇒ 9 |\n-->\n' > "$T/tk13.md"
+check "BLOCK: a rated row in an indented fence or a four-backtick fence isn't shown; nor is a hidden row next to a shown review table" "1 1 1" "$(tk tk11 "process in the thread: 'rated every'") $(tk tk12 "process in the thread: 'rated every'") $(tk tk13 "process in the thread: 'rated every'")"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"

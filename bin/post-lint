@@ -29,8 +29,24 @@ W = post_words.words(_repo)  # the words the checks look for, in the repo's lang
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
-FENCED = r'^(?P<f>```|~~~)[^\n]*\n[\s\S]*?^(?P=f)[^\n]*$'
-VISIBLE = lambda s: re.sub(FENCED, '', re.sub(r'<!--[\s\S]*?-->', '', s), flags=re.M)  # what GitHub renders as text, not code
+def fence_spans(s):
+    """(start, end, inner) of each fenced code block in s, by CommonMark: an opening run of 3+ backticks or tildes indented up to 3 spaces
+    (a backtick fence's info string holds no backtick), closed by a run of the same character at least as long, indented up to 3 spaces
+    with nothing after it, or by the end of s. The one place post-lint decides what renders as code."""
+    spans, pos, opened = [], 0, None
+    for l in s.splitlines(True):
+        m = re.match(r' {0,3}(`{3,}|~{3,})([^\n]*)', l)
+        if opened is None:
+            if m and not (m[1][0] == '`' and '`' in m[2]): opened = (pos, m[1], pos + len(l))
+        elif m and m[1][0] == opened[1][0] and len(m[1]) >= len(opened[1]) and not m[2].strip():
+            spans.append((opened[0], pos + len(l), s[opened[2]:pos])); opened = None
+        pos += len(l)
+    return spans + ([(opened[0], len(s), s[opened[2]:])] if opened else [])
+def uncoded(s, keep=lambda block: ''):  # s with each fenced code block replaced by keep(block)
+    out, last = [], 0
+    for a, b, _ in fence_spans(s): out += [s[last:a], keep(s[a:b])]; last = b
+    return ''.join(out) + s[last:]
+VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words per cell of a rated row or its header that count toward no cap: the longest rating reason in #3609's result is 45
 def cells(l):  # a table line's cells as GitHub splits them: an escaped \| stays inside its cell
     return re.split(r'(?<!\\)\|', re.sub(r'(?<!\\)\|\s*$', '', re.sub(r'^\s*\|', '', l.rstrip('\n'))))
@@ -48,13 +64,14 @@ def unrated(s):
     n = 0
     def rest(m):
         nonlocal n
-        if m.group('f'): return m.group(0)  # fenced code
         t = m.group(0); r = rating_rows(t); n += len(r)
         cell = lambda c: re.findall(WORD, re.sub(r'https?://\S+', 'URL', re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', c)))  # words as counted below
         over = lambda l: ' '.join(w for c in cells(l) for w in cell(c)[BOUND:])
         head = lambda l: ' '.join(cell(l.replace('|', ' '))[BOUND:])  # a header is exempt up to BOUND words in all
         return ''.join((over(l) if i in r else head(l)) + '\n' if i in r or r and i == 0 else l for i, l in enumerate(t.splitlines(True)))
-    return re.sub(FENCED + '|' + TABLE, rest, s, flags=re.M), n
+    out, last = [], 0
+    for a, b, _ in fence_spans(s) + [(len(s), len(s), '')]: out += [re.sub(TABLE, rest, s[last:a], flags=re.M), s[a:b]]; last = b
+    return ''.join(out), n
 WORD = r"[A-Za-z0-9][\w'’-]*"
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
@@ -93,8 +110,8 @@ if _asked_list:
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
 # The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
-code = '\n'.join(m.group(2) for m in re.finditer(r'^(```|~~~)[^\n]*\n(.*?)^\1[^\n]*$', prose, flags=re.S | re.M))
-prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', prose, flags=re.S | re.M)
+code = '\n'.join(inner for _, _, inner in fence_spans(prose))
+prose = uncoded(prose)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
 # A PR body counts, outside its evidence blocks, the prose moved into a table or a code block (mergeworthy:writing): a sentence-long cell
@@ -235,7 +252,7 @@ _pa = arg('--parent', None)
 _pp = (re.sub(r'\.md$', '', path) + '.parent.md') if _pa is None else (None if _pa == 'none' else _pa)
 _asked = 0
 if _pp and os.path.exists(_pp):
-    _q = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', open(_pp).read(), flags=re.S | re.M)           # code blocks
+    _q = uncoded(open(_pp).read())                                                        # code blocks
     _q = '\n'.join(l for l in _q.splitlines() if not l.lstrip().startswith('>'))          # quotes of others
     _q = re.sub(r'`[^`]*`|https?://\S+', '', _q)                                         # inline code, URLs
     _asked = len(re.findall(r'\?+', _q))
@@ -291,7 +308,7 @@ if decision and words > 400 + extra:
 if kind == 'issue' and not decision and chars > 400:
     findings.append(f"{chars} characters > 400 for an issue (tables, code, images and URLs not counted): keep one finding")
 # a code location the reader can't click is one they can't find (elysiajs/elysia#2018: bare `:160`, "off Bun")
-_loc = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
+_loc = uncoded(text)
 _loc = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', _loc, flags=re.M)
 _loc = re.sub(r'\[(?:[^\[\]]|\[[^\]]*\])*\]\([^)]*\)', '', _loc)  # linked text, `[x](url)` included
 _locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b|\blines? \d+(?:[-–]\d+)?\b', _loc)
@@ -325,12 +342,12 @@ DECIDE = f"a '### {W['decision']}: <the choice>' block: the smallest code that s
 if kind in ('pr', 'proposal', 'reply'):
     for row in re.findall(r'^\|[^|\n]*\|\s*decision[ -]needed\s*\|[^\n]*$', text, flags=re.M | re.I):
         findings.append(f"decision as a table row ({row.strip()[:50]!r}): make it {DECIDE}")
-    _unhead = re.sub(r'^(```|~~~).*?^\1[^\n]*$', lambda c: re.sub(r'^#', ' ', c.group(0), flags=re.M), text, flags=re.S | re.M)  # a '#' line in code isn't a heading
+    _unhead = uncoded(text, lambda c: re.sub(r'^#', ' ', c, flags=re.M))  # a '#' line in code isn't a heading
     _head = r'decision\b|[^\n]*\b(?:decision needed|for you to decide|left to you|choose one)\b' if W['decision'] == 'Decision' else rf'{re.escape(W["decision"])}\b'
     for m in re.finditer(rf'^(?:#{{1,6}}\s+|\*\*)(?:{_head})[^\n]*\n(.*?)(?=^#{{1,6}}\s|\Z)', _unhead, flags=re.M | re.S | re.I):
         body = m.group(1)
-        code = re.search(r'^(```|~~~).*?^\1[^\n]*$', body, flags=re.S | re.M)
-        after = body[code.end():] if code else ''
+        code = (fence_spans(body) or [None])[0]
+        after = body[code[1]:] if code else ''
         if not (code and re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?\(a\)', after, re.M) and re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?\(b\)', after, re.M)
                 and re.search(W['picked'][1], after)):
             findings.append(f"decision block {m.group(0).splitlines()[0].strip()[:50]!r} isn't {DECIDE}")
@@ -385,9 +402,10 @@ if not record:
     _parent = arg('--parent', None) if arg('--parent', None) not in (None, 'none') else _parent
     # ...and so does a shown commit-review table (| Commit | What it does, and the idea behind it | Rating |); a shown old ⇒ new row
     # (delegate/shape.md) also allows "rated every/each"
-    if RATED.search(VISIBLE(text)) or REVIEWED.search(VISIBLE(text)) or \
+    _shown = VISIBLE(text)
+    if RATED.search(_shown) or REVIEWED.search(_shown) or \
             (__import__('os').path.exists(_parent) and re.search(r'\breview\b', open(_parent).read(), re.I)):
-        PROCESS = [b for b in PROCESS if '/10' not in b and not ('rated' in b and RATED.search(text))]
+        PROCESS = [b for b in PROCESS if '/10' not in b and not ('rated' in b and RATED.search(_shown))]
     # A maintainer who asks how the work was made (models, agents, orchestration, the harness) gets that answer: allowed then
     # ...and so does the methodology's own repo, where the process is the subject
     if (repo or '').lower() == 'nitedani/mergeworthy' or (__import__('os').path.exists(_parent) and re.search(r'\b(AI models?|models?|agents?|sub-?agents?|orchestrat\w*|harness|effort|Codex|Opus|Haiku|Claude)\b', open(_parent).read(), re.I)):
@@ -410,7 +428,7 @@ if kind in ('reply', 'inline'):
     elif parent_path:
         parent = open(parent_path).read()
         suggestion_block = re.search(r'^```suggestion', parent, re.M)
-        parent_prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', parent, flags=re.S | re.M)
+        parent_prose = uncoded(parent)
         parent_prose = re.sub(r'^\s*>.*$', '', parent_prose, flags=re.M)
         question = re.search(r"\?|\b(how about|what about|I think|maybe|shouldn't|why|would it|could we|can we|isn't)\b", parent_prose, re.I)
         bare = re.sub(r'\b[0-9a-f]{7,40}\b|\([^)]*\)', '', counted)
