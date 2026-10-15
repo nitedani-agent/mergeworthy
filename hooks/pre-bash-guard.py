@@ -221,8 +221,8 @@ def promised(repo, num, drafts):
 ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # the watcher's: <time> <PR head the scan saw> <owner/repo#N> <comment URL>
 def check_refactor_ask(repo, num, comment, drafts=()):
     """A maintainer's refactor ask (the newest entry for this PR in refactor-asks.txt) is answered by a pass: a non-carry shape record with a
-    later time, on the PR's head or a commit on the first page of its commits. Until one exists, a post goes out only with the session's
-    PROMISED line for the result (promised()). Only the record is checked: whether the post
+    later time, on the PR's head or a commit on the first page of its commits. Until one exists, a comment goes out only with the session's
+    PROMISED line for the result (promised()); `gh pr ready` and a body edit wait for the pass. Only the record is checked: whether the post
     shows that pass's result is the post review's (delegate/post-review.md). A PR gh can't read is not checked."""
     if not repo or not str(num).isdigit(): return
     asks = sorted(l.split() for l in (open(ASKS) if os.path.exists(ASKS) else []) if l.split()[2:3] == [f'{repo}#{num}'])
@@ -233,11 +233,11 @@ def check_refactor_ask(repo, num, comment, drafts=()):
     commits = gh_json(f'repos/{repo}/pulls/{num}/commits?per_page=100')
     shas = {c.get('sha') for c in commits if isinstance(c, dict)} if isinstance(commits, list) else set()
     if any(at > t for sha in shas | {(pr.get('head') or {}).get('sha')} for _, _, at in real_passes(sha)): return
-    if promised(repo, num, drafts): return  # a holding reply, or a commit review, while the pass runs
+    if comment and promised(repo, num, drafts): return  # a holding reply, or a commit review, while the pass runs
     block(f"{url} asks for a refactor pass ({t}) and no pass on this PR was recorded after it: fetch the PR's head, run the pass on it "
           "(converge step 2, delegate/shape.md), then record its report there with `pr-steps shape <report>`, on the unchanged head when the pass changes nothing. " +
-          f"To post before it (a holding reply, a commit review), first add 'PROMISED {repo}#{num}: the refactor pass's result by <time> (<draft>)' "
-          "to proposals-open.md in your watch dir")
+          (f"To comment before it (a holding reply, a commit review), first add 'PROMISED {repo}#{num}: the refactor pass's result by <time> (<draft>)' "
+           "to proposals-open.md in your watch dir" if comment else "`gh pr ready` and a body edit wait for the recorded pass"))
 
 def real_passes(sha):
     """The (step, report, time) shape records of sha whose report is a pass, not a carry."""

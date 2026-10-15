@@ -1200,9 +1200,10 @@ oldpass; HOLD=$(gated sp-hold-r "I'm running the refactor pass on the whole PR n
 DONE=$(gated sp-done-b "The wrapper is fixed in abc1234.")
 WR="$T/wr"; mkdir -p "$WR"; echo sess-r4 > "$WR/session"; echo "$WR" >> "$HOME/.claude/gh-watch-dirs.txt"
 hold() { printf '%s\n' "$1" > "$WR/proposals-open.md"; CLAUDE_CODE_SESSION_ID=sess-r4 asked "${2:-gh pr comment 7 -R o/r --body-file $HOLD}"; }
-check "BLOCK: a holding comment with no PROMISED line, the block naming that way through" "1 1" "$(hold '') $(grep -c "To post before it .*'PROMISED o/r#7: the refactor pass's result by <time> (<draft>)'" "$T/err")"
+check "BLOCK: a holding comment with no PROMISED line, the block naming that way through" "1 1" "$(hold '') $(grep -c "To comment before it .*'PROMISED o/r#7: the refactor pass's result by <time> (<draft>)'" "$T/err")"
 PL="PROMISED o/r#7: the refactor pass's result by 15:00 UTC (sp-hold-r.md)"
 check "the session's open PROMISED line for the PR's refactor result lets a comment through; another PR's, or a cleared one, doesn't" "0 1 1" "$(hold "$PL") $(hold "PROMISED o/r#8: the refactor pass's result (x.md)") $(hold "DONE https://example.invalid/c PROMISED o/r#7: the refactor pass's result (sp-hold-r.md)")"
+check "BLOCK: with that PROMISED line, gh pr ready and a body edit (gh pr edit, gh api PATCH) still wait for the pass, saying so" "1 1 1 1" "$(hold "$PL" 'gh pr ready 7 -R o/r') $(hold "$PL" "gh pr edit 7 -R o/r --body-file $DONE") $(hold "$PL" "gh api -X PATCH repos/o/r/pulls/7 -F body=@$DONE") $(grep -c 'gh pr ready` and a body edit wait for the recorded pass' "$T/err")"
 rm -rf "$WR"; sed -i "\#^$WR\$#d" "$HOME/.claude/gh-watch-dirs.txt"
 rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
