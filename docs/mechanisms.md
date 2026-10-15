@@ -73,7 +73,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `preflight`, per repo and branch: `<app URL> [Chrome flags]` (screenshotted headlessly; an error or blank page fails), a fresh browser-MCP PNG, or `'none, because <why>'`. Edits in its work tree and `git commit` wait for it.
 - `approach`, per repo and branch: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request` step 5).
 - `verify`: trailing `NO BUGS`.
-- `verify` (not `reverify`) and `fresh`: a `## Standards read` section holding the first sentence of code §Phantom gate, §Docs are a claim and §No regressions, which `pr-steps standards` prints: in both rounds of magne4000/universal-middleware#453 no checker opened the code skill its brief named.
+- `verify` (not `reverify`), `shape` and `fresh`: a `## Standards read` section holding the first sentence of code §Phantom gate, §Docs are a claim and §No regressions, which `pr-steps standards` prints: in both rounds of magne4000/universal-middleware#453 no checker opened the code skill its brief named.
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge` step 3).
 - `fresh`: a `Maintainer: <login>` line, `MERGE AS IS: yes` and trailing `CLEAN` (`converge` step 4).
 - `verify` and `reverify`: a line under a `## Dropped` (or other "dropped") heading giving "not a regression", "no documented usage", "rare" or "same as main" as a reason needs a later `RULED: <candidate>: <ruling>` line, the main session's (delegate/verifier.md, the brief's Write list).
@@ -165,9 +165,10 @@ Read-only commands pass.
 - a brief with any role but `research` or `test` that names a repo (`owner/repo`, its URL or a path in its checkout) but not its existing `~/.mergeworthy/projects/<owner>/<repo>.md`;
 - an `implementation` brief for such a repo that doesn't name `skills/code/SKILL.md`, and a brief that reads a `thread-context.md` but doesn't name `skills/writing/SKILL.md`;
 - a brief naming a linked worktree (not the launcher's own), in its launch text or the brief file it follows, that a process has as its cwd or an agent transcript written in the last five minutes names;
+- an implementation, drafter (`thread-context.md`) or fresh-reader (`MERGE AS IS`) brief for a repo whose project file's `## Who decides` links no `<repo>.study.md` with a first line `Studied: <date>` within 30 days (`task` step 4);
 - a brief pinning an older commit of a linked worktree it names, printing `memory.md`'s Ruled out list;
 - a brief still holding a placeholder of a fenced template in `skills/delegate/` (`<the slice's risky edges>`), naming each and its template; one in backticks there (the agent's output form), the pasted `agent.md`'s and an HTML tag don't count;
-- in an main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words all appear in a file under the work folder not named in a `Checked:` line.
+- in an main session's checkout, a research brief (`role: research`, or research in its title) without a `Topic:` line, or whose topic words (all of them in one paragraph) all appear in a file under the work folder not named in a `Checked:` line.
 
 ### `netns-run`
 

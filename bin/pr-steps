@@ -118,9 +118,10 @@ EOF
     read_standards
     grep -Eq '^Maintainer: @?[A-Za-z0-9-]+' "$out" || old_pipeline || { echo "$out has no line 'Maintainer: <login>': the fresh reader reviews as the maintainer who decides, citing what they said or did (mergeworthy delegate/fresh-reader.md)" >&2; exit 1; }
     grep -qx 'MERGE AS IS: yes' "$out" || { echo "$out has no line 'MERGE AS IS: yes': the fresh reader, as this repo's maintainer, would not merge it exactly as it is; what it lists stands between the PR and a yes" >&2; exit 1; }
-    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
+    [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings, then a new reader, blind to the fixes and this report, reads again (mergeworthy:converge step 4)" >&2; exit 1; } ;;
   shape|refactor)
     if is_pass "$out"; then
+      [ "$step" = refactor ] || old_pipeline || read_standards
       [ "$step" = refactor ] ||
       [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: land what its review and shape pass found worth changing, then continue the same agent (mergeworthy:converge step 2)" >&2; exit 1; }
     else

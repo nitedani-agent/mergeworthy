@@ -4,7 +4,7 @@ With the argument `register` it runs as the PostToolUse hook: only a launch that
 One agent per job: a launch is registered under its job key (the ticket files its prompt names, and its title), and a second
 launch of the same job is blocked until `agent-job done <key>` releases it. A turn that ended is not a finished agent: on T3 a
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
-import glob, hashlib, json, os, re, shlex, sys, time
+import datetime, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import memory_file, subprocess
 register = sys.argv[1:] == ['register']
@@ -149,6 +149,21 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
     if need:
         sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
                          "(mergeworthy:delegate step 3): " + ', '.join('~/.mergeworthy/current/' + f for f in need) + '\n')
+        sys.exit(2)
+    # An author or the fresh reader works from the repo study (task step 4): the project file's ## Who decides links one dated within 30 days
+    authors = ti.get('role') == 'implementation' or 'thread-context.md' in gate_text or 'MERGE AS IS' in gate_text
+    stale = []
+    for r in sorted(named) if authors else ():
+        sec = re.search(r'^## Who decides\n(.*?)(?=^## |\Z)', open(notes[r], errors='replace').read(), re.M | re.S)
+        study = re.search(r'(~?/\S+\.study\.md)', sec[1]) if sec else None
+        first = open(os.path.expanduser(study[1]), errors='replace').readline() if study and os.path.isfile(os.path.expanduser(study[1])) else ''
+        dated = re.match(r'Studied:\s*(\d{4}-\d{2}-\d{2})', first)
+        if not dated or (datetime.date.today() - datetime.date.fromisoformat(dated[1])).days > 30:
+            stale.append(notes[r])
+    if stale:
+        sys.stderr.write("BLOCKED: write the repo study first (mergeworthy:task step 4, §Repo study): each project file's `## Who decides` links "
+                         "~/.mergeworthy/projects/<owner>/<repo>.study.md whose first line is `Studied: <date>` within 30 days, so the author writes "
+                         "what the maintainer merges:\n" + '\n'.join(stale) + '\n')
         sys.exit(2)
     # A drafter (reads the thread record, isn't a review) lists each scope-word claim beside its proof: the template's line
     if 'thread-context.md' in gate_text and 'CLEAN' not in gate_text and not re.search(r'scope word', gate_text, re.I):

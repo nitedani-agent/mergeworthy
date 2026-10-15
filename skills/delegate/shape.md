@@ -16,6 +16,7 @@ Dispositions, one list:
 You shape <PR>: `git diff <base> <head>`, in <worktree>; everything in it, tests included. Reading order, slice by slice: <the slices' file lists, or none>.
 The project file: <project file path>. The invariants and settled picks: <decisions/*.md>; keep them intact.
 Evidence: <the verifier's and reviewer's reports>.
+First read ~/.mergeworthy/current/skills/code/SKILL.md §Phantom gate, §Docs are a claim and §No regressions in full; your shape report starts with `## Standards read`, the first sentence of each copied.
 Read with git at the pinned SHAs; run specs only in your own worktree under <work folder>, removed when done; don't build or run <shared apps>.
 
 Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each finding: path:line, the checklist line, its disposition, its price in lines, and the exact change for behavior-preserving ones.
