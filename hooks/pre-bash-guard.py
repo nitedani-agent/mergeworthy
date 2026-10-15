@@ -238,6 +238,10 @@ def under_t3():
         pid = int(ppid or 0)
     return False
 
+def by_agent():
+    """A subagent's command: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
+    return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
+
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
@@ -311,6 +315,14 @@ def check(t, has_cd):
         if any(not re.fullmatch(r'\$\(cat \S+\)', v) for v in opt(a[2:], ['--title', '-t'])):
             block('the PR title is typed inline: write it to <work folder>/drafts/title.md in the repo\'s form (its last 10 merged titles) '
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
+    # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
+    redirected = [] if p in ('claude', 'codex') else [t[i + 1] for i in range(len(t) - 1) if re.fullmatch(r'\d*>>?|&>>?|>\|', t[i])]
+    files = [x for x in a if not x.startswith('-')]
+    written = redirected + (files if p == 'tee' or p == 'sed' and any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a) else
+                            files[-1:] if p in ('cp', 'mv', 'install') else [])
+    if any(x.endswith('.review.out') for x in written) and not by_agent():
+        block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
+              "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
