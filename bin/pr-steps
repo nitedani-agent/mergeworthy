@@ -133,16 +133,17 @@ EOF
       [ -n "$carried" ] || { echo "$out is not a shape pass: it lacks ${lacks%, } (mergeworthy delegate/shape.md). A pass that changes nothing is one too: it rates each item N ⇒ N and records on the unchanged head. A small follow-up with no maintainer's refactor ask after the pass it carries says 'carries the pass of <sha>' instead" >&2; exit 1; }
       full=$(git rev-parse "$carried")
       rec=~/.claude/pr-steps/"$full"
-      prev=$(awk -v s="$step" '$1=="shape"||$1==s{print $2}' "$rec" 2>/dev/null | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+      # the latest pass recorded on that head (records are appended in time order); no pipeline that a `head` could close early
+      prev=; while read -r f; do if is_pass "$f"; then prev=$f; fi; done < <(awk -v s="$step" '$1=="shape"||$1==s{print $2}' "$rec" 2>/dev/null)
       # an old head's refactor pass stands for a shape pass only with its Loop B review: a loopb record ending CLEAN
       if [ -z "$prev" ] && [ "$step" = shape ]; then
-        prev=$(awk '$1=="loopb"{print $2}' "$rec" 2>/dev/null | while read -r f; do [ "$(grep -v '^[[:space:]]*$' "$f" 2>/dev/null | tail -n1)" = CLEAN ] && echo "$f"; done | head -n1)
-        [ -n "$prev" ] && prev=$(awk '$1=="refactor"{print $2}' "$rec" | while read -r f; do is_pass "$f" && echo "$f"; done | head -n1)
+        loopb=; while read -r f; do if [ "$(grep -v '^[[:space:]]*$' "$f" 2>/dev/null | tail -n1)" = CLEAN ]; then loopb=$f; fi; done < <(awk '$1=="loopb"{print $2}' "$rec" 2>/dev/null)
+        if [ -n "$loopb" ]; then while read -r f; do if is_pass "$f"; then prev=$f; fi; done < <(awk '$1=="refactor"{print $2}' "$rec"); fi
       fi
       [ -n "$prev" ] || { echo "$carried has no recorded shape pass with ratings to carry" >&2; exit 1; }
       # a maintainer's ask for a refactor pass (the watcher's refactor-asks.txt: time, the PR's head then, the PR, the comment) made on
       # this branch after the carried pass is answered by a pass, not a carry
-      at=$(awk -v f="$prev" '$2==f{print $3}' "$rec" | head -n1)
+      at=$(awk -v f="$prev" '$2==f{t=$3} END{print t}' "$rec")
       ask=$(while read -r t h _ u; do [[ "$t" > "$at" ]] && git merge-base --is-ancestor "$h" HEAD 2>/dev/null && echo "$u"; done < <(cat ~/.claude/refactor-asks.txt 2>/dev/null) | tail -n1 || true)
       [ -z "$ask" ] || { echo "$ask asks for a refactor pass after the pass $carried carries ($at): run the pass on this head (mergeworthy:converge step 2, delegate/shape.md) and record its report, not a carry" >&2; exit 1; }
       changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')

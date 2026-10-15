@@ -1019,6 +1019,14 @@ check "BLOCK: a ratings report with no ✅ list, standards or CLEAN, naming each
 printf '| `loader.ts` | new ⇒ 9 | abc | one step per hook |\n✅ loader.ts\nCLEAN\n' > "$T/newpass.md"; std "$T/newpass.md"
 GN="$T/prsn"; mkdir -p "$GN"; git -C "$GN" init -q; git -C "$GN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 check "a pass rating only items it added (new ⇒ 9) records" 0 "$(cd "$GN" && bash "$R/bin/pr-steps" shape "$T/newpass.md" >/dev/null 2>&1; echo $?)"
+# a carry of a head with two passes (one before a maintainer's ask, one after it) carries the latest
+GC="$T/prsc"; mkdir -p "$GC"; git -C "$GC" init -q; git -C "$GC" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; GA=$(git -C "$GC" rev-parse HEAD)
+printf '| `a.ts` | 6 ⇒ 7 | x | one |\n✅ a.ts\nCLEAN\n' > "$T/two-old.md"; printf '| `a.ts` | 7 ⇒ 9 | y | two |\n✅ a.ts\nCLEAN\n' > "$T/two-new.md"
+printf 'shape %s 2026-10-15T07:00:00Z\nshape %s 2026-10-15T09:00:00Z\n' "$T/two-old.md" "$T/two-new.md" > "$HOME/.claude/pr-steps/$GA"
+echo "2026-10-15T08:04:10Z ${GA:0:10} o/r#9 https://example.invalid/o/r/pull/9#issuecomment-8" > "$HOME/.claude/refactor-asks.txt"
+printf 'x\n' > "$GC/f"; git -C "$GC" add f; git -C "$GC" -c user.name=t -c user.email=t@t commit -q -m b; printf 'carries the pass of %s: one docs line\n' "$GA" > "$T/carry-two.md"
+check "a small follow-up carries the latest of two passes on a head, the one after the ask" 0 "$(cd "$GC" && bash "$R/bin/pr-steps" shape "$T/carry-two.md" >/dev/null 2>&1; echo $?)"
+rm -f "$HOME/.claude/refactor-asks.txt" "$HOME/.claude/pr-steps/$GA"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nCLEAN\n' > "$T/pass.md"; std "$T/pass.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n✅ express vike()\nFIX src/a.ts:3 dead branch\n' > "$T/open.md"
 printf '| express vike() | 5 ⇒ 8 | abc | named steps |\n| render() | 10 = | Unchanged since ratings17. |\n✅ express vike()\nCLEAN\n' > "$T/copied.md"
