@@ -15,7 +15,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
    Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides · Hook: route.py
 3. **The brief.** Paste the role's template from the installed copy each time (a copy saved earlier drifts) and fill every `<…>`: the pinned current head (never a moving branch), the project file's path, the standards by path, `agent.md`, the critical-path item it unblocks, and a time budget for a long job.
    Open: `delegate/<role>.md`; §Brief · Record: the brief file · Hook: pre-agent-dedupe (pins, the project file, `Topic:`)
-4. **Launch in the background;** never wait in the foreground, and no sleep loop on an agent's files: its completion wakes you.
+4. **Launch in the background;** its completion wakes you.
    Run: T3 Code: `delegate_task` with a unique `clientRequestId`; else the Agent tool · Record: the job pre-agent-dedupe registers · Hook: pre-bash-guard (wait loops), pre-agent-dedupe
 5. **Liveness** at 2 minutes and at every wakeup (its output size or log time); five minutes without output: look now. A long job's first output is read within half an hour; confirm its numbers can be used (a benchmark alone on the machine, warmed up, comparing like with like) before it runs the rest; past its budget, stop it or extend it deliberately.
    Run: `task_status` · Hook: stop-lint
