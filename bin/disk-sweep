@@ -2,7 +2,8 @@
 """disk-sweep [--delete]: with --delete, deletes what can be rebuilt, under the work folders (~/*-work/), ~/.t3/worktrees/
 and Docker, and appends one line per deletion (`<iso time> <bytes> <path or docker object> <rule>`) to
 ~/.mergeworthy/disk-sweep.log; without it, a dry run prints those lines and deletes nothing. It never follows a symlink or leaves a
-root's filesystem, and runs one at a time. "Idle" is no file changed in 24 hours, folders git ignores excluded.
+root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
+"Idle" is no file changed in 24 hours, folders git ignores excluded.
 - c-ignored: in an idle repo or worktree with no process or open agent job in it, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, node_modules whose parent is idle, with no process or open agent job in it.
 - d-docker: dangling images and build cache older than 24 hours; never containers or volumes. Its bytes are what
@@ -80,6 +81,8 @@ def changed(top, skip):
 
 
 def delete(path, dev, rule):
+    if os.path.realpath(path) != path:
+        return
     nbytes = reclaim(path, dev)
     if nbytes is None:
         return
@@ -96,7 +99,7 @@ CWDS = []
 for pid in filter(str.isdigit, os.listdir('/proc')):
     try:
         if int(pid) != os.getpid():
-            CWDS.append(os.readlink(f'/proc/{pid}/cwd'))
+            CWDS.append(os.path.realpath(os.readlink(f'/proc/{pid}/cwd')))
     except OSError:
         pass
 JOBS = []

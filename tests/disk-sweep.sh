@@ -25,6 +25,9 @@ check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 G() { git -c user.name=t -c user.email=t@example.invalid "$@"; }
 age() { find "$@" -exec touch -h -d '2 days ago' {} +; }
 there() { [ -e "$1" ] || [ -L "$1" ] && echo kept || echo removed; }
+dsm() { python3 -c 'import importlib.machinery as M, importlib.util as U, os, sys  # bin/disk-sweep as module m, then $1
+l = M.SourceFileLoader("ds", sys.argv[1]); m = U.module_from_spec(U.spec_from_loader("ds", l)); l.exec_module(m)
+exec(sys.argv[2])' "$R/bin/disk-sweep" "$1"; }
 
 WF="$HOME/x-work"; mkdir -p "$WF"
 G init -q --bare "$T/origin.git"; G init -q -b main "$T/main"
@@ -69,9 +72,7 @@ check "node_modules outside repos: idle parent removed, recent parent kept" "rem
 check "a work folder's .webm and .zip over 10 MB and 8 days old are kept" "kept kept" "$(there "$WF/rec/old.webm") $(there "$WF/rec/old.zip")"
 
 # prune_docker(account home) with the account home set to HOME: what the real home runs
-prune() { python3 -c 'import importlib.machinery as M, importlib.util as U, os, sys
-l = M.SourceFileLoader("ds", sys.argv[1]); m = U.module_from_spec(U.spec_from_loader("ds", l)); l.exec_module(m)
-m.DRY = sys.argv[2] == "dry"; sys.exit(m.prune_docker(os.environ["HOME"]))' "$R/bin/disk-sweep" "$1"; }
+prune() { dsm "m.DRY = '$1' == 'dry'; sys.exit(m.prune_docker(os.environ['HOME']))"; }
 : > "$DOCKER_LOG"; prune dry > "$T/prune.out"; rc=$?
 check "without --delete Docker's prunes are printed with unknown sizes and not run" "0 2 version|" "$rc $(grep -c '^[^ ]* ? docker:[a-z]* d-docker$' "$T/prune.out") $(tr '\n' '|' < "$DOCKER_LOG")"
 : > "$DOCKER_LOG"; prune delete; rc=$?
@@ -79,6 +80,18 @@ check "Docker: version, then the dangling-image and build-cache prunes; never co
 check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
 DOCKER_FAIL=1 prune delete 2> "$T/prune.err"; rc=$?
 check "a prune that fails exits 1, its stderr reported, no log line written" "1 2 2" "$rc $(grep -c 'daemon is shutting down' "$T/prune.err") $(grep -c d-docker "$LOG")"
+
+# a HOME whose ~/.t3 is a symlink to a folder outside it, with a process already working in the worktree there
+H2="$T/home2"; mkdir -p "$H2" "$T/t3real/worktrees"; ln -s "$T/t3real" "$H2/.t3"
+G init -q "$T/t3real/worktrees/p"; echo node_modules > "$T/t3real/worktrees/p/.gitignore"; G -C "$T/t3real/worktrees/p" add .gitignore; G -C "$T/t3real/worktrees/p" commit -qm base
+mkdir -p "$T/t3real/worktrees/p/node_modules"; echo x > "$T/t3real/worktrees/p/node_modules/x"; age "$T/t3real"
+bash -c "cd '$T/t3real/worktrees/p' && exec sleep 600" & S2=$!; sleep 0.2
+HOME="$H2" python3 "$R/bin/disk-sweep" --delete 2>/dev/null; rc=$?
+check "a worktree under a symlinked ~/.t3, a process working in it, keeps its node_modules" "0 kept" "$rc $(there "$T/t3real/worktrees/p/node_modules")"
+kill "$S2"; wait "$S2" 2>/dev/null
+mkdir -p "$T/t3real/worktrees/p/node_modules"; echo x > "$T/t3real/worktrees/p/node_modules/x"; age "$T/t3real"
+HOME="$H2" dsm 'm.DRY = False; p = os.path.join(m.HOME, ".t3/worktrees/p/node_modules"); m.delete(p, os.lstat(p).st_dev, "c-ignored")'
+check "a candidate with a symlink on its path is not deleted" kept "$(there "$T/t3real/worktrees/p/node_modules")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
