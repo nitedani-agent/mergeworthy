@@ -37,7 +37,7 @@ def rating_rows(t):
     rows = {i for i, l in enumerate(lines) if RATED.match(l) or col is not None and i and
             re.search(r'\b\d+(?:\.\d+)?/10\b', (l.strip().strip('|').split('|') + [''] * len(head))[col])}
     return rows
-def unrated(s):  # rated rows (and their table's header) are the result asked for: no word cap counts them; a table's other rows count as before
+def unrated(s):  # rated rows and their table's header count toward no word cap; a table's other rows count as any table's do
     def rest(t):
         r = rating_rows(t.group(0))
         return ''.join(l for i, l in enumerate(t.group(0).splitlines(True)) if i not in r and not (r and i == 0))
@@ -240,7 +240,8 @@ pr_budget = 300  # what's broken and what the PR changes need room; data tables,
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
     for t in re.findall(r'<summary>([^<]*)</summary>', prose):  # the evidence blocks are gone from prose: any summary left is counted
-        findings.append(f"the {t.strip()!r} block counts: a step's evidence block starts its <summary> with {', '.join(W['blocks'])} (converge §Evidence blocks)")
+        findings.append(f"the {t.strip()!r} block's words count toward {pr_budget}: a converge step's evidence block starts its <summary> with {', '.join(W['blocks'])} (converge §Evidence blocks), "
+                        "and post-lint neither counts nor lints it; cut or shorten any other block")
 # A draft PR's body says why it's a draft on a bold line right under the badge; a ready PR's body has no such line (mergeworthy:writing)
 STATE = post_words.state_line(W); _state = f"**{W['state'][0]}: {W['state'][1]}**"
 if kind == 'pr' and draft and not STATE.match(next((l.strip() for l in text.split('\n') if l.strip()), '')):
@@ -381,7 +382,8 @@ if not record:
         PROCESS = []
     for b in PROCESS:
         for m in re.finditer(b, prose, flags=re.I):
-            findings.append(f"process in the thread: {m.group(0)!r}: give the result (a rating table stays); keep rounds and reviews in the work folder")
+            findings.append(f"process in the thread: {m.group(0)!r}: " + ("put the ratings in an old ⇒ new table in this post (`| item | 7 ⇒ 9 | commit |`), or drop the word"
+                            if '/10' in b or 'rated' in b else "give the result; keep rounds, reviewers and models in the work folder"))
 # a question to the reader carries our recommendation
 asks = [q.strip() for q in re.findall(r'[^.!?\n]*\?(?=\s|$)', prose)]
 if not record and asks and not re.search(rf"\b({W['recommend']})\b|^GENUINE-FORK:", prose, re.I | re.M):

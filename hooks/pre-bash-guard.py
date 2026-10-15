@@ -212,7 +212,8 @@ def check_shape_shown(repo, num, texts, head=None, live=True):
         _, passed, out = passes[-1]
     if passed and not any(shows(t, out) for t in texts + [body]):
         on = passed[:10] + (f' (carried to {head[:10]})' if passed != head else '')
-        block(f"the shape pass on {on} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
+        block(f"the shape pass on {on} isn't shown: add a table of the old ⇒ new rows in {out} (the same items and numbers) to the PR body or this post, "
+              "with the link to the pass's whole diff (delegate/shape.md: the PR body shows the summary)")
 
 def shape_pass(sha, seen=()):
     """(commit, its shape report) of the pass that stands for sha: the head's latest shape record, or, through each `carries the pass of

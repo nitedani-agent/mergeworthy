@@ -493,7 +493,7 @@ def append_owed(entry, d=None):
         f.write(entry + '\n')
 
 
-ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # read by pr-steps, which refuses a carry made after an ask
+ASKS = os.path.expanduser('~/.claude/refactor-asks.txt')  # read by pr-steps (no carry after an ask) and pre-bash-guard (a post on the PR needs a pass after it)
 
 
 def refactor_prompts(repo):
