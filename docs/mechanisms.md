@@ -144,7 +144,7 @@ It blocks ending a turn when:
 - in a session that started T3 tasks, its `Running:` list wasn't read with `task_status` since the user's last message, or names a terminal task.
 - an agent it launched finished and its job is still open (`agent_jobs.py`);
 - a `FOLLOW-UP` or `MAINTAINER REVIEW` in the `events.log` of a dir it works in, or the steward's, has no verdict after 30 minutes (`rules` step 6);
-- at most once an hour, `memory.md` is behind the session log and covers nothing from the last 2 hours: it repeats the refresh order, to run beside the work (`task` step 8).
+- at most once an hour, `memory.md` is behind the session log and covers nothing from the last 2 hours: it repeats the refresh order, to run beside the work (`task` step 8). Launching an agent on `memory-prep`'s brief holds it for an hour; running `prep` alone doesn't.
 
 It skips its watcher checks and the refresh order while the user's last message says "pause". Each turn's first stop also gets a check-in: work to start, or anything waiting?
 

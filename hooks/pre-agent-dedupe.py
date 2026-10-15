@@ -196,6 +196,10 @@ f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 if register:
     json.dump({'key': key, 'started': time.time(), 'brief': str(ti.get('task') or ti.get('prompt') or '')[:2000],
                'session': d.get('session_id'), 'transcript': d.get('transcript_path')}, open(f, 'w'))
+    # an agent now runs memory-prep's brief: stop-lint's hourly repeat of the refresh order waits an hour
+    for t in tickets:
+        if os.path.basename(t).startswith('memory-brief-') and os.path.isfile(os.path.join(os.path.dirname(t), 'memory.source')):
+            open(os.path.join(os.path.dirname(t), '.memory-order-repeated'), 'w').close()
 elif os.path.exists(f):
     j = json.load(open(f))
     if time.time() - j.get('started', 0) < 24 * 3600:

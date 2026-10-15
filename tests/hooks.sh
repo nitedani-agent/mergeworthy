@@ -655,9 +655,12 @@ check "the user's pause holds the refresh order too" "0 no" "$(stop "$OC") $([ -
 tr_file "Done."
 check "BLOCK: memory.md behind, covering nothing of the last 2 hours: stop-lint repeats the refresh order, running beside the work, then not within the hour" "2 1 0 0" "$(stop "$OC") $(grep -c "is behind your session log.*memory-prep prep $MR.*keep working meanwhile" "$T/err") $(grep -c "without starting other work" "$T/err") $(stop "$OC")"
 rm "$MR/.memory-order-repeated"
-python3 "$R/bin/memory-prep" prep "$MR" >/dev/null
-check "a refresh just started with memory-prep prep: stop-lint doesn't repeat the order" 0 "$(stop "$OC")"
+python3 "$R/bin/memory-prep" prep "$MR" > "$T/prep.out"; MB=$(sed -n 's/.*brief: //p' "$T/prep.out")
+check "BLOCK: memory-prep prep wrote the brief but no agent runs it: stop-lint still repeats the order" 2 "$(stop "$OC")"
 rm "$MR/.memory-order-repeated"
+launch "Follow $MB exactly" >/dev/null
+check "an agent launched on the brief holds the order" 0 "$(stop "$OC")"
+rm "$MR/.memory-order-repeated"; python3 "$R/bin/agent-job" done "$MB" >/dev/null
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task. Fix it."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' > "$T/tr.jsonl"
 check "a delegated sub-agent in the orchestrator's checkout never gets the order" 0 "$(stop "$OC")"
 # a T3 child as T3 starts one: its prompt opens with the brief, no introduction; T3's state links its thread to the parent's
