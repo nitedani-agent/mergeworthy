@@ -4,6 +4,7 @@ Pasted into every brief, after the role's template.
 
 - **Do exactly the brief.** Don't widen it, and don't pick another approach than the plan: stop and report why the plan is wrong instead. Do the work yourself; never start agents of your own.
 - **Before calling something unused,** find every caller (`grep -rn`) and read the comment above it.
+- **Search before theorizing:** for an error, an API's behavior or how others solved it, search the web and read the sources first, and whenever you're circling.
 - **Never say a step ran when it couldn't:** stop and say what blocked it.
 - **End your turn only with your result.** A turn ended while your own install or test still runs never reports back. A process you find later is your own leftover: check with `ps` and kill it by PID, never wait on it. Long installs skip postinstall downloads (`--ignore-scripts`) when the browsers or binaries are already cached.
 - **Your final message:** the result with evidence (`path:line`, or the command and its exit code) and a `not_checked` list, at most 15 lines; the rest goes to the file the brief names.
