@@ -450,6 +450,14 @@ printf 'Can you do it now?\n' > "$T/tk.parent.md"; WHY='This sentence explains h
 { for n in $(seq 1 10); do echo "$WHY"; done; printf '\n| `a.ts` | 7 ⇒ 9 |\n'; } > "$T/tk3.md"
 tk() { MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/$1.md" --kind reply --parent "$T/tk.parent.md" 2>&1 | grep -c "$2"; }
 check "BLOCK: prose rows under one rated row, a commit-review table with no rating, and one row under 220 words answering a short comment" "1 1 1" "$(tk tk1 'words > 300') $(tk tk2 'words > 300') $(tk tk3 'answering a 5-word comment (cap 100)')"
+# one count: the cap's rated rows come from the text the count reads, so a block's title changes neither; a rated row or its header
+# leaves the count only up to 45 words a cell; a row in fenced code or an HTML comment isn't shown, so it excuses nothing
+sed 's/<summary>[^<]*<\/summary>/<summary>Refactor pass<\/summary>/' "$T/rr/rating-reply.md" > "$T/rr/canon.md"; cp "$T/rr/rating-reply.parent.md" "$T/rr/canon.parent.md"
+check "the #3609 result with its blocks titled 'Refactor pass' passes, as it does under its own titles" 0 "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/rr/canon.md" --kind reply --repo vikejs/vike >/dev/null 2>&1; echo $?)"
+P=$(for n in $(seq 1 20); do printf '%s ' "$WHY"; done)
+printf 'Done in abc1234567.\n\n| %s | Old ⇒ new |\n|---|---|\n| `a.ts` | 7 ⇒ 9 |\n' "$P" > "$T/tk4.md"; printf 'Done in abc1234567.\n\n| Item | Old ⇒ new | Why |\n|---|---|---|\n| `a.ts` | 7 ⇒ 9 | %s |\n' "$P" > "$T/tk5.md"
+printf 'Done in abc1234567. I rated every file.\n\n```\n| a.ts | 7 ⇒ 9 |\n```\n' > "$T/tk6.md"; printf 'Done in abc1234567. I rated every file.\n\n<!--\n| a.ts | 7 ⇒ 9 |\n-->\n' > "$T/tk7.md"
+check "BLOCK: 440 words in a rated table's header, or in a rated row's reason, count past 45 a cell; a row in code or a comment excuses no 'rated every'" "1 1 1 1" "$(tk tk4 'words > 300') $(tk tk5 'words > 300') $(tk tk6 "process in the thread: 'rated every'") $(tk tk7 "process in the thread: 'rated every'")"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"

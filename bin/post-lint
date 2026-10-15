@@ -28,7 +28,10 @@ _repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the langu
 W = post_words.words(_repo)  # the words the checks look for, in the repo's language
 RATED = re.compile(r'^\s*\|.*[0-9]+ *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
-TABLE = r'(?:^[ \t]*\|.*\n?)+'
+TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
+FENCED = r'^(?P<f>```|~~~)[^\n]*\n[\s\S]*?^(?P=f)[^\n]*$'
+VISIBLE = lambda s: re.sub(FENCED, '', re.sub(r'<!--[\s\S]*?-->', '', s), flags=re.M)  # what GitHub renders as text, not code
+BOUND = 45  # words per cell of a rated row or its header that count toward no cap: the longest rating reason in #3609's result is 45
 def rating_rows(t):
     """The line numbers of table t's rows that rate an item: an old ⇒ new row, or a commit-review row whose Rating cell holds N/10."""
     lines = t.splitlines()
@@ -37,12 +40,19 @@ def rating_rows(t):
     rows = {i for i, l in enumerate(lines) if RATED.match(l) or col is not None and i and
             re.search(r'\b\d+(?:\.\d+)?/10\b', (l.strip().strip('|').split('|') + [''] * len(head))[col])}
     return rows
-def unrated(s):  # rated rows and their table's header count toward no word cap; a table's other rows count as any table's do
-    def rest(t):
-        r = rating_rows(t.group(0))
-        return ''.join(l for i, l in enumerate(t.group(0).splitlines(True)) if i not in r and not (r and i == 0))
-    return re.sub(TABLE, rest, s, flags=re.M)
-def rated_count(s): return sum(len(rating_rows(t)) for t in re.findall(TABLE, s, re.M))
+def unrated(s):
+    """(s, n): each rated row outside fenced code, and the first line of its table, cut to the words past BOUND in each cell, as a
+    plain line; the other rows stay as they are; n is the number of rated rows."""
+    n = 0
+    def rest(m):
+        nonlocal n
+        if m.group('f'): return m.group(0)  # fenced code
+        t = m.group(0); r = rating_rows(t); n += len(r)
+        cell = lambda c: re.findall(WORD, re.sub(r'https?://\S+', 'URL', re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', c)))  # words as counted below
+        over = lambda l: ' '.join(w for c in l.strip().strip('|').split('|') for w in cell(c)[BOUND:])
+        return ''.join(over(l) + '\n' if i in r or r and i == 0 else l for i, l in enumerate(t.splitlines(True)))
+    return re.sub(FENCED + '|' + TABLE, rest, s, flags=re.M), n
+WORD = r"[A-Za-z0-9][\w'’-]*"
 draft = '--draft' in args
 if kind not in ('reply', 'pr', 'issue', 'inline', 'tracker', 'proposal', 'title') or draft and kind != 'pr': sys.exit(USAGE)  # tracker: umbrella body or decisions comment, a growing list with no word budget
 record = kind == 'tracker'  # the umbrella issue: a growing list with no word budget
@@ -84,18 +94,17 @@ code = '\n'.join(m.group(2) for m in re.finditer(r'^(```|~~~)[^\n]*\n(.*?)^\1[^\
 prose = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', prose, flags=re.S | re.M)
 prose = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', prose, flags=re.M)
 prose = re.sub(r'`[^`\n]*`', 'CODE', prose)
-WORD = r"[A-Za-z0-9][\w'’-]*"
 # Prose moved into a table or a code block is still prose (mergeworthy:writing), so it counts: a sentence-long cell (more than 15
 # words besides numbers and inline code) or the only cell of its row, and a code line of six or more words with no flag,
 # path, code symbol or `->` that isn't mostly numbers
-cells = []
-for l in re.findall(r'^\s*\|(.*)$', unrated(prose), flags=re.M):
+cells, (unrated_prose, n_rated) = [], unrated(prose)
+for l in re.findall(r'^\s*\|(.*)$', unrated_prose, flags=re.M):
     row = l.rstrip().rstrip('|').split('|')
     if not re.fullmatch(r'[\s:|-]*', l):  # a separator row
         cells += [c for c in row if len(row) == 1 or len([w for w in re.findall(WORD, c) if w != 'CODE' and not w[0].isdigit()]) > 15]
 lines = [l for l in code.split('\n') if len(w := re.findall(WORD, l)) >= 6 and not re.search(r"[^\w\s,.;:'’\"()%-]|->|(^|\s)-", l)
          and sum(x[0].isdigit() for x in w) * 4 < len(w)]
-counted = re.sub(r'^\s*\|.*$', '', prose, flags=re.M) + '\n' + '\n'.join(cells + lines)   # table rows: their prose cells only
+counted = re.sub(r'^\s*\|.*$', '', unrated_prose, flags=re.M) + '\n' + '\n'.join(cells + lines)   # table rows: their prose cells only
 counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)                  # images
 counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)              # links: keep the text
 counted = re.sub(r'https?://\S+', 'URL', counted)
@@ -191,7 +200,7 @@ if kind != 'pr':
         counted = re.sub(r'<details>.*?</details>', '', counted, flags=re.S)
         counted = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', counted)
     counted = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', counted, flags=re.M)              # quotes of others
-    counted = unrated(counted)
+    counted, n_rated = unrated(counted)  # the cap below counts the rated rows of this same text
     counted = re.sub(r'^\s*\|[\s:|-]+\|\s*$', '', counted, flags=re.M)            # table separator rows
     counted = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', counted)
     counted = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', counted)
@@ -229,7 +238,7 @@ if _pp and os.path.exists(_pp):
     _asked = len(re.findall(r'\?+', _q))
     _pwords = len(re.findall(r"[A-Za-z0-9][\w'’-]*", re.sub(r'<[^>]+>|\*[^*\n]*\*', '', _q)))
     # a short comment (a question or an instruction in a line or two) gets a short answer: the result and its commit
-    _cap = 80 + 60 * max(_asked - 1, 0) + 20 * rated_count(prose)  # a sentence per rated row: a pass's commits and what stays below the bar
+    _cap = 80 + 60 * max(_asked - 1, 0) + 20 * n_rated  # 20 words per rated row the count left out: a pass's commits and what stays below the bar
     if kind == 'reply' and _pwords <= 25 and words > _cap:
         findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}): give the answer and its commit in a few sentences; "
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")
@@ -373,7 +382,7 @@ if not record:
     _parent = arg('--parent', None) if arg('--parent', None) not in (None, 'none') else _parent
     # ...and so does the commit-review table itself (| Commit | What it does, and the idea behind it | Rating |), whatever else the reply answers,
     # and a shape pass's old ⇒ new table, the result the maintainer is owed (delegate/shape.md)
-    if RATED.search(text) or REVIEWED.search(text) or \
+    if RATED.search(VISIBLE(text)) or REVIEWED.search(VISIBLE(text)) or \
             (__import__('os').path.exists(_parent) and re.search(r'\breview\b', open(_parent).read(), re.I)):
         PROCESS = [b for b in PROCESS if '/10' not in b and not ('rated' in b and RATED.search(text))]
     # A maintainer who asks how the work was made (models, agents, orchestration, the harness) gets that answer: allowed then
