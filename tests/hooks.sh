@@ -430,6 +430,12 @@ printf 'Can you fix the typo?\n' > "$T/pm2.parent.md"
 check "the same reply to an unrelated comment is flagged" 3 "$(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --parent "$T/pm2.parent.md" 2>&1 | grep -c 'process in the thread')"
 printf 'Why is the review effort different every time?\n' > "$T/pm3.parent.md"
 check "a question about effort gets models named; the methodology's own repo always does" "0 0" "$(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --parent "$T/pm3.parent.md" 2>&1 | grep -c 'process in the thread') $(python3 "$R/bin/post-lint" "$T/pm.md" --kind reply --repo nitedani/mergeworthy --parent "$T/pm2.parent.md" 2>&1 | grep -c 'process in the thread')"
+printf 'Apply https://example.invalid/refactor/SKILL.md to this PR.\n' > "$T/rt.parent.md"
+printf 'Done in abc1234 and def5678. I rated every file and function; the summary is below.\n\n| Item | Old ⇒ new | Commit |\n|---|---|---|\n| load() | 7/10 ⇒ 9/10 | abc1234 |\n| /cloudflare | 6 ⇒ 9 | def5678 |\n\nThe whole diff is at https://example.invalid/compare/a...b.\n' > "$T/rt.md"
+check "an unasked old ⇒ new rating table in a Done reply passes, its /10 and 'rated every' with it" 0 "$(MERGEWORTHY_BADGE=off python3 "$R/bin/post-lint" "$T/rt.md" --kind reply --parent "$T/rt.parent.md" >/dev/null 2>&1; echo $?)"
+check "without the table, the same words are process, and the fix text keeps a rating table" "1 1" "$(sed -i '/^|/d' "$T/rt.md"; python3 "$R/bin/post-lint" "$T/rt.md" --kind reply --parent "$T/rt.parent.md" 2>&1 | grep -c 'process in the thread') $(python3 "$R/bin/post-lint" "$T/rt.md" --kind reply --parent "$T/rt.parent.md" 2>&1 | grep -c 'a rating table stays')"
+mkdir -p "$T/rr"; cp "$(dirname "$0")/fixtures/rating-reply.md" "$(dirname "$0")/fixtures/rating-reply.parent.md" "$T/rr/"  # vikejs/vike#3609's refactor result, three rating tables, 1,243 words
+check "a reply's rating tables count toward no word cap: the #3609 refactor result to 'Apply <skill>' passes, no length or rating finding" 0 "$(MERGEWORTHY_BADGE=on python3 "$R/bin/post-lint" "$T/rr/rating-reply.md" --kind reply --repo vikejs/vike 2>&1 | grep -c 'words\|/10\|rated')"
 printf '%s #3557 follows the rule you agreed to, with the proxy inside.\n' "$B" > "$T/cr.md"
 check "an agreement credited without a link is flagged" 1 "$(python3 "$R/bin/post-lint" "$T/cr.md" --parent none 2>&1 | grep -c 'credit without a link')"
 printf '%s #3557 follows the rule you agreed to ([here](https://github.com/o/r/issues/1#issuecomment-2)).\n' "$B" > "$T/cr2.md"
@@ -1114,6 +1120,22 @@ check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 
 check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
 H=$(git -C "$G2" rev-parse HEAD); for k in verify loopb refactor reverify fresh gates; do echo "$k /x/$k.md 2026-10-13T00:00:00Z" >> "$HOME/.claude/pr-steps/$H"; done
 check "a head recorded before the shape pass (loopb and refactor) counts as shaped" 0 "$(ready)"
+# ---------- pre-bash-guard: a PR head with a recorded shape pass shows its old ⇒ new table to the maintainer (delegate/shape.md) ----------
+SH=$(printf 'f%.0s' $(seq 40))
+printf '| load() | 7 ⇒ 9 | abc1234 | one owner |\n✅ load()\nCLEAN\n' > "$T/sp-pass.md"; printf 'carries the pass of abc1234: tests only\nCLEAN\n' > "$T/sp-carry.md"
+echo "shape $T/sp-pass.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"
+spr() { python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":sys.argv[2]}))' "$SH" "$1" > "$FX/repos_o_r_pulls_7"; }
+sguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; grep -c "shape pass on ${SH:0:10} isn't shown" "$T/err"; }
+TBL=$'| Item | Old ⇒ new | Commit |\n|---|---|---|\n| load() | 7 ⇒ 9 | abc1234 |'
+spr 'Fixes the leak.'
+printf 'Done in abc1234.\n' > "$T/sp-r.md"; sha256sum "$T/sp-r.md" | cut -d' ' -f1 > "$T/sp-r.md.gate"
+printf 'Done in abc1234.\n\n%s\n' "$TBL" > "$T/sp-t.md"; sha256sum "$T/sp-t.md" | cut -d' ' -f1 > "$T/sp-t.md.gate"
+check "BLOCK: gh pr ready, or a reply on the PR, when its head has a shape pass neither the body nor the reply shows, naming the head; a reply with the table passes" "1 1 0" "$(sguard 'gh pr ready 7 -R o/r') $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-r.md") $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-t.md")"
+spr "Fixes the leak."$'\n\n'"$TBL"
+check "the live body's old ⇒ new table shows it, for ready and for a reply" "0 0" "$(sguard 'gh pr ready 7 -R o/r') $(sguard "gh pr comment 7 -R o/r --body-file $T/sp-r.md")"
+echo "shape $T/sp-carry.md 2026-10-15T08:00:00Z" > "$HOME/.claude/pr-steps/$SH"; spr 'Fixes the leak.'
+check "a head whose shape record carries an earlier pass asks for no table" 0 "$(sguard 'gh pr ready 7 -R o/r')"
+rm -f "$FX/repos_o_r_pulls_7" "$HOME/.claude/pr-steps/$SH"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }

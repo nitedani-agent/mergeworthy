@@ -181,6 +181,25 @@ def check_context(thread, files):
         if r.returncode != 0 and r.stderr.strip():
             block(f"{r.stderr.strip()} (mergeworthy:post step 1: draft from thread-context.md, give the reviewer the same file)")
 
+RATED = re.compile(r'^\s*\|.*[0-9]+ *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # an old ⇒ new rating row (pr-steps' is_pass)
+def check_shape_shown(repo, num, texts, head=None, live=True):
+    """delegate/shape.md: the maintainer is shown the shape pass. When the PR's head has a recorded shape pass (`pr-steps shape`, not a
+    carry), the post or the live PR body has its old ⇒ new table. The head is the PR's (gh api), else the one given; a PR gh can't read is not checked."""
+    body = ''
+    if repo and str(num).isdigit():
+        try:
+            r = subprocess.run(['gh', 'api', f'repos/{repo}/pulls/{num}'], capture_output=True, text=True, timeout=20)
+            pr = json.loads(r.stdout) if r.returncode == 0 else None
+        except (subprocess.TimeoutExpired, ValueError): pr = None
+        if not isinstance(pr, dict): return
+        head, body = (pr.get('head') or {}).get('sha') or head, (pr.get('body') or '') if live else ''
+    rec = os.path.expanduser(f'~/.claude/pr-steps/{head}')
+    if not head or not os.path.exists(rec): return
+    passes = [f for k, f, *_ in (l.split() for l in open(rec) if len(l.split()) >= 2) if k == 'shape' and os.path.isfile(f)
+              and not re.search(r'carries the pass of [0-9a-f]{7,40}', open(f, errors='replace').read())]
+    if passes and not any(RATED.search(t) for t in texts + [body]):
+        block(f"the shape pass on {head[:10]} isn't shown: add its old ⇒ new table and the whole-diff link to the PR body or this post (delegate/shape.md: the PR body shows the summary)")
+
 def cwd_repo(run_dir):
     import subprocess
     url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
@@ -348,6 +367,11 @@ def check(t, has_cd):
     if any(x.endswith('.review.out') for x in written) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
+    if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
+        num = next((x for x in a[2:] if x.isdigit()), None)
+        try: num = num or subprocess.run(['gh', 'pr', 'view', '--json', 'number', '--jq', '.number'], cwd=run_dir, capture_output=True, text=True, timeout=20).stdout.strip()
+        except Exception: pass
+        check_shape_shown((opt(a[2:], ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, [])
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(run_dir)
@@ -399,6 +423,12 @@ def check(t, has_cd):
                     if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
                         block(f"{f}: a draft PR's body starts, right under the badge, with '**{w['state'][0]}: {w['state'][1]}** (<why it's a draft, in plain words>)' (post-lint --kind pr --draft)" if draft else
                               f"{f}: this PR isn't a draft: remove the State line, or open it with --draft")
+            # a PR body or a reply on a PR shows the head's shape pass; an edited body replaces the live one
+            bodies = [open(x).read() for x in (os.path.join(cwd, os.path.expandvars(os.path.expanduser(f))) for f in files) if os.path.isfile(x)]
+            if sub == 'create' and a[0] == 'pr':
+                check_shape_shown(None, None, bodies, subprocess.run(['git', '-C', run_dir, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip())
+            elif sub in ('comment', 'edit') and files:
+                check_shape_shown((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), next((x for x in rest if x.isdigit()), None), bodies, live=sub == 'comment')
             if sub == 'comment' and '--edit-last' not in rest:
                 num = next((x for x in rest if x.isdigit()), None)
                 check_turn((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), num, rest)

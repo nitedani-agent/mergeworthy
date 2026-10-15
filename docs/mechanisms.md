@@ -29,7 +29,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - **The checks**, each where it applies to the kind:
   - **Writing:** banned phrases; sentences over 40 words or averaging over 25, and more than 30% bold (not for `pr`); internal labels like W2; a bold label followed by a fragment; em dashes.
   - **References:** "stacked on"; bare `#N`.
-  - **Content:** budgets; unclassified notes; process in the thread; questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table; a ready PR body without `pull-request §Body`'s `### What you should see`, its numbered items showing the evidence outside `<details>`.
+  - **Content:** budgets; unclassified notes; process in the thread (a post carrying an old ⇒ new rating table may use `N/10` and "rated every"; in a reply, that table counts toward no word cap and lifts the 80-word cap for a short comment); questions without a recommendation; a bare "Done" to a question (`reply`, `inline`); deferrals in the notes table; a ready PR body without `pull-request §Body`'s `### What you should see`, its numbered items showing the evidence outside `<details>`.
   - **Safety and form:** secrets; a missing badge, unless the `badge` option says otherwise (not for `tracker`).
 
 ### `thread-context` (`post` step 1)
@@ -87,6 +87,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `gates`: `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0.
 - `gates`, in a repo with `.changeset/`: each changeset the branch adds or changes has at most 60 words after its front matter, and together they name every package (the nearest `package.json` with a name, not the root's or a private one's) whose files the branch changed.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
+- `gh pr create`, `gh pr ready`, a PR body edit and a comment on a PR are blocked when the PR's head has a `shape` record that isn't a carry and neither the post nor the live PR body (a comment's case) has an old ⇒ new row: the maintainer is shown the pass (`delegate/shape.md`). A PR `gh api` can't read is not checked.
 
 ## The watcher daemon: `watcher/gh-watch.py` (`reply`, `task` step 5)
 
