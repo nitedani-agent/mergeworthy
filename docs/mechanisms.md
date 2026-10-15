@@ -68,6 +68,15 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 `agent-job list` prints the open jobs `pre-agent-dedupe` registered; `agent-job done <key or ticket path>` releases one once its result is read. It then lists the processes whose cwd is in a linked worktree the job's brief names or in the folder holding its brief, with their PIDs, commands and the ports they listen on (`ss -ltnp`), and kills none.
 
+### `disk-sweep`
+
+`disk-sweep [--dry-run]` deletes what can be rebuilt or is finished and appends one line per deletion (`<time> <bytes> <path or docker object> <rule>`) to `~/.mergeworthy/disk-sweep.log`; `--dry-run` prints the lines and deletes nothing. The main watch dir's daemon runs it once an hour, in the background at the lowest priority, its output in `disk-sweep.out`.
+- **Where.** The work folders (`~/*-work/`), `~/.t3/worktrees/` and Docker. It never follows a symlink or leaves a root's filesystem, and one runs at a time. Idle means no file changed in 24 hours, folders git ignores aside; busy means a process works there or an open agent job names it.
+- **`a-worktree`:** a work folder's git worktree that is clean (untracked files count), idle and not busy, whose HEAD is on a remote branch and that no transcript of the last 24 hours names: `git worktree remove`, keeping the branch. T3 Code binds its threads to the worktrees in `~/.t3/worktrees/`, so none of those is removed.
+- **`c-ignored`:** in an idle repo or worktree that isn't busy, the folders git ignores named `node_modules`, `dist`, `build`, `.next`, `.vite`, `.turbo`, `.svelte-kit`, `coverage`, `test-results`, `playwright-report` or `.cache`. **`c-node_modules`:** outside any repo in a work folder, a `node_modules` whose folder is idle and not busy.
+- **`d-docker`:** stopped containers, dangling images and build cache older than 24 hours (`docker <kind> prune -f --filter until=24h`), never volumes. The bytes are what Docker reports, `?` in a dry run.
+- **`e-old-file`:** outside any repo in a work folder, `.webm`, `.mp4`, `.zip` and `.log` files over 10 MB unchanged for 7 days.
+
 ### The finality trigger (`pre-bash-guard`, `post-bash-register`)
 
 `post-bash-register` counts each posted `--kind proposal` draft per thread in `~/.claude/proposal-rounds.txt`. Before the third proposal, refresh the thread map with its invariants (`design` step 7) and update the thread's WIP comment from it (`design §WIP comment`).
