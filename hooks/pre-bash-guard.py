@@ -255,6 +255,13 @@ def check(t, has_cd):
               "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
+    # A credential file printed to the tool output lands in the transcript (an npm token, 2026-10-14)
+    CRED = r'(?:^|/)(?:\.npmrc|\.netrc|\.pypirc|\.git-credentials|hosts\.yml|credentials(?:\.json)?|id_(?:rsa|ed25519|ecdsa)|\.config/pnpm/(?:config\.yaml|rc))$'
+    if p in ('cat', 'head', 'tail', 'less', 'more', 'bat', 'sed', 'awk', 'grep', 'rg', 'cut', 'strings', 'xxd', 'od', 'base64', 'jq', 'yq', 'python3', 'node') and any(
+            re.search(CRED, os.path.expanduser(x)) and os.path.isfile(os.path.expanduser(x)) for x in a if not x.startswith('-')) and not (
+            p in ('grep', 'rg') and any(re.fullmatch(r'-\w*[clqL]\w*|--count|--quiet|--files-with-matches', x) for x in a)):
+        block("that file holds credentials, and printing it puts them in the transcript. Check a setting without its value "
+              "(`grep -c '^//registry' <file>`, `npm config get registry`), or ask the user")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
         block("never pkill -f / killall: kill your own processes by PID or port")
     if p == 'kill':

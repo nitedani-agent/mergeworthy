@@ -904,6 +904,8 @@ check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
 check "an approach with three rated candidates and a chosen 8 records, with no Browser line" 0 "$(prs2 approach "$T/ap.md")"
 glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
+mkdir -p "$HOME/.config/pnpm"; echo '//registry.npmjs.org/:_authToken=x' > "$HOME/.npmrc"; cp "$HOME/.npmrc" "$HOME/.config/pnpm/config.yaml"
+check "BLOCK: printing a credential file; counting a line in it, or a file that isn't one, passes" "2 2 2 0 0" "$(glab "cat $HOME/.npmrc") $(glab 'cat ~/.config/pnpm/config.yaml') $(glab "grep token $HOME/.npmrc") $(glab "grep -c registry $HOME/.npmrc") $(glab "cat $T/tr.jsonl")"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
 check "glab mr create --draft passes" 0 "$(glab 'glab mr create --draft --title x')"
