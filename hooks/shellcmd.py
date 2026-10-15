@@ -51,10 +51,24 @@ def segments(cmd):
         if cur: segs.append(cur)
     return segs
 
+# Wrappers that run the command after them, with the options each takes a value for (`timeout 200`, `nice -n 19`, `env -u X`)
+WRAPPERS = {'sudo': (), 'env': ('-u',), 'command': (), 'time': (), 'exec': (), 'nohup': (), 'setsid': (), 'netns-run': (),
+            'nice': ('-n',), 'ionice': ('-c', '-n'), 'stdbuf': (), 'timeout': ('-s', '-k', '--signal', '--kill-after')}
+
 def prog(t):
-    """Drop env assignments and wrappers; return the command's argv."""
-    while t and (re.match(r'^\w+=', t[0]) or t[0] in ('sudo', 'env', 'command', 'time', 'exec', 'nohup')):
+    """Drop env assignments and wrappers (with their options, and timeout's duration); return the command's argv."""
+    while t:
+        if re.match(r'^\w+=', t[0]):
+            t = t[1:]
+            continue
+        w = os.path.basename(t[0])
+        if w not in WRAPPERS:
+            return t
         t = t[1:]
+        while t and t[0].startswith('-'):
+            t = t[2:] if t[0] in WRAPPERS[w] else t[1:]
+        if w == 'timeout' and t:
+            t = t[1:]
     return t
 
 def opt(t, names):
