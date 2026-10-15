@@ -47,7 +47,7 @@ def uncoded(s, keep=lambda block: ''):  # s with each fenced code block replaced
     for a, b, _ in fence_spans(s): out += [s[last:a], keep(s[a:b])]; last = b
     return ''.join(out) + s[last:]
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
-BOUND = 45  # words per cell of a rated row or its header that count toward no cap: the longest rating reason in #3609's result is 45
+BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
 def cells(l):  # a table line's cells as GitHub splits them: an escaped \| stays inside its cell
     return re.split(r'(?<!\\)\|', re.sub(r'(?<!\\)\|\s*$', '', re.sub(r'^\s*\|', '', l.rstrip('\n'))))
 def rating_rows(t):
@@ -59,8 +59,8 @@ def rating_rows(t):
             re.search(r'\b\d+(?:\.\d+)?/10\b', (cells(l) + [''] * len(head))[col])}
     return rows
 def unrated(s):
-    """(s, n): each rated row outside fenced code, and the first line of its table, cut to the words past BOUND in each cell, as a
-    plain line; the other rows stay as they are; n is the number of rated rows."""
+    """(s, n): outside fenced code, each rated row becomes a plain line of the words past BOUND in each of its cells (as GitHub splits
+    them), and its table's first line the words past BOUND in all; the table's other rows stay; n is the number of rated rows."""
     n = 0
     def rest(m):
         nonlocal n
@@ -99,8 +99,8 @@ _label = re.match(r'^\s*<img [^>]*>[ \t]*\*\*[^*\n]+:\*\*', text)
 _m = BADGE.match(text.lstrip())
 if _m:
     text = text.lstrip()[_m.end():].lstrip()
-# What GitHub renders as the author's prose. Code (fenced, inline), quotes of others and
-# HTML comments are neither linted nor counted; data tables, images and URLs are evidence: linted, not counted.
+# The author's prose, which the checks below lint: no code (fenced, inline), quotes of others or HTML comments. The count has its
+# own rules: a PR body's adds prose-like code lines; every other post's reads its own text, code included (see Reading cost).
 prose = re.sub(r'<!--.*?-->', '', text, flags=re.S)
 # A reader who asked for the full lists (a refactor prompt's ratings, "100 questions with A/B/C choices") gets them, collapsed in <details>: not linted or counted
 _rp = arg('--parent', None); _rp = (re.sub(r'\.md$', '', path) + '.parent.md') if _rp is None else (None if _rp == 'none' else _rp)
@@ -108,7 +108,7 @@ _asked_list = bool(_rp and os.path.exists(_rp) and re.search(r'\brefactor this p
 if _asked_list:
     prose = re.sub(r'<details>.*?</details>', '', prose, flags=re.S)
     prose = re.sub(r'(?m)^\s*(?:- \[[ xX]\] .*|\d+\. \*\*.*|\*Why it matters:.*)$', '', prose)
-# The converge steps' runs, collapsed in a PR body (converge step 5), are evidence: not linted or counted
+# The converge steps' runs, collapsed (converge step 5), are evidence: never linted; only a PR body's count reads this prose, so a reply counts them
 prose = re.sub(rf'<details>\s*<summary>(?:{post_words.alt(W["blocks"])})[^<]*</summary>.*?</details>', '', prose, flags=re.S)
 code = '\n'.join(inner for _, _, inner in fence_spans(prose))
 prose = uncoded(prose)
@@ -260,11 +260,11 @@ if _pp and os.path.exists(_pp):
     # a short comment (a question or an instruction in a line or two) gets a short answer: the result and its commit
     _cap = 80 + 60 * max(_asked - 1, 0) + 20 * n_rated  # 20 words per rated row the count left out: a pass's commits and what stays below the bar
     if kind == 'reply' and _pwords <= 25 and words > _cap:
-        findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}" + (f" with {20 * n_rated} words for its {n_rated} rated row{'s' * (n_rated > 1)}" if n_rated else '') + "): give the answer and its commit in a few sentences; "
+        findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}" + (f" with {20 * n_rated} words for its {n_rated} rated row{'s' * (n_rated > 1)}" if n_rated else '') + "): give the answer and its commit in a few sentences, and keep a rated cell's reason within 45 words; "
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")
 extra = 0  # however many questions: one plan, the rest linked
 if kind == 'reply' and words > 300 + extra:
-    findings.append(f"{words} words > {300 + extra} for a reply: a dump, not a reply: cut what the reader doesn't need to decide, act or check, a whole sentence at a time, never single words out of a sentence that stays")
+    findings.append(f"{words} words > {300 + extra} for a reply (a rated cell's words past 45 count too): cut what the reader doesn't need to decide, act or check, a whole sentence at a time, never single words out of a sentence that stays")
 pr_budget = 300  # what's broken and what the PR changes need room; data tables, code and the collapsed evidence don't count
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
@@ -401,7 +401,7 @@ if not record:
     _parent = re.sub(r'\.md$', '', path) + '.parent.md'
     _parent = arg('--parent', None) if arg('--parent', None) not in (None, 'none') else _parent
     # ...and so does a shown commit-review table (| Commit | What it does, and the idea behind it | Rating |); a shown old ⇒ new row
-    # (delegate/shape.md) also allows "rated every/each"
+    # (`7 ⇒ 9`, `new ⇒ 9`, delegate/shape.md) also allows "rated every/each"; a row in an HTML comment or fenced code allows nothing
     _shown = VISIBLE(text)
     if RATED.search(_shown) or REVIEWED.search(_shown) or \
             (__import__('os').path.exists(_parent) and re.search(r'\breview\b', open(_parent).read(), re.I)):
@@ -413,7 +413,7 @@ if not record:
     for b in PROCESS:
         for m in re.finditer(b, prose, flags=re.I):
             findings.append(f"process in the thread: {m.group(0)!r}: " + ("put the ratings in an old ⇒ new table in this post (`| item | 7 ⇒ 9 | commit |`), or drop the word"
-                            if '/10' in b or 'rated' in b else "give the result; keep rounds, reviewers and models in the work folder"))
+                            if '/10' in b or 'rated' in b else "say what changed, not how it was produced (a rating table can stay); keep rounds, reviewers and models in the work folder"))
 # a question to the reader carries our recommendation
 asks = [q.strip() for q in re.findall(r'[^.!?\n]*\?(?=\s|$)', prose)]
 if not record and asks and not re.search(rf"\b({W['recommend']})\b|^GENUINE-FORK:", prose, re.I | re.M):

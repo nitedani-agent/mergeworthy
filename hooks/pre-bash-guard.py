@@ -165,7 +165,7 @@ VALUED = {'-R', '--repo', '-F', '--body-file', '-b', '--body', '-t', '--title', 
 def post_target(group, rest, run_dir):
     """(owner/repo, N) a `gh issue|pr <sub> <rest>` command acts on: its number or URL argument, or for gh pr its branch argument or the current
     branch's PR (`gh pr view`); (repo, None) when gh can't tell. Every check of a post on a thread reads its target here."""
-    repo = (opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir)
+    repo = re.sub(r'^(?:https?://)?github\.com/', '', (opt(rest, ['--repo', '-R']) or [None])[-1] or '') or cwd_repo(run_dir)  # gh takes [HOST/]OWNER/REPO
     ref = next((x for i, x in enumerate(rest) if not x.startswith('-') and (i == 0 or rest[i - 1] not in VALUED)), None)
     if t := thread_of_ref(repo, ref): return tuple(t.split('#'))
     if group != 'pr': return repo, None
@@ -233,7 +233,7 @@ def check_refactor_ask(repo, num, comment, drafts=()):
     commits = gh_json(f'repos/{repo}/pulls/{num}/commits?per_page=100')
     shas = {c.get('sha') for c in commits if isinstance(c, dict)} if isinstance(commits, list) else set()
     if any(at > t for sha in shas | {(pr.get('head') or {}).get('sha')} for _, _, at in real_passes(sha)): return
-    if comment and promised(repo, num, drafts): return  # a holding reply, or a commit review, while the pass runs
+    if comment and promised(repo, num, drafts): return  # the post review checks the comment says the result is still to come
     block(f"{url} asks for a refactor pass ({t}) and no pass on this PR was recorded after it: fetch the PR's head, run the pass on it "
           "(converge step 2, delegate/shape.md), then record its report there with `pr-steps shape <report>`, on the unchanged head when the pass changes nothing. " +
           (f"To comment before it (a holding reply, a commit review), first add 'PROMISED {repo}#{num}: the refactor pass's result by <time> (<draft>)' "
