@@ -890,6 +890,8 @@ CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 check "BLOCK: the branch reused with a new approach is new-contract again" 1 "$(prs loopb "$T/olb.md")"
 # pr-steps verify and reverify: a reproduced behavior a verifier dropped as harmless waits for the main session's RULED line
 printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\n- a slow path: rarely slower, noise\nNO BUGS\n' > "$T/vr0.md"
+printf 'slice 1\n- **a rare race in abort**: reproduced, fixed in abc1234\nNO BUGS\n' > "$T/vr3.md"; std "$T/vr3.md"
+check "a counted bug described as rare, outside the dropped list, needs no RULED line" 0 "$(prs verify "$T/vr3.md")"
 { head -n4 "$T/vr0.md"; echo 'RULED: abort leaks a listener: a real leak, fixed in its own PR'; echo 'NO BUGS'; } > "$T/vr1.md"
 sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"; std "$T/vr0.md" "$T/vr1.md"
 check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it, in verify and reverify; with a later RULED line naming it, it records" "1 1 1 0" "$(prs verify "$T/vr0.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr0.md" 2>&1 | grep -c '^- \*\*abort leaks a listener\*\*: Not a regression') $(prs reverify "$T/vr2.md") $(prs verify "$T/vr1.md")"

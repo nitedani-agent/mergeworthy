@@ -73,10 +73,10 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `preflight`, per repo and branch: `<app URL> [Chrome flags]` (screenshotted headlessly; an error or blank page fails), a fresh browser-MCP PNG, or `'none, because <why>'`. Edits in its work tree and `git commit` wait for it.
 - `approach`, per repo and branch: a table `| Candidate | Rating | Why |` of at least two candidates rated 0–10 and a line `Chosen: <candidate>` rated 7 or more (`pull-request` step 5).
 - `verify`: trailing `NO BUGS`.
-- `verify` (not `reverify`) and `fresh`: a `## Standards read` section holding the first sentence of code §Phantom gate, §Docs are a claim and §No regressions, which `pr-steps standards` prints: in both #453 rounds no checker opened the code skill its brief named.
+- `verify` (not `reverify`) and `fresh`: a `## Standards read` section holding the first sentence of code §Phantom gate, §Docs are a claim and §No regressions, which `pr-steps standards` prints: in both rounds of magne4000/universal-middleware#453 no checker opened the code skill its brief named.
 - `reverify`: trailing `NO BUGS`, or `NO LOOP B COMMITS` when none landed (`converge` step 3).
 - `fresh`: a `Maintainer: <login>` line, `MERGE AS IS: yes` and trailing `CLEAN` (`converge` step 4).
-- `verify` and `reverify`: a line giving "not a regression", "no documented usage", "rare" or "same as main" as a reason needs a later `RULED: <candidate>: <ruling>` line, the main session's (delegate/verifier.md, What counts).
+- `verify` and `reverify`: a line under a `## Dropped` (or other "dropped") heading giving "not a regression", "no documented usage", "rare" or "same as main" as a reason needs a later `RULED: <candidate>: <ruling>` line, the main session's (delegate/verifier.md, the brief's Write list).
 - `shape`: Loop B's shape report: the ✅ list and old ⇒ new ratings ending `CLEAN`, or `carries the pass of <sha>` with ≤ 80 changed lines. Old heads' `loopb` and `refactor` records together count as one.
 - A new `approach` record ends with `contract: 2`. A branch whose latest approach record lacks it started before the shape pass and finishes under the old contract: `loopb` (trailing `CLEAN`) and `refactor` still record, a `fresh` report needs no `Maintainer:` line, and a `shape` record may carry an old head that has both a `loopb` ending `CLEAN` and a `refactor` pass.
 - `gates`: `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0.
