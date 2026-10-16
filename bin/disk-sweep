@@ -16,7 +16,7 @@ read, or when its repo or loose parent is busy right before it would be listed o
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each untouched for 14 days.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is untouched for
-  14 days, and each entry of ~/.cargo/registry/cache, ~/.cargo/git/checkouts and ~/.cache untouched for 14 days, not busy.
+  14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, playwright and the like) untouched for 14 days, not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
   own age rule; never containers or volumes.
 Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME untouched for 14 days that no rule deletes.
@@ -33,7 +33,7 @@ HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
 OLD = 14 * DAY  # the round-7 rules: untouched for 14 days
 VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
-BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
+BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report'}  # never .cache: projects keep dumps and reports there
 STATE = os.path.join(HOME, '.mergeworthy')
 ACCOUNT_HOME = os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir)  # from the password database: a probe's HOME can't move it
 INSTALLED = os.path.realpath(os.path.join(ACCOUNT_HOME, '.mergeworthy', 'current'))
@@ -357,7 +357,8 @@ def sweep_home():
                 stack.append((e.path, depth + 1))
 
 
-CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache')  # each entry inside is deleted after 14 untouched days
+CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache/node-gyp', '.cache/typescript', '.cache/yarn', '.cache/go-build',
+          '.cache/puppeteer', '.cache/ms-playwright', '.cache/electron', '.cache/pre-commit')  # named tool caches only (other ~/.cache folders can hold drafts and records); each entry inside goes after 14 untouched days
 
 
 def run_tool(*argv):
