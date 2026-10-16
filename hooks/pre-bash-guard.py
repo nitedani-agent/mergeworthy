@@ -351,6 +351,11 @@ def check(t, has_cd):
             p in ('grep', 'rg') and any(re.fullmatch(r'-\w*[clqL]\w*|--count|--quiet|--files-with-matches', x) for x in a)):
         block("that file holds credentials, and printing it puts them in the transcript. Check a setting without its value "
               "(`grep -c '^//registry' <file>`, `npm config get registry`), or ask the user")
+    # The posting gate compares draft, parent, thread record and review by their times: setting a time makes a stale record pass
+    if p == 'touch' and any(x in ('-d', '-t', '-r') or x.startswith(('--date', '--reference')) or (re.fullmatch(r'-[a-z]+', x) and set(x[1:]) & set('dtr')) for x in a) \
+            and ('drafts/' in cmd or any('drafts/' in os.path.abspath(os.path.expanduser(x)) for x in a if not x.startswith('-'))):
+        block("never set a draft's file times: the posting gate reads them. Rebuild the record instead (`thread-context <owner/repo#N> --out <its folder>/thread-context.md`), "
+              "re-save the draft, and run its review again (mergeworthy:post steps 1-4)")
     if p == 'pgrep' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a):
         block("never pgrep -f: it matches its own command line and other sessions' processes; wait on the PID you started (`kill -0 <pid>`) or its port")
     if p == 'killall' or (p == 'pkill' and any(x == '--full' or (not x.startswith('--') and short_has(x, 'f')) for x in a)):
