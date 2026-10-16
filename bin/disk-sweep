@@ -14,12 +14,12 @@ read, or when its repo or loose parent is busy right before it would be listed o
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
-  aside), each untouched for 14 days.
-- k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is untouched for
-  14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) untouched for 14 days, not busy.
+  aside), each unused for 14 days (neither written nor read).
+- k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
+  14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) unused for 14 days (neither written nor read), not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
   own age rule; never containers or volumes.
-Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME untouched for 14 days that no rule deletes.
+Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME unused for 14 days (neither written nor read) that no rule deletes.
 Deleting under the account's home and pruning Docker happen only when the watcher daemon of the main watch dir started the sweep
 (from_daemon); anything else deletes only in folders outside that home, a test's temp roots."""
 import datetime, fcntl, glob, os, pwd, re, shutil, subprocess, sys, time
@@ -31,7 +31,7 @@ if not os.path.isdir('/proc/self'):
 DRY = True
 HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
-OLD = 14 * DAY  # the round-7 rules: untouched for 14 days
+OLD = 14 * DAY  # the round-7 rules: unused for 14 days (neither written nor read)
 VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report'}  # never .cache: projects keep dumps and reports there
 STATE = os.path.join(HOME, '.mergeworthy')
@@ -130,7 +130,7 @@ def used(st, age):
 
 
 def changed(top, skip, age=DAY):
-    """Whether a file under top, outside the paths skip(path relative to top) excludes, has an mtime within age of the start."""
+    """Whether a file under top, outside the paths skip(path relative to top) excludes, was used within age of the start (used())."""
     stack = [top]
     while stack:
         try:
@@ -313,7 +313,7 @@ def sweep_files():
 
 
 def sweep_repo(repo, dev, rule, age):
-    """In an idle repo that isn't busy, the folders git ignores named in BUILD, each untouched for age."""
+    """In an idle repo that isn't busy, the folders git ignores named in BUILD, each unused for age (used())."""
     listed = git(repo, 'ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory')
     ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
     if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
@@ -340,7 +340,7 @@ def due(name, period):
 
 
 def sweep_home():
-    """Once a day, h-ignored: build output untouched for 14 days in the git repos up to 5 levels below HOME, outside hidden
+    """Once a day, h-ignored: build output unused for 14 days (neither written nor read) in the git repos up to 5 levels below HOME, outside hidden
     folders and the work folders (sweep_files has those)."""
     if not due('home', DAY):
         return
@@ -381,8 +381,8 @@ def run_tool(*argv):
 
 
 def sweep_caches():
-    """Once a day, k-cache: pnpm's and pip's own cache commands, npm's when ~/.npm/_cacache is untouched for 14 days, and each
-    entry of CACHES untouched for 14 days that isn't busy (a cargo git checkout may hold .git: cargo rebuilds it from its db)."""
+    """Once a day, k-cache: pnpm's and pip's own cache commands, npm's when ~/.npm/_cacache is unused for 14 days (neither written nor read), and each
+    entry of CACHES unused for 14 days (neither written nor read) that isn't busy (a cargo git checkout may hold .git: cargo rebuilds it from its db)."""
     if not due('caches', DAY):
         return
     try:
@@ -435,7 +435,7 @@ def report():
     walk_size(HOME)
     rows = [f'| {b / 1e9:.2f} GB | {p} |' for b, p in sorted(found, reverse=True)[:20]]
     with open(os.path.join(STATE, 'disk-report.md'), 'w') as f:
-        f.write('# Folders under the home folder untouched for 14 days that no disk-sweep rule deletes\n\n| Size | Folder |\n|---|---|\n'
+        f.write('# Folders under the home folder unused for 14 days (neither written nor read) that no disk-sweep rule deletes\n\n| Size | Folder |\n|---|---|\n'
                 + '\n'.join(rows) + '\n')
 
 
