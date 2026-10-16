@@ -850,22 +850,24 @@ check "a brief quoting a line format in backticks that holds a template's slot p
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
 check "an input file the brief names (memory.md quoting <sha>) is not scanned for slots; the brief file still is" "0 2" "$(ag "$T" "Follow $T/mem/memory-brief-1.md" research) $(printf 'Sort it (git show <sha>).\n' > "$T/mem/sort-brief.md"; ag "$T" "Follow $T/mem/sort-brief.md" review)"
 # pre-agent-dedupe: a worktree another agent still works in (its process's cwd, or its fresh transcript naming it)
-git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; mkdir -p "$AD" "$T/aw/src"
+git -C "$T/gr" worktree add -q -b a "$T/aw"; AD="$HOME/.claude/projects/-aw"; AS="$AD/sess/subagents"; mkdir -p "$AD" "$AS" "$T/aw/src"
 alive() { # task [transcript_path]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50]}}))' "$OC" "$1" "${2:-}" \
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 (cd "$T/aw/src" && exec sleep 600) & APID=$!; sleep 0.2
 check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "Run e2e in $T/aw/src") $(grep -c "$APID (sleep)" "$T/err")"
 kill $APID; wait $APID 2>/dev/null
-echo "{\"cwd\":\"$T/aw\"}" > "$AD/agent.jsonl"
-check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AD/agent.jsonl" "$T/err")"
+echo "{\"cwd\":\"$T/aw\"}" > "$AD/main-session.jsonl"
+check "a main session's transcript naming the worktree (the steward's, say) doesn't make it busy" 0 "$(alive "Run e2e in $T/aw")"
+rm -f "$AD/main-session.jsonl"; echo "{\"cwd\":\"$T/aw\"}" > "$AS/agent.jsonl"
+check "BLOCK: an agent transcript written minutes ago names the worktree" "2 1" "$(alive "Run e2e in $T/aw") $(grep -c "$AS/agent.jsonl" "$T/err")"
 echo "Prototype report: worktree $T/aw, branch a." > "$T/aw-report.md"; printf 'Goal: e2e green.\nWork in %s.\n' "$T/aw" | tee "$T/aw-job.md" > "$T/aw-brief.md"
 check "a reference file the brief names whose text names the busy worktree passes; the brief file it says to follow, or named as a brief, blocks" "0 2 2" "$(alive "Summarize the prototype. Context: $T/aw-report.md (read first)") $(alive "Follow $T/aw-job.md exactly") $(alive "Topic: e2e. Its file: $T/aw-brief.md")"
-check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AD/agent.jsonl")"
-echo "{\"cwd\":\"$T/aw-r\"}" > "$AD/sibling.jsonl"; touch -d '10 minutes ago' "$AD/agent.jsonl"
+check "the orchestrator's own transcript naming the worktree doesn't count" 0 "$(alive "Run e2e in $T/aw once more" "$AS/agent.jsonl")"
+echo "{\"cwd\":\"$T/aw-r\"}" > "$AS/sibling.jsonl"; touch -d '10 minutes ago' "$AS/agent.jsonl"
 check "a transcript naming a longer sibling path ($T/aw-r) doesn't make the worktree busy" 0 "$(alive "Run e2e in $T/aw yet again")"
-rm -f "$AD/sibling.jsonl"; touch "$AD/agent.jsonl"
-touch -d '10 minutes ago' "$AD/agent.jsonl"
+rm -f "$AS/sibling.jsonl"; touch "$AS/agent.jsonl"
+touch -d '10 minutes ago' "$AS/agent.jsonl"
 check "a worktree with no process and only an old transcript passes" 0 "$(alive "Run e2e in $T/aw again")"
 mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
 import sqlite3, sys

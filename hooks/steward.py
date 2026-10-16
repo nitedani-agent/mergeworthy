@@ -36,6 +36,16 @@ def task_done(session_id):
     except sqlite3.Error:
         return False
 
+def is_task(session_id):
+    """True when the Claude session is a T3 delegated task (a child agent), not a main session."""
+    try:
+        c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
+        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
+                      (session_id,)).fetchone()
+        return bool(r) and bool(c.execute("select 1 from orchestration_v2_projection_subagents where child_thread_id = ?", r).fetchone())
+    except sqlite3.Error:
+        return False
+
 def first(path):
     try: return open(path).read().split()[0]
     except (OSError, IndexError): return ''

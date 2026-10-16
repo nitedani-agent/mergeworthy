@@ -100,8 +100,8 @@ if not register:
                 sys.exit(2)
 # A linked worktree the brief names (not the launcher's own) where another agent is still working: T3 can show that agent
 # interrupted or cancelled while it runs. A process with its cwd there, or an agent transcript written in the last five
-# minutes that names it, means it is alive. The launcher's own transcript names every path, so it doesn't count, nor does
-# that of a T3 task that completed and won't be woken again (a review round's last agent).
+# minutes that names it, means it is alive. Only an agent's transcript counts (a main session, the steward's too, names paths
+# it doesn't work in), not the launcher's own, nor that of a T3 task that completed and won't be woken again (a review round's last agent).
 if not register:
     def linked(p):
         while p != '/':
@@ -131,6 +131,7 @@ if not register:
     for w in wts:
         pids = [f'{e} ({c})' for e, cwd, c in procs if cwd == w or cwd.startswith(w + '/')]
         named = [f'{f} (written {age}s ago)' for f, age, b in logs if re.search(re.escape(w.encode()) + rb'(?![\w.-])', b)  # the path itself, not a longer sibling
+                 and ('/subagents/' in f or steward.is_task(os.path.basename(f)[:-len('.jsonl')]))  # an agent's, not a main session's
                  and not steward.task_done(os.path.basename(f)[:-len('.jsonl')])]
         if pids or named:
             busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['transcripts naming it: ' + ', '.join(named)] if named else [])))
