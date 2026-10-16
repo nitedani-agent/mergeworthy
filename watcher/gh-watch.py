@@ -301,6 +301,10 @@ def request(path, method='GET', args=(), store=None, pending=None, fresh=False, 
         raise Budget(f"rate limited until {iso(until)}")
     if resp.status == 304:
         return resp
+    if resp.status in (301, 302, 307, 308) and resp.headers.get('location'):
+        # a renamed repo answers its old path with a redirect whose body is no item (`{"message": "Moved Permanently"}`)
+        moved = re.sub(r'^https://api\.github\.com/', '', resp.headers['location'])
+        return request(moved, method, args, store, pending, fresh, newest_first)
     if resp.status >= 400:
         raise RuntimeError(f"gh api {path}: HTTP {resp.status} {resp.body.strip()[:150]}")
     if store is not None and (resp.headers.get('etag') or resp.headers.get('last-modified')) and (newest_first or not resp.next()):

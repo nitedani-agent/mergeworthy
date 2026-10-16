@@ -430,6 +430,19 @@ def _():
         return 'vikejs/vike#50' in m.shared_read()['followups']
 
 
+@case("a renamed repo's old path (301 Moved Permanently) is followed to its new one, so its items come back", [6106953944])
+def _():
+    with world(names=['d1']) as (sim, gh, dirs):
+        m = load(dirs['d1'], sim)
+        asked = []
+        def get(path, headers):
+            asked.append(path)
+            if path.startswith('repos/o/old/'):
+                return m.Resp(301, {'location': 'https://api.github.com/repos/o/new/issues/12/comments'}, '{"message": "Moved Permanently"}')
+            return m.Resp(200, {}, '[{"id": 6106953944}]')
+        m.http_get = get
+        return [c['id'] for c in m.paged('repos/o/old/issues/12/comments')]
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
