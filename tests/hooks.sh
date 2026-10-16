@@ -1133,6 +1133,7 @@ printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; check "Loop A again, with no Loop B c
 printf 'Maintainer: hi-ogawa\nCLEAN\n' > "$T/fr0.md"; std "$T/fr0.md"; check "BLOCK: a fresh read without MERGE AS IS: yes" 1 "$(prs2 fresh "$T/fr0.md")"
 printf 'MERGE AS IS: yes\nCLEAN\n' > "$T/fr1.md"; std "$T/fr1.md"; check "BLOCK: a fresh read that names no maintainer" 1 "$(prs2 fresh "$T/fr1.md")"
 printf 'Maintainer: hi-ogawa\nMERGE AS IS: yes\nCLEAN\n' > "$T/fr.md"; std "$T/fr.md"; check "the fresh reader's maintainer, merge-as-is and CLEAN record" 0 "$(prs2 fresh "$T/fr.md")"
+printf 'Maintainer: hi-ogawa\nMERGE AS IS: yes\n- the body says "buffered"; "buffered whole" is exact\n' > "$T/fr2.md"; std "$T/fr2.md"; check "a yes with a body note records; a no does not" "0 1" "$(prs2 fresh "$T/fr2.md") $(sed -i 's/MERGE AS IS: yes/MERGE AS IS: no/' "$T/fr2.md"; prs2 fresh "$T/fr2.md" 2>/dev/null)"
 printf 'pnpm test -> exit 0\npnpm lint -> exit 1\n' > "$T/g1.md"
 check "BLOCK: a gates log with a red gate" 1 "$(prs2 gates "$T/g1.md")"
 check "BLOCK: gh pr ready with four of five steps" 2 "$(ready)"
