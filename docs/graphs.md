@@ -8,7 +8,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 |---|---|
 | `code` | `delegate` |
 | `converge` | `design`, `finality`, `delegate`, `code`, `writing`, `pull-request`, `task`, `rules`, `post`, `merging` |
-| `delegate` | `writing` |
+| `delegate` | `code`, `writing` |
 | `design` | `pull-request`, `delegate`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
 | `evidence` | `post` |
@@ -223,7 +223,8 @@ flowchart TB
     s6["7. Relay the result to the<br/>user and act …"]
     s5 --> s6
   end
-  s6 -.-> r1[["writing"]]
+  s6 -.-> r1[["code"]]
+  s6 -.-> r2[["writing"]]
   start --> g0
 ```
 

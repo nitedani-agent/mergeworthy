@@ -21,7 +21,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
    Run: `task_status` · Hook: stop-lint
 6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`; the ticket is the key pre-agent-dedupe registered: the brief's ticket id, else its title). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
    Run: `agent-job done <ticket>` · Hook: stop-lint, the watcher
-7. **Relay the result to the user and act on it;** an unchecked item or a deviation is yours to decide; never send the same brief again. If the result fails your check, or the agent is blocked, redo the work on your model class with what failed.
+7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If the result fails your check, or the agent is blocked, redo the work on your model class with what failed.
    Open: `writing §Reports to the user`
 
 ### Brief
