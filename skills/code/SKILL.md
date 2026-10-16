@@ -27,7 +27,7 @@ Fix at the root; never document around a defect. A sentence telling users to wor
 ### Earn every line
 
 A reviewer's, verifier's or shape pass's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
-- **How likely does a real user hit it, and what happens then?** A rare case whose failure is mild, or arguably what the user asked for, gets no code. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root.
+- **How likely does a real user hit it, and what happens then?** A case only a contrived setup or a staged race reaches (a folder moved in at the exact moment, a swap timed between two syscalls) gets no code, however severe its failure. A rare case whose failure is mild, or arguably what the user asked for, gets none either. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root.
 - **What does `main` do for the analogous case?** Add guards, asserts and caches only where `main` has an analogous one.
 - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
 - **Would the maintainer write it?** Lean code, no special-casing. Performance work stops at the plainest conventional code winning the order of magnitude; more shaving (planner hints, caches, odd query shapes) waits for the user's ask.
