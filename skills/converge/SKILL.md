@@ -31,7 +31,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 ### Running the agents
 
-- **Continue, don't restart** (`delegate §Continue`): after every fix, the slice's Loop A verifier re-checks what changed and the PR's one Loop B agent re-audits the whole diff. Loop A and Loop B get separate agents, except a Tier S PR whose diff is under ~300 lines, where one agent runs both.
+- **Continue, don't restart** (`delegate §Continue`): after a fix that doesn't carry the pass, its slice's verifier re-checks what changed and one Loop B agent re-audits the whole diff. Loop A and Loop B get separate agents, except a Tier S PR whose diff is under ~300 lines, where one agent runs both.
 - **A long list of Loop B findings** goes to one implementer in its own worktree, taking the slices one after the other. Review its diff before cherry-picking; cherry-pick onto the PR branch, run the full gates and the lanes the changes touch, then continue the Loop A verifier with the commits.
 - **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices); each slice gets its own verifier, and an implementer only when the slices don't fit one context; one Loop B agent covers the whole PR in one shape report (step 2).
 - **What they read:** the head's code in full at the brief's pinned SHAs. A finality graph is only an index.
