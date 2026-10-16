@@ -15,7 +15,8 @@ case "\$*" in
 esac
 exit 0
 EOF
-chmod +x "$T/bin/gh" "$T/bin/codex"; export PATH="$T/bin:$PATH" GH_WATCH_ME=me
+for t in pnpm npm pip; do printf '#!/bin/sh\nexit 0\n' > "$T/bin/$t"; done  # the sweep the main() case starts runs no real package tool
+chmod +x "$T/bin/gh" "$T/bin/codex" "$T/bin/pnpm" "$T/bin/npm" "$T/bin/pip"; export PATH="$T/bin:$PATH" GH_WATCH_ME=me
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 

@@ -19,7 +19,9 @@ case "$1 $2" in
   "builder prune") printf 'ID\tRECLAIMABLE\tSIZE\nTotal:\t2GB\n' ;;
 esac
 EOF
+for t in pnpm npm pip; do printf '#!/bin/sh\necho "%s $*" >> "%s/tools.log"\n' "$t" "$T" > "$T/bin/$t"; chmod +x "$T/bin/$t"; done  # stub tools: never the machine's
 chmod +x "$T/bin/docker"; export PATH="$T/bin:$PATH"; : > "$DOCKER_LOG"
+PY=$(python3 -c 'import sys; print(sys.executable)'); python3() { command "$PY" "$@"; }  # no version-manager shim moving its bin ahead of the stubs
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 G() { git -c user.name=t -c user.email=t@example.invalid "$@"; }
@@ -94,10 +96,10 @@ try:
     started.append(subprocess.Popen(["sleep", "600"], cwd=z + "/late"))
     json.dump({"key": "impl late", "started": time.time(), "brief": "Work in " + z + "/job."}, open(m.HOME + "/.claude/agent-jobs/late.json", "w"))
     measure = m.measure
-    def measuring(path, dev):
+    def measuring(path, dev, *a):
         if path == z + "/during/node_modules":
             started.append(subprocess.Popen(["sleep", "600"], cwd=z + "/during"))
-        return measure(path, dev)
+        return measure(path, dev, *a)
     m.measure = measuring; m.DRY = False; m.sweep_files()
 finally:
     for q in started:
@@ -156,7 +158,7 @@ check "from_daemon: the daemon's tree on the main watch dir yes; another main di
 # the prunes through the guarded entry, from the daemon's tree with this test's install and watch dir: what the daemon's sweep runs
 PRUNE='m.INSTALLED, m.main_watch_dir, m.DRY = sys.argv[2], lambda: sys.argv[3], False; print(m.prune_docker())'
 : > "$DOCKER_LOG"; got=$(daemon "$PRUNE" "$I/bin/disk-sweep")
-check "Docker from the daemon's tree: version, then the dangling-image and build-cache prunes; never containers or volumes" "0 version|image prune -f --filter until=24h|builder prune -f --filter until=24h|" "$got $(tr '\n' '|' < "$DOCKER_LOG")"
+check "Docker from the daemon's tree: version, then every unused image and the build cache older than 14 days; never containers or volumes" "0 version|image prune -a -f --filter until=336h|builder prune -f --filter until=336h|" "$got $(tr '\n' '|' < "$DOCKER_LOG")"
 check "Docker's reclaimed sizes are logged" "1500000 docker:image|2000000000 docker:builder|" "$(grep d-docker "$LOG" | cut -d' ' -f2,3 | tr '\n' '|')"
 got=$(DOCKER_FAIL=1 daemon "$PRUNE" "$I/bin/disk-sweep" 2> "$T/prune.err")
 check "a prune that fails returns 1, its stderr reported, no log line written" "1 2 2" "$got $(grep -c 'daemon is shutting down' "$T/prune.err") $(grep -c d-docker "$LOG")"
@@ -170,10 +172,10 @@ try:
     started.append(subprocess.Popen([sys.executable, "-c", "import sys, time; f = open(sys.argv[1]); time.sleep(600)", d + "/held/node_modules/dep"], cwd="/"))
     time = __import__("time"); time.sleep(0.3)
     measure = m.measure
-    def measuring(path, dev):
+    def measuring(path, dev, *a):
         if path == d + "/during/node_modules":
             started.append(subprocess.Popen(["sleep", "600"], cwd=d + "/during"))
-        return measure(path, dev)
+        return measure(path, dev, *a)
     m.measure = measuring; m.sweep_files()
 finally:
     for q in started:
@@ -196,6 +198,21 @@ out += [refused(m.remove, sys.argv[4] + "/r", os.lstat(sys.argv[4] + "/r")), ref
 print(*out)' "$T/sink" "$AS" 2>/dev/null)
 check "empty, remove and Docker refuse in a dry run; remove under the account's home and Docker refuse outside the daemon" "PermissionError PermissionError PermissionError PermissionError PermissionError kept kept kept 0" "$got $(there "$T/sink/e/x/f") $(there "$T/sink/r/x/f") $(there "$AS/r/x/f") $(wc -l < "$DOCKER_LOG")"
 rm -rf "$AS"
+
+# round 7: build output in any repo under home, tool caches, and a weekly report; each needs 14 untouched days
+H7="$T/home7"; mkdir -p "$H7/.mergeworthy"; : > "$T/tools.log"
+old() { find "$@" -exec touch -h -d '15 days ago' {} +; }
+for r in proj/app proj/young .hidden/r a/b/c/d/e/deep; do repo7="$H7/$r"; G init -q "$repo7"; echo dist > "$repo7/.gitignore"; G -C "$repo7" add .gitignore; G -C "$repo7" commit -qm base; mkdir -p "$repo7/dist"; echo x > "$repo7/dist/x"; done
+mkdir -p "$H7/.npm/_cacache/x" "$H7/.cache/stale/x" "$H7/.cache/fresh" "$H7/.cargo/registry/cache/idx" "$H7/.cargo/git/checkouts/c/rev/.git" "$H7/old-stuff/sub"
+echo x > "$H7/.npm/_cacache/x/f"; echo x > "$H7/.cache/stale/x/f"; echo x > "$H7/.cargo/registry/cache/idx/a.crate"; echo x > "$H7/.cargo/git/checkouts/c/rev/.git/HEAD"
+truncate -s 3M "$H7/old-stuff/sub/big"; old "$H7"; touch "$H7/.cache/fresh/f"; age "$H7/proj/young"
+HOME="$H7" python3 "$R/bin/disk-sweep" --delete 2>/dev/null
+check "a repo anywhere under home loses its 14-day-old build output; 2 days old, hidden or 6 levels down keeps it" "removed kept kept kept" "$(there "$H7/proj/app/dist") $(there "$H7/proj/young/dist") $(there "$H7/.hidden/r/dist") $(there "$H7/a/b/c/d/e/deep/dist")"
+mkdir -p "$H7/proj/app/dist"; echo x > "$H7/proj/app/dist/x"; old "$H7/proj/app/dist"
+HOME="$H7" python3 "$R/bin/disk-sweep" --delete 2>/dev/null
+check "the home-wide walk runs at most once a day" kept "$(there "$H7/proj/app/dist")"
+check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale ~/.cache and cargo entries go, a fresh one stays" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/fresh")"
+check "a weekly report names the stale folder no rule covers, and deletes nothing" "1 0 kept" "$(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/old-stuff") $(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/.cache") $(there "$H7/old-stuff/sub/big")"
 
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
 F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"

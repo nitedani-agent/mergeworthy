@@ -13,8 +13,13 @@ read, or when its repo or loose parent is busy right before it would be listed o
 - c-ignored: in an idle repo or worktree that isn't busy, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
-- d-docker: `docker image prune` and `docker builder prune` with `-f --filter until=24h`, each by its own age rule; never
-  containers or volumes.
+- h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
+  aside), each untouched for 14 days.
+- k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is untouched for
+  14 days, and each entry of ~/.cargo/registry/cache, ~/.cargo/git/checkouts and ~/.cache untouched for 14 days, not busy.
+- d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
+  own age rule; never containers or volumes.
+Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME untouched for 14 days that no rule deletes.
 Deleting under the account's home and pruning Docker happen only when the watcher daemon of the main watch dir started the sweep
 (from_daemon); anything else deletes only in folders outside that home, a test's temp roots."""
 import datetime, fcntl, glob, os, pwd, re, shutil, subprocess, sys, time
@@ -26,6 +31,7 @@ if not os.path.isdir('/proc/self'):
 DRY = True
 HOME, NOW = os.path.expanduser('~'), time.time()
 DAY = 86400
+OLD = 14 * DAY  # the round-7 rules: untouched for 14 days
 VCS = {'.git', '.hg', '.svn', '.jj'}  # a checkout's commits and edits, which no build restores
 BUILD = {'node_modules', 'dist', 'build', '.next', '.vite', '.turbo', '.svelte-kit', 'coverage', 'test-results', 'playwright-report', '.cache'}
 STATE = os.path.join(HOME, '.mergeworthy')
@@ -94,7 +100,7 @@ def mention(path):
     return '(?:' + '|'.join(map(re.escape, forms)) + r')(?![\w-]|\.[\w.-])'  # a sentence's full stop may follow it
 
 
-def measure(path, dev):
+def measure(path, dev, age=DAY, vcs=True):
     """The bytes deleting path frees (st_blocks * 512 of each entry whose every hard link is inside), or None when it must stay: it holds an
     entry on another filesystem, version-control data (VCS), a file changed in the last 24 hours, or a folder it can't read."""
     st = os.lstat(path)
@@ -109,7 +115,7 @@ def measure(path, dev):
         for e in entries:
             st = e.stat(follow_symlinks=False)
             d = e.is_dir(follow_symlinks=False)
-            if st.st_dev != dev or e.name in VCS or not d and st.st_mtime > NOW - DAY:
+            if st.st_dev != dev or vcs and e.name in VCS or not d and st.st_mtime > NOW - age:
                 return None
             inodes.setdefault(st.st_ino, [1 if d else st.st_nlink, 0, st.st_blocks * 512])[1] += 1
             if d:
@@ -117,8 +123,8 @@ def measure(path, dev):
     return sum(blocks for links, seen, blocks in inodes.values() if seen >= links)
 
 
-def changed(top, skip):
-    """Whether a file under top, outside the paths skip(path relative to top) excludes, has an mtime within 24 hours of the start."""
+def changed(top, skip, age=DAY):
+    """Whether a file under top, outside the paths skip(path relative to top) excludes, has an mtime within age of the start."""
     stack = [top]
     while stack:
         try:
@@ -130,7 +136,7 @@ def changed(top, skip):
                 continue
             if e.is_dir(follow_symlinks=False):
                 stack.append(e.path)
-            elif e.stat(follow_symlinks=False).st_mtime > NOW - DAY:
+            elif e.stat(follow_symlinks=False).st_mtime > NOW - age:
                 return True
     return False
 
@@ -241,12 +247,12 @@ def busy(path):
     return in_use(path) or any(rx.search(t) for t in jobs_text())
 
 
-def delete(path, owner, dev, rule):
+def delete(path, owner, dev, rule, age=DAY, vcs=True):
     """Delete path, a candidate inside owner (its repo, or a loose node_modules' parent), unless it or owner must stay."""
     st = os.lstat(path)
     if os.path.realpath(path) != path:
         return
-    nbytes = measure(path, dev)
+    nbytes = measure(path, dev, age, vcs)
     if nbytes is None:
         return
     if busy(owner):  # a process or a job may have started in owner since its selection
@@ -293,21 +299,140 @@ def sweep_files():
             continue
         dev, repos, loose = walk(root, work)
         for repo in repos:
-            listed = git(repo, 'ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory')
-            ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
-            if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
-                continue
-            for rel in ignored:
-                p = os.path.join(repo, rel)
-                if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
-                    delete(p, repo, dev, 'c-ignored')
+            sweep_repo(repo, dev, 'c-ignored', DAY)
         for nm in loose:
             parent = os.path.dirname(nm)
             if not busy(parent) and not changed(parent, lambda rel: os.path.basename(rel) == 'node_modules' or os.path.lexists(os.path.join(parent, rel, '.git'))):
                 delete(nm, parent, dev, 'c-node_modules')
 
 
-PRUNES = ('image', 'builder')  # no containers: until=24h selects one created over a day ago even if it stopped a minute ago
+def sweep_repo(repo, dev, rule, age):
+    """In an idle repo that isn't busy, the folders git ignores named in BUILD, each untouched for age."""
+    listed = git(repo, 'ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory')
+    ignored = {p.rstrip('/') for p in listed.stdout.split('\0') if p}
+    if listed.returncode or busy(repo) or changed(repo, lambda rel: rel == '.git' or rel in ignored):
+        return
+    for rel in ignored:
+        p = os.path.join(repo, rel)
+        if os.path.basename(p) in BUILD and os.path.isdir(p) and not os.path.islink(p):
+            delete(p, repo, dev, rule, age)
+
+
+def due(name, period):
+    """Whether the step name last ran more than period seconds ago, stamping it now if so; a dry run always runs it, unstamped."""
+    if DRY:
+        return True
+    stamp = os.path.join(STATE, f'disk-sweep.{name}')
+    try:
+        if NOW - os.path.getmtime(stamp) < period:
+            return False
+    except OSError:
+        pass
+    open(stamp, 'a').close()
+    os.utime(stamp, (NOW, NOW))
+    return True
+
+
+def sweep_home():
+    """Once a day, h-ignored: build output untouched for 14 days in the git repos up to 5 levels below HOME, outside hidden
+    folders and the work folders (sweep_files has those)."""
+    if not due('home', DAY):
+        return
+    dev, stack = os.lstat(HOME).st_dev, [(HOME, 0)]
+    while stack:
+        d, depth = stack.pop()
+        if d != HOME and os.path.lexists(os.path.join(d, '.git')):
+            sweep_repo(d, dev, 'h-ignored', OLD)
+            continue
+        if depth == 5:
+            continue
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            if e.name.startswith('.') or e.name in BUILD or d == HOME and e.name.endswith('-work'):
+                continue
+            if e.is_dir(follow_symlinks=False) and e.stat(follow_symlinks=False).st_dev == dev:
+                stack.append((e.path, depth + 1))
+
+
+CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache')  # each entry inside is deleted after 14 untouched days
+
+
+def run_tool(*argv):
+    """A package manager's own cache command, logged as k-cache tool:<name>; a missing tool is skipped. authorized() first."""
+    if not shutil.which(argv[0]):
+        return
+    if not DRY:
+        authorized(HOME)
+        r = subprocess.run(argv, capture_output=True, text=True)
+        if r.returncode:
+            print(f'disk-sweep: {" ".join(argv)} exited {r.returncode}: {r.stderr.strip()}', file=sys.stderr)
+            return
+    record('?', f'tool:{argv[0]}', 'k-cache', 'deleted')
+
+
+def sweep_caches():
+    """Once a day, k-cache: pnpm's and pip's own cache commands, npm's when ~/.npm/_cacache is untouched for 14 days, and each
+    entry of CACHES untouched for 14 days that isn't busy (a cargo git checkout may hold .git: cargo rebuilds it from its db)."""
+    if not due('caches', DAY):
+        return
+    try:
+        run_tool('pnpm', 'store', 'prune')
+        cacache = os.path.join(HOME, '.npm', '_cacache')
+        if os.path.isdir(cacache) and not changed(cacache, lambda rel: False, OLD):
+            run_tool('npm', 'cache', 'clean', '--force')
+        run_tool('pip', 'cache', 'purge')
+    except PermissionError as e:
+        print(f'{e}: package caches skipped', file=sys.stderr)
+    for rel in CACHES:
+        top = os.path.join(HOME, rel)
+        if os.path.islink(top) or not os.path.isdir(top):
+            continue
+        dev = os.lstat(top).st_dev
+        for e in sorted(os.scandir(top), key=lambda e: e.name):
+            if e.is_dir(follow_symlinks=False):
+                delete(e.path, e.path, dev, 'k-cache', OLD, vcs=rel != '.cargo/git/checkouts')
+
+
+def report():
+    """Weekly, never a deletion: ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME with no file changed in
+    14 days that no rule deletes (build folders, CACHES and ~/.npm/_cacache left out), for the user to pick from."""
+    if not due('report', 7 * DAY):
+        return
+    skip, dev, found = {os.path.join(HOME, c) for c in CACHES + ('.npm/_cacache',)}, os.lstat(HOME).st_dev, []
+
+    def walk_size(d):
+        """(bytes, newest mtime) of d without the skipped folders; adds each stale folder whose parent isn't stale to found."""
+        total, newest, stale = 0, 0, []
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            return 0, NOW
+        for e in entries:
+            st = e.stat(follow_symlinks=False)
+            if st.st_dev != dev or e.path in skip or e.name in BUILD:
+                continue
+            if e.is_dir(follow_symlinks=False):
+                b, n = walk_size(e.path)
+                if n < NOW - OLD:
+                    stale.append((b, e.path))
+            else:
+                b, n = st.st_blocks * 512, st.st_mtime
+            total, newest = total + b, max(newest, n)
+        if newest >= NOW - OLD or d == HOME:
+            found.extend(stale)
+        return total, newest
+
+    walk_size(HOME)
+    rows = [f'| {b / 1e9:.2f} GB | {p} |' for b, p in sorted(found, reverse=True)[:20]]
+    with open(os.path.join(STATE, 'disk-report.md'), 'w') as f:
+        f.write('# Folders under the home folder untouched for 14 days that no disk-sweep rule deletes\n\n| Size | Folder |\n|---|---|\n'
+                + '\n'.join(rows) + '\n')
+
+
+PRUNES = (('image', '-a'), ('builder',))  # no containers: until= selects one created long ago even if it stopped a minute ago
 
 
 def prune_docker():
@@ -316,7 +441,7 @@ def prune_docker():
     if not shutil.which('docker'):
         return 0
     if DRY:
-        for what in PRUNES:
+        for what, *_ in PRUNES:
             record('?', f'docker:{what}', 'd-docker', 'deleted')
         return 0
     try:
@@ -328,8 +453,8 @@ def prune_docker():
     except subprocess.TimeoutExpired:
         return 0
     failed = 0
-    for what in PRUNES:
-        r = run_docker(what, 'prune', '-f', '--filter', 'until=24h')
+    for what, *every in PRUNES:
+        r = run_docker(what, 'prune', *every, '-f', '--filter', 'until=336h')
         if r.returncode:
             print(f'disk-sweep: docker {what} prune exited {r.returncode}: {r.stderr.strip()}', file=sys.stderr)
             failed = 1
@@ -361,6 +486,9 @@ def main():
     except OSError:
         sys.exit('disk-sweep: another sweep is running')
     sweep_files()
+    sweep_home()
+    sweep_caches()
+    report()
     sys.exit(prune_docker())
 
 
