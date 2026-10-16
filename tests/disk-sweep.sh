@@ -203,7 +203,7 @@ rm -rf "$AS"
 H7="$T/home7"; mkdir -p "$H7/.mergeworthy"; : > "$T/tools.log"
 old() { find "$@" -exec touch -h -d '15 days ago' {} +; }
 for r in proj/app proj/young .hidden/r a/b/c/d/e/deep; do repo7="$H7/$r"; G init -q "$repo7"; echo dist > "$repo7/.gitignore"; G -C "$repo7" add .gitignore; G -C "$repo7" commit -qm base; mkdir -p "$repo7/dist"; echo x > "$repo7/dist/x"; done
-mkdir -p "$H7/.npm/_cacache/x" "$H7/.cache/yarn/stale/x" "$H7/.cache/yarn/fresh" "$H7/.cache/drafts/x" "$H7/.cargo/registry/cache/idx" "$H7/.cargo/git/checkouts/c/rev/.git" "$H7/old-stuff/sub"
+mkdir -p "$H7/.npm/_cacache/x" "$H7/.cache/yarn/stale/x" "$H7/.cache/yarn/fresh" "$H7/.cache/drafts/x" "$H7/.cache/ms-playwright/chromium_headless_shell-1200" "$H7/.cargo/registry/cache/idx" "$H7/.cargo/git/checkouts/c/rev/.git" "$H7/old-stuff/sub"
 echo x > "$H7/.npm/_cacache/x/f"; echo x > "$H7/.cache/yarn/stale/x/f"; echo x > "$H7/.cache/drafts/x/f"; echo x > "$H7/.cargo/registry/cache/idx/a.crate"; echo x > "$H7/.cargo/git/checkouts/c/rev/.git/HEAD"
 truncate -s 3M "$H7/old-stuff/sub/big"; old "$H7"; touch "$H7/.cache/yarn/fresh/f"; age "$H7/proj/young"
 HOME="$H7" python3 "$R/bin/disk-sweep" --delete 2>/dev/null
@@ -211,7 +211,7 @@ check "a repo anywhere under home loses its 14-day-old build output; 2 days old,
 mkdir -p "$H7/proj/app/dist"; echo x > "$H7/proj/app/dist/x"; old "$H7/proj/app/dist"
 HOME="$H7" python3 "$R/bin/disk-sweep" --delete 2>/dev/null
 check "the home-wide walk runs at most once a day" kept "$(there "$H7/proj/app/dist")"
-check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale tool-cache and cargo entries go, a fresh one and an unnamed ~/.cache folder stay" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/yarn/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/yarn/fresh") $(there "$H7/.cache/drafts")"
+check "caches: pnpm, npm (stale _cacache) and pip by their own commands; stale tool-cache and cargo entries go, a fresh one, an unnamed ~/.cache folder and an old Playwright browser stay" "npm cache clean --force|pip cache purge|pnpm store prune| removed removed removed kept kept kept" "$(sort -u "$T/tools.log" | tr '\n' '|') $(there "$H7/.cache/yarn/stale") $(there "$H7/.cargo/registry/cache/idx") $(there "$H7/.cargo/git/checkouts/c") $(there "$H7/.cache/yarn/fresh") $(there "$H7/.cache/drafts") $(there "$H7/.cache/ms-playwright/chromium_headless_shell-1200")"
 check "a weekly report names the stale folder no rule covers, and deletes nothing" "1 0 kept" "$(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/old-stuff") $(cat "$H7/.mergeworthy/disk-report.md" 2>/dev/null | grep -c "$H7/.cache/yarn") $(there "$H7/old-stuff/sub/big")"
 
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits

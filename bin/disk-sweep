@@ -16,7 +16,7 @@ read, or when its repo or loose parent is busy right before it would be listed o
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each untouched for 14 days.
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is untouched for
-  14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, playwright and the like) untouched for 14 days, not busy.
+  14 days, and each entry of the named tool caches (CACHES: cargo's, and ~/.cache/yarn, node-gyp, go-build and the like) untouched for 14 days, not busy.
 - d-docker: `docker image prune -a` (every unused image) and `docker builder prune`, with `-f --filter until=336h`, each by its
   own age rule; never containers or volumes.
 Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME untouched for 14 days that no rule deletes.
@@ -358,7 +358,8 @@ def sweep_home():
 
 
 CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache/node-gyp', '.cache/typescript', '.cache/yarn', '.cache/go-build',
-          '.cache/puppeteer', '.cache/ms-playwright', '.cache/electron', '.cache/pre-commit')  # named tool caches only (other ~/.cache folders can hold drafts and records); each entry inside goes after 14 untouched days
+          '.cache/pre-commit')  # named tool caches only: other ~/.cache folders hold drafts and records, and browser binaries
+# (ms-playwright, puppeteer, electron) are only read, so an old mtime doesn't mean unused; each entry goes after 14 untouched days
 
 
 def run_tool(*argv):
