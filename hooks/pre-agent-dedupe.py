@@ -10,6 +10,16 @@ import memory_file, steward, subprocess
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
+# T3 opens no run for a turn Claude Code starts by itself (a finished background command, a Monitor event), and refuses
+# launches from it (pingdotgg/t3code#16808): nothing ran, so no job, and the session keeps working instead of waiting
+if register and 'parent_not_active' in json.dumps(d.get('tool_response') or ''):
+    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext':
+        "T3 refused this launch: a background event started this turn, and T3 opened no run for it, so it refuses agent "
+        "launches and the user doesn't see this turn in the thread. The next user message, scheduled task or finished agent "
+        "starts a run. Until then, do the step yourself wherever the main session may (gates, tests, probes, an implementer's "
+        "edits, preparing the push or the body: delegate step 7); only an independent review and a post wait for a run. "
+        "Keep the brief, launch it in the next run, and add no status line on each wake."}}))
+    sys.exit(0)
 # T3 answers a delegate_task whose clientRequestId it has seen with that earlier task's result, without running anything.
 # Reuse is allowed only within 10 minutes (a retry of the same launch).
 cid = str(ti.get('clientRequestId') or '')

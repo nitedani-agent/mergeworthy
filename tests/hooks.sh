@@ -647,6 +647,8 @@ check "BLOCK: a second launch of the same ticket" 2 "$(launch 'Retry: execute /t
 check "another ticket passes" 0 "$(launch 'Execute /tmp/x/other.md')"
 launch_in 'Execute /tmp/x/blocked.md' | python3 "$R/hooks/pre-agent-dedupe.py" >/dev/null 2>&1
 check "a launch another hook blocked (never ran) leaves no job" 0 "$(launch 'Execute /tmp/x/blocked.md')"
+refused() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"},"tool_response":[{"type":"text","text":"code: parent_not_active"}]}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; }
+check "a launch T3 refused (parent_not_active) says what to do and leaves no job" "1 0" "$(refused 'Execute /tmp/x/refused.md' | grep -c 'do the step yourself') $(launch 'Execute /tmp/x/refused.md')"
 python3 "$R/bin/agent-job" done /tmp/x/ticket-check.md >/dev/null
 check "after agent-job done the ticket launches again" 0 "$(launch 'Execute /tmp/x/ticket-check.md')"
 check "agent-job done takes a ticket path relative to the cwd" 0 "$(mkdir -p /tmp/x && touch /tmp/x/ticket-check.md && cd /tmp/x && python3 "$R/bin/agent-job" done ticket-check.md >/dev/null; echo $?)"
