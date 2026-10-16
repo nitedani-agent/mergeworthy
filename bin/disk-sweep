@@ -115,12 +115,18 @@ def measure(path, dev, age=DAY, vcs=True):
         for e in entries:
             st = e.stat(follow_symlinks=False)
             d = e.is_dir(follow_symlinks=False)
-            if st.st_dev != dev or vcs and e.name in VCS or not d and st.st_mtime > NOW - age:
+            if st.st_dev != dev or vcs and e.name in VCS or not d and used(st, age):
                 return None
             inodes.setdefault(st.st_ino, [1 if d else st.st_nlink, 0, st.st_blocks * 512])[1] += 1
             if d:
                 stack.append(e.path)
     return sum(blocks for links, seen, blocks in inodes.values() if seen >= links)
+
+
+def used(st, age):
+    """Whether a file was written within age of the start, or, for the 14-day rules, also read (relatime updates atime about once a day):
+    a browser build or a tool's binary is only read once installed."""
+    return max(st.st_mtime, st.st_atime) > NOW - age if age > DAY else st.st_mtime > NOW - age
 
 
 def changed(top, skip, age=DAY):
@@ -136,7 +142,7 @@ def changed(top, skip, age=DAY):
                 continue
             if e.is_dir(follow_symlinks=False):
                 stack.append(e.path)
-            elif e.stat(follow_symlinks=False).st_mtime > NOW - age:
+            elif used(e.stat(follow_symlinks=False), age):
                 return True
     return False
 
@@ -357,9 +363,8 @@ def sweep_home():
                 stack.append((e.path, depth + 1))
 
 
-CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache/node-gyp', '.cache/typescript', '.cache/yarn', '.cache/go-build',
-          '.cache/pre-commit')  # named tool caches only: other ~/.cache folders hold drafts and records, and browser binaries
-# (ms-playwright, puppeteer, electron) are only read, so an old mtime doesn't mean unused; each entry goes after 14 untouched days
+CACHES = ('.cargo/registry/cache', '.cargo/git/checkouts', '.cache/node-gyp', '.cache/typescript', '.cache/yarn', '.cache/go-build')  # named tool caches only: other ~/.cache folders hold drafts and records, and browser binaries
+# (ms-playwright, puppeteer, electron) and installed hook environments (pre-commit) stay too; each entry goes after 14 days unwritten and unread
 
 
 def run_tool(*argv):
@@ -421,7 +426,7 @@ def report():
                 if n < NOW - OLD:
                     stale.append((b, e.path))
             else:
-                b, n = st.st_blocks * 512, st.st_mtime
+                b, n = st.st_blocks * 512, max(st.st_mtime, st.st_atime)
             total, newest = total + b, max(newest, n)
         if newest >= NOW - OLD or d == HOME:
             found.extend(stale)
