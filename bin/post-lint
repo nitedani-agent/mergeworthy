@@ -264,6 +264,9 @@ if _pp and os.path.exists(_pp):
     _cap = 80 + 60 * max(_asked - 1, 0) + 20 * n_rated  # 20 words per rated row the count left out: a pass's commits and what stays below the bar
     if kind == 'reply' and _pwords <= 25:
         cap = _cap
+    if kind == 'reply' and _pwords <= 25 and words <= 40 and not re.search(r'\b[0-9a-f]{7,40}\b|https?://', prose) \
+            and re.match(r"\s*(?:@[\w-]+[\s,]*)*(?:yes|yep|correct|right|agreed|sounds good|good|ok(?:ay)?|sure|makes sense|fine|great)(?![\w-])", prose, re.I):
+        findings.append("this reply only agrees: react 👍 on their comment instead and post nothing (reply §Kinds of comment); if you have something new, drop the agreeing word and open with the new thing")
     if kind == 'reply' and _pwords <= 25 and words > _cap:
         findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}" + (f" with {20 * n_rated} words for its {n_rated} rated row{'s' * (n_rated > 1)}" if n_rated else '') + "): give the answer and its commit in a few sentences, and keep a rated cell's reason within 45 words; "
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")

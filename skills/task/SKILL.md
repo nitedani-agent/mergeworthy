@@ -54,7 +54,7 @@ The work folder (`<task>-work/` next to the worktree) holds, each with the step 
 - `drafts/<thread>/` (`post` step 1); `maps/`, `decisions/` (settled decisions only), `design/` (`design`); `prior-art.md`, `precedent.md` (step 6); `memory.md` (step 8).
 - The watcher's files: `events.log` and your `events.cursor` (`reply` step 1), `threads.txt`, `repos.txt`, `umbrella.txt`, and `waiting-on.txt`: each thing a PR of yours waits on, as `<owner/repo#N> -> <dependent>: <what to do>`, also in that PR's notes table.
 - **The owed lists,** each cleared only by the thing named:
-  - `replies-owed.md`: every comment you answer (the watcher writes it). Cleared by `done: <reply URL> <what changed>`; a holding reply makes it `holding: <reply URL> <ETA as an ISO time>`; while a drafter works, `drafting: <comment URL> <ETA>`.
+  - `replies-owed.md`: every comment you answer (the watcher writes it). Cleared by `done: <reply URL> <what changed>`, or `done: 👍 <comment URL>` for a reaction alone; a holding reply makes it `holding: <reply URL> <ETA as an ISO time>`; while a drafter works, `drafting: <comment URL> <ETA>`.
   - `proposals-open.md`: every "OK?" you ask, and every promise you post as `PROMISED <thread>: <what> (<draft file name>)`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it.
   - `questions-owed.md`: each user question that needs work, with an ETA.
 - Log and artifact names include a unique pass ID; never overwrite another pass's file.
