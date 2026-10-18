@@ -1078,6 +1078,15 @@ check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
+# a clean merge of the base brings in other people's lines: the PR's own patch is unchanged, so its pass carries
+MB="$T/mbase.git"; MG="$T/mclone"; git init -q --bare -b main "$MB"; git clone -q "$MB" "$MG" 2>/dev/null
+gc() { git -C "$MG" -c user.name=t -c user.email=t@t "$@"; }
+echo a > "$MG/a"; gc add a; gc commit -q -m base; gc push -q origin main; gc remote set-head origin main >/dev/null
+gc checkout -q -b fix; echo fix > "$MG/f"; gc add f; gc commit -q -m fix; MA=$(git -C "$MG" rev-parse HEAD)
+mkdir -p "$HOME/.claude/pr-steps"; echo "verify $T/mv.md" >> "$HOME/.claude/pr-steps/$MA"
+gc checkout -q main; seq 1 200 > "$MG/other"; gc add other; gc commit -q -m other; gc push -q origin main; gc checkout -q fix; gc merge -q --no-edit main
+printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
+check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
 printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
@@ -1167,6 +1176,8 @@ glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":
 mkdir -p "$HOME/.config/pnpm"; echo '//registry.npmjs.org/:_authToken=x' > "$HOME/.npmrc"; cp "$HOME/.npmrc" "$HOME/.config/pnpm/config.yaml"
 check "BLOCK: printing a credential file; counting a line in it, or a file that isn't one, passes" "2 2 2 0 0" "$(glab "cat $HOME/.npmrc") $(glab 'cat ~/.config/pnpm/config.yaml') $(glab "grep token $HOME/.npmrc") $(glab "grep -c registry $HOME/.npmrc") $(glab "cat $T/tr.jsonl")"
 check "BLOCK: setting a draft's file time (touch -d / -r, also after a cd into drafts/); a plain touch elsewhere passes" "2 2 0 0" "$(glab "cd /w/drafts/vike-1707 && touch -d 2024-06-20T12:26:20Z proposal.parent.md") $(glab "touch -r a.md /w/drafts/x/thread-context.md") $(glab "touch /w/drafts/x/new.md") $(glab "touch -d yesterday /tmp/stamp")"
+check "BLOCK: gate-pass and a post in one command (a pipe hid its refusal); gate-pass alone passes" "2 2 0" "$(glab "gate-pass /w/drafts/19/body.md /w/drafts/19/body.review.out | tail -1 && gh issue edit 19 --body-file /w/drafts/19/body.md") $(glab "gate-pass /w/d/r.md /w/d/r.review.out; gh api repos/o/r/issues/5/comments -F body=@/w/d/r.md") $(glab "gate-pass /w/drafts/19/body.md /w/drafts/19/body.review.out")"
+check "BLOCK: a playwright install into the shared cache; into a private folder passes" "2 2 0" "$(glab "pnpm exec playwright install chromium") $(glab "cd repo && npx playwright install --with-deps") $(glab "PLAYWRIGHT_BROWSERS_PATH=/w/.pw npx playwright install chromium")"
 # pre-bash-guard: a PR title is drafted in a file, never typed inline
 guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"agent_id":sys.argv[3]}))' "$1" "$T" "${2:-}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: a PR title typed inline (create, edit, -t), naming the title file; a title from its file passes" "2 1 2 2 0 0" "$(guard "gh pr create --draft --title 'Fix the thing' --body-file $T/b.md") $(grep -c 'drafts/title.md.*last 10 merged titles.*pull-request step 7' "$T/err") $(guard "gh pr edit 5 --title 'Fix it'") $(guard 'gh pr edit 5 -t Fix') $(guard 'gh pr edit 5 --title "$(cat /w/drafts/title.md)"') $(guard 'gh pr create --draft --title "$(cat /w/drafts/title.md)" --body-file /w/b.md' >/dev/null; grep -c 'typed inline' "$T/err")"

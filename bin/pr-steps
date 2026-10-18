@@ -77,12 +77,19 @@ fi
 # carries an earlier pass ("carries the pass of <sha>", ≤ 80 changed lines since): a fix log or a note is not a shape pass
 # A pass rates every item afresh: a row whose rating is copied ("10 =", "=", "unchanged since") is a re-rating of a delta, not a pass
 is_pass() { grep -q '✅' "$1" && grep -Eq '([0-9]+|\bnew) *(⇒|=>) *([0-9]+|removed|new|n/a)' "$1" && ! grep -Eiq '\| *([0-9]+ *)?= *\||unchanged since' "$1"; }
+# Lines changed since an earlier head; 0 when only a merge of the base came in (the PR's own diff is the same patch)
+delta() {
+  local B; B=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)
+  pid() { git diff "$(git merge-base "$1" "$B" 2>/dev/null)" "$1" 2>/dev/null | git patch-id --stable | cut -d' ' -f1; }
+  if git rev-parse -q --verify "$B" >/dev/null && [ -n "$(pid "$1")" ] && [ "$(pid "$1")" = "$(pid HEAD)" ]; then echo 0; return; fi
+  git diff --numstat "$1" HEAD | awk '{s+=$1+$2} END{print s+0}'
+}
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
   c=$(grep -Eo 'carries the pass of [0-9a-f]{7,40}' "$out" | head -n1 | awk '{print $NF}' || true); [ -n "$c" ] || return 1
   full=$(git rev-parse "$c" 2>/dev/null) || { echo "$c is not a commit" >&2; exit 1; }
   awk -v s="$step" '$1==s' ~/.claude/pr-steps/"$full" 2>/dev/null | grep -q . || { echo "$c has no recorded $step to carry" >&2; exit 1; }
-  changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
+  changed=$(delta "$full")
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
 if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
@@ -147,7 +154,7 @@ EOF
       at=$(awk -v f="$prev" '$2==f{t=$3} END{print t}' "$rec")
       ask=$(while read -r t h _ u; do [[ "$t" > "$at" ]] && git merge-base --is-ancestor "$h" HEAD 2>/dev/null && echo "$u"; done < <(cat ~/.claude/refactor-asks.txt 2>/dev/null) | tail -n1 || true)
       [ -z "$ask" ] || { echo "$ask asks for a refactor pass after the pass $carried carries ($at): run the pass on this head (mergeworthy:converge step 2, delegate/shape.md) and record its report, not a carry" >&2; exit 1; }
-      changed=$(git diff --numstat "$full" HEAD | awk '{s+=$1+$2} END{print s+0}')
+      changed=$(delta "$full")
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates)

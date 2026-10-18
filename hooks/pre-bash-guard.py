@@ -516,6 +516,16 @@ except ValueError:
 if re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) and not d.get('tool_input', {}).get('run_in_background'):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
+# a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)
+if any('playwright' in ' '.join(prog(x)) and 'install' in prog(x) for x in segs) and 'PLAYWRIGHT_BROWSERS_PATH=' not in cmd:
+    block("a Playwright install deletes the browser builds other sessions use from the shared ~/.cache/ms-playwright: "
+          "install into a folder of your own, `PLAYWRIGHT_BROWSERS_PATH=<work folder>/.pw <the same command>`, and run the tests with the same variable")
+# gate-pass is read on its own: this hook checks the gate record before the command runs, so a post in the same command
+# goes out on the old record even when gate-pass then refuses the draft (and a pipe hides that refusal)
+if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs) and \
+        any(prog(x)[:1] == ['gh'] and (prog(x)[1:3] and prog(x)[1] in ('issue', 'pr') and prog(x)[2:3] and prog(x)[2] in ('comment', 'create', 'edit', 'review', 'close', 'merge')
+                                        or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) for x in segs):
+    block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
 has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 for s in segs:
