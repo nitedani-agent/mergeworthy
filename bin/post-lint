@@ -232,6 +232,9 @@ words = len(re.findall(r"[A-Za-z0-9][\w'’-]*", counted))
 chars = len(re.sub(r'\s+', ' ', counted).strip())
 sentences = len(re.findall(r'[.!?](?=\s|$)', re.sub(r'\b(e\.g|i\.e|etc|vs)\.', '', counted).strip())) or 1
 # Reader load (mergeworthy:writing): comprehension falls sharply past about 20 words a sentence; bold loses its signal past ~30% of the text
+if kind not in ('tracker', 'title'):  # a semicolon packs two steps into one sentence the reader must unpack
+    for x in re.findall(r'[^.!?\n]*\w; [^.!?\n]*', re.sub(r'`[^`]*`|&#?\w+;', 'code', re.sub(r'^\s*\|.*$', '', prose, flags=re.M))):
+        findings.append(f"a semicolon joins two things ({x.strip()[:60]!r}…): write each as its own sentence, joined by the word that says how they relate (writing §How a colleague writes)")
 if kind != 'pr':
     plain = re.sub(r'^\s*\|.*$', '', prose, flags=re.M)                     # tables aren't sentences
     plain = re.sub(r'^\s*(?:[-*]|\d+\.)\s+', '\n', plain, flags=re.M)        # a list item is its own sentence
