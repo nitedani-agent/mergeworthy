@@ -9,6 +9,7 @@ if d.get('stop_hook_active'):
 last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
+said = []  # every text the agent wrote, in order
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
 READ = re.compile(r'\bgh\s+api\s+graphql\b|\bgh\s+api\b[^\n]*\s(?:-X\s*|--method[\s=])GET\b')  # a field makes `gh api` a POST, but these read
 RUN_GH = re.compile(r'(?:^|[;&|(]|\s--)\s*gh\s')  # gh where the shell runs it: a line's start, after ; & | ( or mw post's --
@@ -63,7 +64,7 @@ for line in lines:
             if x.get('name') == 'TaskStop': dead.add(i.get('task_id') or i.get('shell_id') or '')
         if isinstance(c, list):
             t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
-            if t.strip(): last = t
+            if t.strip(): last = t; said.append(t)
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
 own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
 tail = own.strip()[-400:]
@@ -73,6 +74,14 @@ if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
           "do it now. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
+    sys.exit(2)
+# A fork is asked once: until the user answers it, it waits in questions-owed.md, not at the end of every report
+FORK = lambda t: {re.sub(r'\W+', ' ', f).strip().lower() for f in re.findall(r'^GENUINE-FORK:(.*)$', t, re.M)}
+asked = set().union(*map(FORK, said[:-1])) if len(said) > 1 else set()
+if not child and FORK(last) & asked:
+    print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
+          "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
+          "options, or when the user asks about it (always-on: Do, don't offer).", file=sys.stderr)
     sys.exit(2)
 # A Running list in the reply is checked against T3 task status: it is read live (task_status) after the user's last
 # message, and names no task whose last read status is terminal.
