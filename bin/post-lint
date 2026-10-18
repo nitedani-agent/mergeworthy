@@ -250,7 +250,7 @@ if kind != 'pr':
 # Answering several questions takes room: each question in the comment answered (beyond the first) adds 60 words
 _pa = arg('--parent', None)
 _pp = (re.sub(r'\.md$', '', path) + '.parent.md') if _pa is None else (None if _pa == 'none' else _pa)
-_asked = 0
+_asked, cap = 0, None
 if _pp and os.path.exists(_pp):
     _q = uncoded(open(_pp).read())                                                        # code blocks
     _q = '\n'.join(l for l in _q.splitlines() if not l.lstrip().startswith('>'))          # quotes of others
@@ -259,13 +259,17 @@ if _pp and os.path.exists(_pp):
     _pwords = len(re.findall(r"[A-Za-z0-9][\w'’-]*", re.sub(r'<[^>]+>|\*[^*\n]*\*', '', _q)))
     # a short comment (a question or an instruction in a line or two) gets a short answer: the result and its commit
     _cap = 80 + 60 * max(_asked - 1, 0) + 20 * n_rated  # 20 words per rated row the count left out: a pass's commits and what stays below the bar
+    if kind == 'reply' and _pwords <= 25:
+        cap = _cap
     if kind == 'reply' and _pwords <= 25 and words > _cap:
         findings.append(f"{words} words answering a {_pwords}-word comment (cap {_cap}" + (f" with {20 * n_rated} words for its {n_rated} rated row{'s' * (n_rated > 1)}" if n_rated else '') + "): give the answer and its commit in a few sentences, and keep a rated cell's reason within 45 words; "
                         "how the code or its tests work stays out unless they asked (writing, Draft by talking step 5)")
 extra = 0  # however many questions: one plan, the rest linked
+cap = min(cap or 300 + extra, 300 + extra) if kind == 'reply' else None
 if kind == 'reply' and words > 300 + extra:
     findings.append(f"{words} words > {300 + extra} for a reply (a rated cell's words past 45 count too): cut what the reader doesn't need to decide, act or check, a whole sentence at a time, never single words out of a sentence that stays")
 pr_budget = 300  # what's broken and what the PR changes need room; data tables, code and the collapsed evidence don't count
+cap = pr_budget if kind == 'pr' else cap
 if kind == 'pr' and words > pr_budget:
     findings.append(f"{words} words > {pr_budget} for a PR body (data tables, code, images and URLs not counted; prose in a table or code block is): cut what the reader doesn't need a whole sentence or row at a time, never what's broken or why, and never single words out of a sentence that stays")
     for t in re.findall(r'<summary>([^<]*)</summary>', prose):  # the evidence blocks are gone from prose: any summary left is counted
@@ -436,6 +440,8 @@ if kind in ('reply', 'inline'):
                 and len(re.findall(r"[A-Za-z][\w'-]*", bare)) <= 4:
             findings.append("bare 'Done' answering a question or a soft suggestion: say what you checked and why you agree, or push back")
 for f in findings: print(f)
+# post step 3: the reviewer weighs each finding that adds words against this
+print(f"length: {words} words, " + (f"cap {cap}" if cap else "no cap"), file=sys.stderr)
 if not findings:  # gate-pass re-runs post-lint with the flags this draft passed with
     with open(path + '.lint', 'w') as f: f.write(' '.join(args[1:]))
     with open(path + '.lint.sha', 'w') as f: f.write(hashlib.sha256(open(path, 'rb').read()).hexdigest())  # pre-agent-dedupe: no review of an unlinted draft
