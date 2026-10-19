@@ -106,10 +106,14 @@ dropped = False  # only the dropped list: a counted bug may well be "a rare race
 for i, l in enumerate(lines):
     if l.startswith('#'):
         dropped = 'dropped' in l.lower()
-    elif dropped and re.search(r'not a regression|no documented usage|\brare\b|same as main', l, re.I) and not l.startswith('RULED:'):
+    elif dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
         name = re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
-        if not any(r.startswith('RULED:') and name in plain(r) for r in lines[i + 1:]):
+        rulings = [r for r in lines[i + 1:] if r.startswith('RULED:') and name in plain(r)]
+        if not rulings:
             print(l)
+        elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change)|earn every line|no realistic usage|contrived|staged race', r, re.I)
+                 and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in map(plain, rulings)):
+            print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the files this change edits', or why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )
     [ -z "$unruled" ] || { printf '%s\n' "a reproduced behavior dropped for this reason goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }

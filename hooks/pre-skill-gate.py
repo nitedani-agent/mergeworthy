@@ -164,10 +164,11 @@ def rlines(path, chunk=1 << 20):
 
 
 def opened(path):
-    """Skills opened since the transcript's last compaction: Skill tool calls and /<skill> launches."""
+    """Skills opened since the transcript's last compaction: Skill tool calls, /<skill> launches, and the skills the harness
+    re-attaches whole right after a compaction (an invoked_skills attachment; one cut "for compaction" doesn't count)."""
     names = set()
     for l in rlines(path):
-        if not any(k in l for k in (b'compact_boundary', b'isCompactSummary', b'"Skill"', b'<command-name>')):
+        if not any(k in l for k in (b'compact_boundary', b'isCompactSummary', b'"Skill"', b'<command-name>', b'"invoked_skills"')):
             continue
         try:
             e = json.loads(l)
@@ -175,6 +176,10 @@ def opened(path):
             continue
         if e.get('subtype') == 'compact_boundary' or e.get('isCompactSummary'):
             break
+        a = e.get('attachment') if isinstance(e.get('attachment'), dict) else {}
+        if a.get('type') == 'invoked_skills':
+            names |= {str(k.get('name', '')) for k in a.get('skills') or [] if isinstance(k, dict)
+                      and 'truncated for compaction' not in str(k.get('content', ''))[-300:]}
         content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
         if e.get('type') == 'assistant' and isinstance(content, list):
             names |= {str((b.get('input') or {}).get('skill', '')) for b in content

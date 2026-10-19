@@ -8,11 +8,9 @@ A slice is a part of the PR's code one verifier can hold (core feature, backend 
 
 ## Counting
 
-- **A candidate counts only with a reproduction:** a spec or script fails on the head and either passes on the base (`main`, or the bottom PR for the top) or demonstrates an incomplete fix of the scenario the change names.
-- It traces to realistic usage on both ends (the brief's What counts). A deliberate behavior doesn't count.
-- A finding that fails code §Earn every line gets the disposition "accepted, not worth code" with its one-line reason; it never becomes code to make a pass come back clean.
+- A candidate counts by the brief's What counts. A finding that fails code §Earn every line gets the disposition "accepted, not worth code" with its one-line reason; it never becomes code to make a pass come back clean.
 
-**When a pass finds bugs** (the main session decides, an implementer lands): fix the root cause with the smallest diff, with a failing repro first, passing code §Phantom gate; re-run the verifier's repro on the fixed build. An area that already had two corrective edits gets rethought as one rule covering every case found, then that rule is implemented. Fixes to base code go in the bottom PR of a stack, then merge up; a merge-up re-opens the top PR's slices that call the changed base code.
+**When a pass finds bugs:** fix the root cause with the smallest diff, with a failing repro first, passing code §Phantom gate; re-run the verifier's repro on the fixed build. An area that already had two corrective edits gets rethought as one rule covering every case found, then that rule is implemented. Fixes to base code go in the bottom PR of a stack, then merge up; a merge-up re-opens the top PR's slices that call the changed base code.
 
 **When a slice is done:** a pass with no bug that counts after its last fix. A fix, refactor or revert in a slice's code re-opens it; a finished, unchanged slice isn't run again; a queued pass is never dropped.
 
@@ -31,9 +29,9 @@ Base <SHA>, head <SHA>, in <worktree> (read with git show/diff at those SHAs; do
 The project file: <project file path>. Settled decisions: <decisions/*.md or the PR body>.
 
 What counts:
-- through realistic usage (documented usage, each host the package ships to, a second copy of the package in the same process, a caller that writes to what it got), the head behaves wrongly where a user can see it: a regression against the base, a fix that's incomplete for the scenario its commit names, or new code that behaves unlike the platform behavior it reproduces (a later reader sees an earlier reader's writes; `bodyUsed` lies). Silent wrong data where the base threw is a bug, never "not a regression"; so is costing more than the base for the same request (copies, reads, allocations, time), shown by a count or a `main`-vs-head run. Code and docs that disagree are judged per code §Docs are a claim.
+- through realistic usage (documented usage, each host the package ships to, a second copy of the package in the same process, a caller that writes to what it got), the head behaves wrongly where a user can see it: a regression against the base, a fix that's incomplete for the scenario its commit names, new code that behaves unlike the platform behavior it reproduces (a later reader sees an earlier reader's writes; `bodyUsed` lies), or a bug or UX issue in a file the diff edits, one the base has too included. Silent wrong data where the base threw is a bug, never "not a regression"; so is costing more than the base for the same request (copies, reads, allocations, time), shown by a count or a `main`-vs-head run. Code and docs that disagree are judged per code §Docs are a claim.
 - A deliberate behavior (a usage error) doesn't count, nor a scenario no realistic usage reaches on both ends.
-- A candidate counts only with a spec or script that fails on the head and either passes on the base or demonstrates an incomplete fix.
+- A candidate counts only with a spec or script that fails on the head and either passes on the base (`main`, or the bottom PR for the top), demonstrates an incomplete fix, or shows a bug in a file the diff edits.
 
 How:
 - read each change end to end with every caller; a change that makes a function cost more (a copy, a read, an allocation) gets each caller re-read for how often it calls and whether it discards the result;
@@ -46,7 +44,7 @@ How:
 
 Write <work folder>/<name>.md:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
-- then, under `## Dropped`, every candidate you tried and dropped, one line each `<candidate>: <why>`; the main session adds `RULED: <candidate>: <ruling>` under each whose reason says "not a regression", "no documented usage", "rare" or "same as main", before `pr-steps verify` records the file (converge step 1);
+- then, under `## Dropped`, every candidate you tried and dropped, one line each `<candidate>: <why>`; the main session adds `RULED: <candidate>: <ruling>` under each whose reason is like "not a regression", "rare", "no documented usage" or "main does the same", before `pr-steps verify` records the file (converge step 1);
 - if no bug counts, say what you tried and end the file with a line NO BUGS.
 
 Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when both lists are empty (the file still ends NO BUGS when only dropped candidates remain).

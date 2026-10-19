@@ -93,7 +93,10 @@ if running and not child:
         except ValueError: continue
         c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
-            fresh = False
+            # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
+            n = re.match(r'Delegated task (\S+) reached a terminal state', c)
+            if n: status[n.group(1)] = ('completed', status.get(n.group(1), ('', ''))[1])
+            elif not c.startswith('Skill /'): fresh = False
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status)$', b.get('name', '')):
                 titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))

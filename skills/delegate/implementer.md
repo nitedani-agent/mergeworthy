@@ -16,7 +16,7 @@ Not these: <owner decisions and exclusions>.
 For every item:
 - read the code end to end and check it is true at <head SHA>;
 - skip it with a reason if it is false or cannot be an authorized, behavior-preserving change (code §Owner code and authority);
-- make the smallest change, written to code/SKILL.md so the next review has nothing to add;
+- make the smallest change, plus the fixes the main session decides under task §Dispositions, written to code/SKILL.md so the next review has nothing to add;
 - a removed, merged or moved test or guard gets a mutation probe (code §Tests).
 
 Run <quick gates> after every commit and <lanes for touched areas> before handing back (code §Gates).

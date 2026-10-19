@@ -32,7 +32,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 | Before writing or judging code, tests or comments | `mergeworthy:code` | the standard for code; its Checklist is what the shape pass checks |
 
 ### Words every skill uses
-- **The main session** is the session the user talks to. It decides, briefs agents, approves and posts every word that goes out, and talks to the user; implementers do the edits, commits, builds, tests and browser work. A **subagent** does its brief and nothing else.
+- **The main session** is the session the user talks to. It decides from the code, docs and JSDoc it read itself, briefs agents, approves and posts every word that goes out, and talks to the user; implementers do the edits, commits, builds, tests and browser work. A **subagent** does its brief and nothing else.
 - **The user** owns the goal and their own repos. A **maintainer** is whoever merges in a repo the user doesn't own; their requests are decisions. **Owner code** is a commit by a human account, or without the agent trailer (the `Co-Authored-By:` line your harness adds to an agent's commits, e.g. `Co-Authored-By: Claude …`): it is never removed or rewritten on an agent's reading alone (`code §Owner code and authority`).
 - **The work folder** is `<task>-work/` next to the worktree, never `/tmp`. The watcher writes `events.log` there; you keep `scope.md`, the drafts and the owed lists there (`task §Files`).
 - **The project file** is `~/.mergeworthy/projects/<owner>/<repo>.md`: how one repo works and what its maintainers taught you. Every brief for work in that repo names it.

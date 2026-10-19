@@ -12,7 +12,8 @@ What is true of every diff. The implementer reads this before writing; whoever j
 - Read the repo's `AGENTS.md` / `CLAUDE.md` on the target branch, and three sibling files: note sentence length, comment density, naming and platform wording.
 - **Find what already does it.** Grep the constants, literals and imports the new code will use; reuse the existing function, and when it needs a fix to be reused, that fix is part of this diff. Never claim something is missing without linking the code. In a program of PRs, search the sibling PRs too, open and merged: when one already enforces a rule, extend that layer, never add a second check.
 - **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name.
-- **Build the whole interaction, not the happy path.** Someone will finish the task, change their mind, go back, reload, mistype, use the keyboard, leave halfway. Anything that would make them wonder what happened is a defect.
+- **Read the contract first.** The feature's docs page, JSDoc and README say what it promises; the change keeps every sentence, or changes one per §Docs are a claim.
+- **Work in four passes** (after github.com/Leonxlnx/unlazy): build the whole interaction, no placeholder or "later" (users change their mind, go back, reload, mistype, use the keyboard, leave halfway); reread it as the domain's expert and replace each shortcut they wouldn't ship; hunt defects in it and the files it edits, listing each in your report for the main session (`task §Dispositions`); polish. Repeat until the hunt finds nothing.
 
 ### Root cause
 
@@ -28,7 +29,7 @@ Fix at the root; never document around a defect. A sentence telling users to wor
 
 A reviewer's, verifier's or shape pass's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
 - **How likely does a real user hit it, and what happens then?** A case only a contrived setup or a staged race reaches (a folder moved in at the exact moment, a swap timed between two syscalls) gets no code, however severe its failure. A rare case whose failure is mild, or arguably what the user asked for, gets none either. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root.
-- **What does `main` do for the analogous case?** Add guards, asserts and caches only where `main` has an analogous one.
+- **What does `main` do for the analogous case?** Add guards, asserts and caches only where `main` has an analogous one. `main` having the bug too is no reason to drop it.
 - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
 - **Would the maintainer write it?** Lean code, no special-casing. Performance work stops at the plainest conventional code winning the order of magnitude; more shaving (planner hints, caches, odd query shapes) waits for the user's ask.
 

@@ -858,6 +858,16 @@ check "BLOCK: an implementer brief whose repo study is over 30 days old, or miss
 echo "Studied: $(date -u +%F)" > "$HOME/.mergeworthy/projects/o/r.study.md"
 check "BLOCK: an implementation brief for that repo without code/SKILL.md, naming it" "2 1" "$(ag "$T" 'Build o/r#6 per ~/.mergeworthy/projects/o/r.md') $(grep -c 'skills/code/SKILL.md' "$T/err")"
 check "a review brief needs no code/SKILL.md" 0 "$(ag "$T" 'Review o/r#8 per ~/.mergeworthy/projects/o/r.md' review)"
+# the main session reads the code itself before briefing an implementer: a Read of a file in a checkout of that repo, in its transcript
+RD="$T/x-work/rd"; git init -q "$RD"; git -C "$RD" remote add origin git@github.com:o/r.git; mkdir -p "$RD/src"; echo 'export {}' > "$RD/src/a.ts"; git -C "$RD" add src/a.ts; echo report > "$RD/verify.md"
+agt() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"transcript_path":sys.argv[3],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":"implementation"}}))' "$T" "$1" "$2" \
+  | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
+now=$(date -u +%FT%T.000Z)
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat "+sys.argv[2]+"/verify.md; git -C "+sys.argv[2]+" status"}}]}}))' "$now" "$RD" > "$T/tr-noread.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd "+sys.argv[2]+" && sed -n 1,80p src/a.ts"}}]}}))' "$now" "$RD" > "$T/tr-sed.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":sys.argv[2]}}]}}))' "$now" "$RD/src/a.ts" > "$T/tr-read.jsonl"
+B='Build o/r#9 by skills/code/SKILL.md per ~/.mergeworthy/projects/o/r.md'
+check "BLOCK: an implementation brief whose session read only an agent's report in the checkout (in a work folder); a Read, or a cd + sed of a tracked source, passes" "2 1 0 0" "$(agt "$B" "$T/tr-noread.jsonl") $(grep -c 'read the code this change is about yourself' "$T/err") $(agt "$B" "$T/tr-read.jsonl") $(agt "$B" "$T/tr-sed.jsonl")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
@@ -971,6 +981,8 @@ def res(name, st, title=''):
 w({"type": "user", "message": {"content": "run loop A"}}); res('delegate_task', 'running', 'Loop A')
 for e in ev:
     if e == 'user': w({"type": "user", "message": {"content": "status?"}})
+    elif e == 'notice': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 reached a terminal state. Use task_status"}})
+    elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
 EOF
@@ -979,6 +991,8 @@ rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user; check "BLOCK: a R
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:completed; check "BLOCK: a Running list naming a completed task" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:failed; check "BLOCK: matched by its request id too" 2 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other; check "another task's T3 completion notice is not the user: a list read live before it passes" 0 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running notice; check "BLOCK: a Running list naming the task whose completion notice came in" 2 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
@@ -1123,6 +1137,9 @@ check "a counted bug described as rare, outside the dropped list, needs no RULED
 { head -n4 "$T/vr0.md"; echo 'RULED: abort leaks a listener: a real leak, fixed in its own PR'; echo 'NO BUGS'; } > "$T/vr1.md"
 sed 's/^NO BUGS$/NO LOOP B COMMITS/' "$T/vr0.md" > "$T/vr2.md"; std "$T/vr0.md" "$T/vr1.md"
 check "BLOCK: a dropped candidate whose reason is 'not a regression', quoting it, in verify and reverify; with a later RULED line naming it, it records" "1 1 1 0" "$(prs verify "$T/vr0.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr0.md" 2>&1 | grep -c '^- \*\*abort leaks a listener\*\*: Not a regression') $(prs reverify "$T/vr2.md") $(prs verify "$T/vr1.md")"
+printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, main does the same\nNO BUGS\n' > "$T/vr4.md"; std "$T/vr4.md"
+printf 'slice 1\n## Tried and dropped\n- **abort leaks a listener**: Not a regression, main does the same\nRULED: abort leaks a listener: not a regression, and only a staged race reaches it (code Earn every line)\nNO BUGS\n' > "$T/vr5.md"; std "$T/vr5.md"
+check "BLOCK: a RULED line whose only reason is that main does the same; one citing Earn every line records" "1 1 0" "$(prs verify "$T/vr4.md") $(cd "$G" && bash "$R/bin/pr-steps" verify "$T/vr4.md" 2>&1 | grep -c 'is not a ruling') $(prs verify "$T/vr5.md")"
 # pr-steps verify: a diff that touches bodies or streams needs code §No regressions' list answered by name
 G3="$T/prs3"; mkdir -p "$G3"; git -C "$G3" init -q -b main; git -C "$G3" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 git -C "$G3" update-ref refs/remotes/origin/main HEAD; git -C "$G3" checkout -q -b fix
@@ -1347,6 +1364,8 @@ for ev in sys.argv[2:]:
     elif kind == 'compact':  # the shapes Claude Code writes: the boundary, then the summary (whose text must not count)
         w({"parentUuid": None, "type": "system", "subtype": "compact_boundary", "content": "Conversation compacted", "level": "info", "compactMetadata": {"trigger": "auto"}})
         w({"type": "user", "isCompactSummary": True, "isVisibleInTranscriptOnly": True, "message": {"role": "user", "content": "This session is being continued from a previous conversation. Summary: opened <command-name>/mergeworthy:merging</command-name> and the Skill tool"}})
+    elif kind in ('attached', 'cut'):  # the harness re-attaches each invoked skill after a compaction, a long one cut short
+        w({"type": "attachment", "attachment": {"type": "invoked_skills", "skills": [{"name": n, "path": "/p", "content": "# Skill" + ("\n[... skill content truncated for compaction; use Read]" if kind == 'cut' else "")} for n in v.split(',')]}})
     else:
         w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Working on it."}]}})
 EOF
@@ -1369,6 +1388,8 @@ check "BLOCK: skills opened before the last compaction don't count" 2 "$(sgb "gh
 check "the compact summary's text doesn't open merging either" 2 "$(sgb 'git push')"
 sg_tr "$T/sg.jsonl" skill:mergeworthy:writing compact skill:mergeworthy:pull-request skill:mergeworthy:writing skill:mergeworthy:post
 check "opened again after the compaction: passes" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
+sg_tr "$T/sg.jsonl" compact attached:mergeworthy:pull-request,mergeworthy:writing cut:mergeworthy:post
+check "skills the harness re-attached whole after the compaction count; one cut short doesn't" "2 mergeworthy:post" "$(sgb "gh pr create --draft --body-file $T/b.md") $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "BLOCK: gh pr ready also needs merging" 2 "$(sgb 'gh pr ready 5')"
 check "the ready block names only merging" "mergeworthy:merging" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "gh pr ready --undo, back to draft, never waits" 0 "$(sgb 'gh pr ready 5 --undo')"

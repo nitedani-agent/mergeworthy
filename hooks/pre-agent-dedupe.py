@@ -167,6 +167,60 @@ if not register and ti.get('role') not in ('research', 'test') and 'memory-refre
         sys.stderr.write("BLOCKED: name the standard the agent writes to by its path, so it reads it before producing "
                          "(mergeworthy:delegate step 3): " + ', '.join('~/.mergeworthy/current/' + f for f in need) + '\n')
         sys.exit(2)
+    # The main session decides on code it read itself, not on an agent's summary: an implementation brief for a repo needs a file
+    # tracked in that repo read by this session in the last three hours (Read, Grep, a cat/sed/head/grep/git show on it, gh pr diff,
+    # gh api .../contents, or a WebFetch of its github.com page); a report an agent wrote inside a checkout is untracked and doesn't count
+    if ti.get('role') == 'implementation' and named and d.get('transcript_path') and os.path.isfile(d['transcript_path']):
+        origin = {}
+        def repo_of(p):
+            top = p if os.path.isdir(p) else os.path.dirname(p)
+            while top not in ('/', '') and not os.path.exists(os.path.join(top, '.git')): top = os.path.dirname(top)
+            if top in ('/', ''): return '', top
+            if top not in origin:
+                u = subprocess.run(['git', '-C', top, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+                m = re.search(r'[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', u); origin[top] = m.group(1).lower() if m else ''
+            return origin[top], top
+        def code_read(q):
+            q = os.path.expanduser(q.split(':')[0])
+            if not os.path.exists(q): return False
+            r, top = repo_of(q)
+            if r not in named: return False
+            return os.path.isdir(q) or subprocess.run(['git', '-C', top, 'ls-files', '--error-unmatch', q], capture_output=True).returncode == 0
+        def bash_reads(cmd, cwd):
+            out = []
+            for seg in re.split(r'&&|\|\||;|\||\n', cmd):
+                try: w = shlex.split(seg)
+                except ValueError: continue
+                if not w: continue
+                if w[0] == 'cd' and len(w) > 1: cwd = os.path.join(cwd, os.path.expanduser(w[1])); continue
+                if w[0] == 'git' and 'show' in w and not {'--stat', '--name-only', '--name-status', '--no-patch', '-s', '--oneline'} & set(w):
+                    c = w[w.index('-C') + 1] if '-C' in w and w.index('-C') + 1 < len(w) else cwd
+                    out += [os.path.join(c, a.split(':', 1)[1]) for a in w if re.match(r'^[\w./~^-]+:[^/]', a)] or [c]
+                elif w[0] in ('cat', 'sed', 'head', 'tail', 'grep', 'rg', 'less', 'nl'):
+                    out += [os.path.join(cwd, os.path.expanduser(a)) for a in w[1:] if not a.startswith('-') and (os.sep in a or '.' in a)]
+            return out
+        since, seen = time.time() - 3 * 3600, False
+        for l in reversed(open(d['transcript_path'], errors='replace').readlines()[-4000:]):
+            if seen or '"tool_use"' not in l: continue
+            try: e = json.loads(l)
+            except ValueError: continue
+            try: t = datetime.datetime.fromisoformat(e.get('timestamp', '').replace('Z', '+00:00')).timestamp()
+            except ValueError: continue
+            if t < since: break
+            for x in (e.get('message') or {}).get('content') or []:
+                if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
+                i, n = x.get('input') or {}, x.get('name')
+                if n == 'Bash' and re.search(r'\bgh (pr diff|api repos/\S+/(contents|commits))', i.get('command', '')) and any(r in i['command'].lower() for r in named) \
+                        or n == 'WebFetch' and any('github.com/' + r + '/' in i.get('url', '').lower() for r in named):
+                    seen = True; break
+                cands = [i.get('file_path', '')] if n == 'Read' else [i.get('path', '')] if n == 'Grep' else \
+                        bash_reads(i.get('command', ''), e.get('cwd') or '/') if n == 'Bash' else []
+                if any(q and code_read(q) for q in cands):
+                    seen = True; break
+        if not seen:
+            sys.stderr.write(f"BLOCKED: read the code this change is about yourself before briefing it ({', '.join(sorted(named))}): open the files "
+                             "(no checkout: clone it, or gh pr diff / gh api), the feature's docs page and its JSDoc, and decide from them, not from an agent's report (always-on: the main session)\n")
+            sys.exit(2)
     # An author or the fresh reader works from the repo study (task step 4): the project file's ## Who decides links one dated within 30 days
     authors = ti.get('role') == 'implementation' or 'thread-context.md' in gate_text or 'MERGE AS IS' in gate_text
     stale = []
