@@ -99,6 +99,12 @@ echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '+1 
 check "a drafting line whose ETA is ahead passes" 0 "$(stop "$WD")"
 echo "drafting: https://github.com/o/r/issues/1#issuecomment-9 $(date -u -d '-1 hour' +%FT%TZ)" > "$WD/replies-owed.md"
 check "BLOCK: a drafting line past its ETA is owed again" 2 "$(stop "$WD")"
+ev0=$(cat "$WD/events.log" 2>/dev/null); printf '%s\n### gitlab.com/g/p!99 note 4041083988 by owner %s  https://gitlab.com/g/p/-/merge_requests/99#note_4041083988\n' "$ev0" "$(date -u -d '-20 minutes' +%FT%TZ)" > "$WD/events.log"
+echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+150 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
+d1=$(stop "$WD"); d1e=$(grep -c 'holding reply now' "$T/err")
+echo "drafting: https://gitlab.com/g/p/-/merge_requests/99#note_4041083988 $(date -u -d '+5 minutes' +%FT%TZ)" > "$WD/replies-owed.md"
+check "BLOCK: a drafting line due 170 minutes after the comment wants a holding reply; one due within 30 minutes passes" "2 1 0" "$d1 $d1e $(stop "$WD")"
+printf '%s\n' "$ev0" > "$WD/events.log"
 rm "$WD/replies-owed.md"; mkdir -p "$WD/hold/drafts"
 printf 'PROMISED o/r#1: post the fix by %s (reply.md)\nPROMISED o/r#1: a docs PR on OK (docs.md)\n' "$(date -u -d '+1 hour' +%FT%H:%MZ)" > "$WD/proposals-open.md"
 check "a PROMISED line whose time is ahead, or with no time, passes" 0 "$(stop "$WD")"

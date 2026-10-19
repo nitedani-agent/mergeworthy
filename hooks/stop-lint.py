@@ -175,16 +175,27 @@ if watcher_on and not paused and not child:
         f = os.path.join(wd, 'replies-owed.md')
         owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
         import datetime
+        try: events_text = open(os.path.join(wd, 'events.log'), errors='replace').read()
+        except OSError: events_text = ''
         def holding(l):  # `holding: <reply url> <ETA>`: a holding reply was posted; `drafting: <comment url> <ETA>`: an agent drafts the answer; ETA is an ISO time
-            m = re.match(r'(?:holding|drafting):\s+\S+\s+(\S+)', l, re.I)
+            m = re.match(r'(holding|drafting):\s+(\S+)\s+(\S+)', l, re.I)
             try:
-                return bool(m) and datetime.datetime.fromisoformat(m.group(1).replace('Z', '+00:00')) > datetime.datetime.now(datetime.timezone.utc)
+                eta = m and datetime.datetime.fromisoformat(m.group(3).replace('Z', '+00:00'))
+                if not eta or eta <= datetime.datetime.now(datetime.timezone.utc): return False
             except ValueError:
                 return False
+            # a drafting line holds only a short wait: an answer due over 30 minutes after the comment gets a holding reply (reply step 3)
+            cid = re.search(r'(?:note_|issuecomment-|discussion_r|#r)(\d+)', m.group(2))
+            when = cid and re.search(rf'\b{cid.group(1)} by \S+ (\d{{4}}-\d\d-\d\dT[\d:]+Z)', events_text)
+            if m.group(1).lower() == 'drafting' and when and eta - datetime.datetime.fromisoformat(when.group(1).replace('Z', '+00:00')) > datetime.timedelta(minutes=30):
+                return False
+            return True
         open_owed = [l for l in owed if not l.lower().startswith('done:') and not holding(l)]
         if open_owed:
             print(f"replies-owed.md in {wd} still has an owed reply ({open_owed[0][:120]}). Answer it through the gate and clear the "
-                  "line with 'done: <reply url> <what changed>' (mergeworthy:post step 5), or clear it with the reason no reply is owed.",
+                  "line with 'done: <reply url> <what changed>' (mergeworthy:post step 5), or clear it with the reason no reply is owed. "
+                  "An answer due more than 30 minutes after the comment gets a holding reply now, through post's fast form, "
+                  "with what you found so far and when the answer comes (`holding: <reply url> <ETA>`, mergeworthy:reply step 3).",
                   file=sys.stderr)
             sys.exit(2)
 # A promise posted with a time (`by 2026-10-12T17:30Z`, `by 18:00 UTC`, in its PROMISED line or its draft) is kept by then: past it,
