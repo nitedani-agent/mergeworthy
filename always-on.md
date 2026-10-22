@@ -4,7 +4,7 @@
 
 1. **Run the skill, don't recall it.** Find what you're about to do in the table, open that skill with the Skill tool, put its steps in your todo list and run them in order. Each step names the one file and section to open, or the command to run: open exactly that. A subagent opens nothing but what its brief names.
 2. **A step holds only for the result it ran on.** Change the result (a commit, an edit, a post) and the steps after it run again. A skipped step runs now, and what it gated waits: a PR goes back to draft, never closed if it fixes a real bug.
-3. **No step is skipped** for size, urgency, an already-open PR or shipping. A skill's short form (the fast form of a review, a small change carrying the pass) is that step, and its record says so. Go faster by running steps in parallel and delegating them.
+3. **No step is skipped** for size, urgency, an already-open PR or shipping. A skill's short form (the fast form of a review, a small change carrying the pass, `converge §Small fix`) is that step, and its record says so. Go faster by running steps in parallel and delegating them.
 4. **Where no step fits, ask what would let the maintainer merge this without checking it again.** A repo's project file overrides a skill's default for that repo.
 
 How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a heading in `~/.mergeworthy/current/skills/<skill>/SKILL.md`; `delegate/<name>.md` is a brief template in `~/.mergeworthy/current/skills/delegate/`.

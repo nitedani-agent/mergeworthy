@@ -1165,6 +1165,20 @@ printf 'pnpm lint -> exit 0\n' | tee "$T/g5a.md" > "$T/g5b.md"
 check "BLOCK: gates with a changeset of 61 words that misses a changed package, naming both (not the private example's, not the root's)" "1 1 1 0" "$(prs5 gates "$T/g5a.md") $(grep -c 'c.md: its body has 61 words' "$T/prs5.err") $(grep -c 'no bump for @x/b,' "$T/prs5.err") $(grep -c '\(root\|e\),' "$T/prs5.err")"
 printf -- '---\n"@x/a": patch\n"@x/b": patch\n---\n\nFix the thing users saw.\n' > "$G5/.changeset/c.md"; git -C "$G5" -c user.name=t -c user.email=t@t commit -qam c
 check "a short changeset naming each changed package records" 0 "$(prs5 gates "$T/g5b.md")"
+# ---------- pr-steps small: a fix of <= 60 lines outside tests and docs, with a test, takes one review for verify..fresh ----------
+GS="$T/prss"; mkdir -p "$GS/src" "$GS/test"; git -C "$GS" init -q -b main; echo a > "$GS/src/a.ts"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GS" update-ref refs/remotes/origin/main HEAD; git -C "$GS" checkout -q -b fix
+prss() { (cd "$GS" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prss.err" >/dev/null; echo $?); }
+printf 'x\n## Outside this change\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr1.md"; cp "$T/sr1.md" "$T/sr2.md"; cp "$T/sr1.md" "$T/sr3.md"; printf 'a finding\n' > "$T/sr0.md"
+seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam b
+r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
+r2=$(prss "$T/sr0.md")
+check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
+check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
+seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
+printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
+check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
+check "BLOCK: pr-steps small past 60 lines outside tests and docs" "1 1" "$(prss "$T/sr3.md") $(grep -c 'past a small fix' "$T/prss.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

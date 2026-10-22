@@ -19,9 +19,9 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in preflight|approach|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <preflight|approach|small|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
+case "$step" in preflight|approach|small|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
@@ -57,6 +57,24 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
+# pr-steps small <report>: a fix of at most 60 lines outside tests, docs and lockfiles, with a test in the diff, reviewed once by
+# delegate/small-review.md, stands for verify, shape, reverify, fresh and the approach (converge §Small fix); gates still run
+if [ "$step" = small ]; then
+  pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR is measured against its own base
+  base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
+  testre='(^|/)(tests?|__tests__|e2e|specs?)/|\.(test|spec)\.|(^|/)\.test[A-Za-z-]*\.'
+  skip="$testre"'|\.md$|(^|/)docs?/|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
+  n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
+  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs and lockfiles: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
+  git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre" || { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
+  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
+  grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
+  for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
+  catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
+  [ -s ~/.claude/pr-steps/approach."$key" ] || echo "approach $(realpath "$out") $(date -u +%FT%TZ)$([ "$catalog" = graph ] && echo ' contract: 2')" >> ~/.claude/pr-steps/approach."$key"
+  echo "recorded small fix ($n lines) for $sha: verify, shape, reverify, fresh; run the gates next"
+  exit 0
+fi
 if [ "$step" = approach ]; then
   chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
   [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
@@ -111,9 +129,9 @@ for i, l in enumerate(lines):
         rulings = [r for r in lines[i + 1:] if r.startswith('RULED:') and name in plain(r)]
         if not rulings:
             print(l)
-        elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change)|earn every line|no realistic usage|contrived|staged race', r, re.I)
+        elif all(re.search(r'not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', r.split(name, 1)[-1], re.I) and not re.search(r'outside the (files|change|code)|earn every line|no realistic usage|contrived|staged race', r, re.I)
                  and not re.match(r'\s*(a bug|bug|fix(ed)?\b)', r.split(name, 1)[-1].lstrip(': '), re.I) for r in map(plain, rulings)):
-            print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the files this change edits', or why no user meets it (code Earn every line, no realistic usage)")
+            print(l + "  <- 'on main too' is not a ruling: start it 'a bug', or say 'outside the code this change edits', or why no user meets it (code Earn every line, no realistic usage)")
 EOF
 )
     [ -z "$unruled" ] || { printf '%s\n' "a reproduced behavior dropped for this reason goes to the main session, which rules on it in a later line 'RULED: <candidate>: <ruling>' (mergeworthy delegate/verifier.md, What counts):" "$unruled" >&2; exit 1; }

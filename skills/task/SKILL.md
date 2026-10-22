@@ -39,7 +39,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
 | **M: Feature or set** | A new capability, a changed public contract, several change units, or open behavior questions. | scope.md, ledger.md, prior-art.md, decisions/*.md |
 | **L: Program** | Changes across two or more independently maintained repos. | Tier M, plus the umbrella issue |
 
-The tier changes the records, never the steps: every PR runs `converge`.
+The tier changes the records, never the steps: every PR runs `converge`, a small fix by its §Small fix.
 
 ### Scope
 
@@ -92,7 +92,7 @@ An issue titled `Tracking: <goal>`, plus one live **Decisions comment** on it, b
 
 ### Dispositions
 
-One disposition per defect. One only your own test shows, or a use the docs rule out, gets a notes-table row and no PR. Any other in a file this change edits is fixed here, as its own commit, even when the base has it; in a repo the user doesn't own, one that changes what users see is a decision block (`writing §Forms`). Any other outside those files: fixed in this change, a PR opened now (on the umbrella if there is one), or an issue (`open-issue`) only when there's no umbrella and the defect is unrelated. The owner's product decision (`code §Owner code and authority`) goes in the PR body's decision blocks (`writing §Forms`); it gets its own decision issue (`open-issue`) only when no PR carries it, linked from the umbrella if there is one. "Mentioned" is never a disposition.
+One disposition per defect. One only your own test shows, or a use the docs rule out, gets a notes-table row and no PR. Any other in the code this change edits (the functions it changes) is fixed here, as its own commit, even when the base has it; in a repo the user doesn't own, one that changes what users see is a decision block (`writing §Forms`). Any other outside it never joins this change: a PR opened now (on the umbrella if there is one), or an issue (`open-issue`) only when there's no umbrella and the defect is unrelated. The owner's product decision (`code §Owner code and authority`) goes in the PR body's decision blocks (`writing §Forms`); it gets its own decision issue (`open-issue`) only when no PR carries it, linked from the umbrella if there is one. "Mentioned" is never a disposition.
 - **"A separate PR" means started now,** alongside. A PR that replaces another closes the old one, with a link, in the same step.
 - **Upstream:** find the fix, decide where it belongs, and open the PR; file an issue only when you can't find a fix, and nudge nobody about one that blocks nothing.
 - **The same defect in a sibling** (another adapter, another call site) is fixed in this change, a public API change included, and the PR states that change.

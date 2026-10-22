@@ -11,7 +11,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 0. **The shape is agreed and the area is clean.** A new API, protocol or behavior is built only once the maintainer OK'd its shape (`design` step 9); in the user's own repos, once the walkthrough is posted. Code being reshaped, or a change that can't be made cleanly because of past patches: `finality`. Size the batch first (§Batching): a change of 80 lines or fewer that adds no behavior carries the pass, unless a maintainer asked for a pass since.
    Open: §Batching; `finality` · Hook: pre-bash-guard
-1. **Loop A: does it break anything?** One verifier per slice (§Running the agents), kept for the loop's whole life. You decide each reproduced bug's root-cause fix; an implementer lands it; the same verifier gets the commits. Under each `## Dropped` line `delegate/verifier.md` marks, you write `RULED: <candidate>: <ruling>`: a bug to fix, or why it isn't one ("main does the same" is a reason only outside the files this change edits). Done when every slice has a pass with no bugs after its last fix, and its file ends `NO BUGS`.
+1. **Loop A: does it break anything?** One verifier per slice (§Running the agents), kept for the loop's whole life. You decide each reproduced bug's root-cause fix; an implementer lands it; the same verifier gets the commits. Under each `## Dropped` line `delegate/verifier.md` marks, you write `RULED: <candidate>: <ruling>`: a bug to fix, or why it isn't one ("main does the same" is a reason only outside the code this change edits). A bug outside the functions this change edits gets its `task §Dispositions` and never re-opens this one. Done when every slice has a pass with no bugs after its last fix, and its file ends `NO BUGS`.
    Open: `delegate/verifier.md`; `delegate/implementer.md` · Run: `pr-steps verify <its file>` · Hook: pre-bash-guard
 2. **Loop B: is it good code?** After Loop A, one agent in one prompt, each into its own file: first the reviewer brief, then the shape pass (cut what shouldn't exist, reshape what stays, rate every file and function old ⇒ new). You decide which findings land (`code §Earn every line`); an implementer lands them commit by commit, gates after each, and the same agent re-rates (`delegate §Continue`: in T3 Code, a new task carrying its report). A bug its review finds is fixed, and Loop A re-checks that slice. OWNER-DECISION rows go in the PR body's decision blocks (`writing §Forms`) or your report. Done when its shape report lists every file, function and piece of logic old ⇒ new with the ✅ coverage list, high and justified, and ends `CLEAN`.
    Open: `delegate/reviewer.md`, `delegate/shape.md`, `delegate/implementer.md` · Run: `pr-steps shape <its shape report>` · Hook: pre-bash-guard
@@ -22,6 +22,10 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 5. **Gates and body.** A smallest-class agent runs every gate the CI workflows run, and the heavy lanes, on the final head into a log of `<command> -> exit <code>` lines, a test run's ending `(N tests)`. CI green, or only workflow approval pending (`merging §CI limits`). The body's evidence blocks (§Evidence blocks), then `post` step 3 again on the final body. Where `finality` ran, its closure (`finality` step 7) comes last. Optional owner recommendations don't block; approval the entry conditions require does.
    Open: `code §Gates`; §Evidence blocks; `post` step 3 · Run: `pr-steps gates <the log>` · Hook: pre-bash-guard
 
+### Small fix
+
+A change of at most 60 lines outside tests, docs and lockfiles, with a test that fails on the base and passes on the head, takes one agent instead of steps 1–4: `delegate/small-review.md`, once, on the pushed head, recorded by `pr-steps small <its report>`, which also stands for `pull-request` step 5's approach; then step 5. Each finding gets its fix and a new round to the same reviewer checking only that fix (`delegate §Continue`); each line under `## Outside this change` gets its `task §Dispositions`.
+
 ### Batching
 
 - **Batch:** let the work land (every commit a review round or a maintainer's ask produces), then converge the whole PR once, before its push; then the PR is done. A maintainer's commits get one review once they stop (`reply §Maintainer commits`).
@@ -31,7 +35,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 ### Running the agents
 
-- **Continue, don't restart** (`delegate §Continue`): after a fix that doesn't carry the pass, its slice's verifier re-checks what changed and one Loop B agent re-audits the whole diff. Loop A and Loop B get separate agents, except a Tier S PR whose diff is under ~300 lines, where one agent runs both.
+- **Continue, don't restart** (`delegate §Continue`): after a fix that doesn't carry the pass, its slice's verifier re-checks what changed and one Loop B agent re-audits the whole diff. Loop A and Loop B get separate agents, except a Tier S PR under ~300 lines, where one agent runs both.
 - **A long list of Loop B findings** goes to one implementer in its own worktree, taking the slices one after the other. Review its diff before cherry-picking; cherry-pick onto the PR branch, run the full gates and the lanes the changes touch, then continue the Loop A verifier with the commits.
 - **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices); each slice gets its own verifier, and an implementer only when the slices don't fit one context; one Loop B agent covers the whole PR in one shape report (step 2).
 - **What they read:** the head's code in full at the brief's pinned SHAs. A finality graph is only an index.
