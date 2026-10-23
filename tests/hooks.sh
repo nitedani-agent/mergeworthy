@@ -1109,7 +1109,7 @@ printf 'carries the pass of %s: merged main\n' "$MA" > "$T/carry-m.md"
 check "a clean merge of the base (200 lines, none the PR's) carries the earlier head's Loop A" 0 "$( (cd "$MG" && bash "$R/bin/pr-steps" verify "$T/carry-m.md" >/dev/null 2>&1; echo $?) )"
 # a branch whose latest approach record has no `contract: 2` was started by a session on v1's skills: it finishes under the old records
 mkdir -p "$HOME/.mergeworthy/sessions"; echo "/p graph startup 0" > "$HOME/.mergeworthy/sessions/s-graph"; echo "/p v1 startup 0" > "$HOME/.mergeworthy/sessions/s-v1"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | stays |\n| Fix it | 8 | ok |\n\nChosen: Fix it\n' > "$T/apo.md"; CLAUDE_CODE_SESSION_ID=s-graph prs approach "$T/apo.md" >/dev/null
 APF=$(ls -t "$HOME"/.claude/pr-steps/approach.* | head -n1)
 check "an approach recorded by a session on the graph catalog carries contract: 2" 1 "$(tail -n1 "$APF" | grep -c ' contract: 2$')"
 printf 'nothing worth changing\nCLEAN\n' > "$T/olb.md"
@@ -1200,10 +1200,13 @@ printf 'pnpm test -> exit 0\npnpm lint -> exit 0\n' > "$T/g0.md"; printf 'pnpm t
 check "BLOCK: a test gate without its count, or with 0 tests" "1 1" "$(prs2 gates "$T/g0.md") $(prs2 gates "$T/g00.md")"
 printf 'pnpm test -> exit 0 (134 tests)\npnpm lint -> exit 0\n' > "$T/g2.md"; check "a green gates log records" 0 "$(prs2 gates "$T/g2.md")"
 check "BLOCK: gh pr ready with the five steps but no approach record" 2 "$(ready)"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\n\nChosen: Fix in place\n' > "$T/ap6.md"
-printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Rewrite\n' > "$T/apx.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 5 | misses siblings |\n| Fix the shared helper | 8 | one place for all |\n\nChosen: Fix the shared helper\n' > "$T/ap.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Fix the shared helper | 8 | only one |\n\nChosen: Fix the shared helper\n' > "$T/ap1.md"
+printf '| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Fix in place\n' > "$T/apnr.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 6 | misses siblings |\n\nChosen: Fix in place\n' > "$T/ap6.md"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Rewrite\n' > "$T/apx.md"
+rc=; for c in 'Root cause: unknown yet, logged at 12:30' '- **Root cause:** src/a.ts:3 does it' 'Root cause: none, a feature'; do printf '%s\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix in place | 8 | ok |\n\nChosen: Fix in place\n' "$c" > "$T/aprc.md"; GR="$T/aprc-$((n=${n:-0}+1))"; git init -q "$GR"; git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; rc="$rc $(cd "$GR" && bash "$R/bin/pr-steps" approach "$T/aprc.md" >/dev/null 2>&1; echo $?)"; done
+check "BLOCK: an approach with no Root cause line citing a path:line, or one citing a time; a bold list item or a feature records" "1 1 0 0" "$(prs2 approach "$T/apnr.md")$rc"
 check "BLOCK: an approach with one candidate" 1 "$(prs2 approach "$T/ap1.md")"
 check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"

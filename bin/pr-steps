@@ -78,6 +78,7 @@ fi
 if [ "$step" = approach ]; then
   chosen=$(sed -n 's/^[[:space:]]*Chosen:[[:space:]]*//p' "$out" | head -n1 | sed 's/[[:space:]]*$//')
   [ -n "$chosen" ] || { echo "$out has no line 'Chosen: <candidate>'" >&2; exit 1; }
+  grep -Eq '^[[:space:]*>-]*Root cause:[*]*[[:space:]]+(none, .+|.*[A-Za-z0-9_-]*[/.][A-Za-z0-9_./-]*:[0-9]+)' "$out" || { echo "$out has no line 'Root cause: <why it happens, with the path:line that does it>' ('Root cause: none, <what it is>' for a feature or a reshape): rate candidates only once the cause is found, and one of them stops it there (pull-request step 5)" >&2; exit 1; }
   # candidates: table rows `| name | rating 0-10 | why |`; the header and separator rows have no numeric rating
   rows=$(awk -F'|' '/^[[:space:]]*\|/ { for (i=1;i<=NF;i++) gsub(/^[[:space:]]+|[[:space:]]+$/,"",$i); if ($3 ~ /^([0-9]|10)(\/10)?$/ && $2 != "" && $4 != "") { sub(/\/10$/,"",$3); print tolower($2) "\t" $3 } }' "$out")
   [ "$(printf '%s' "$rows" | grep -c .)" -ge 2 ] || { echo "$out lists fewer than two rated candidates: a table '| Candidate | Rating | Why |' with each candidate, not building it included, rated 0-10 with its reason" >&2; exit 1; }
