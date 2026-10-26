@@ -180,6 +180,6 @@ def keep(folder, on_github):
         ends = git(top, 'merge-base', '--independent', *unproven)  # GitHub holding a commit holds its history: ask only about these
         lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if True not in (on_github(r, h) for r in hub)), None)
         if lost:
-            why.append(f'{top}: {len(unproven)} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
+            why.append(f'{top}: {len(walk.stdout.split())} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
                        + (f" (not read: {', '.join(unread)})" if unread else ''))
     return why

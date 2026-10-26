@@ -227,7 +227,7 @@ printf '# questions owed\nDONE how big is the cache? answered in chat\n- DONE 20
 echo '- How big is the cache? ETA 2026-10-27' > "$W8/questions/questions-owed.md"
 printf '# replies owed\nhttps://example.invalid/c1 by alice\n' > "$W8/owed/replies-owed.md"; echo 'PROMISED o/r#1: the fix (d.md)' > "$W8/promised/proposals-open.md"
 echo x > "$W8/untracked/repo/notes.txt"; echo b >> "$W8/modified/repo/README"; echo y >> "$W8/stash/repo/README"; G -C "$W8/stash/repo" stash push -q
-G -C "$W8/local/repo" commit -q --allow-empty -m 'only here'
+G -C "$W8/local/repo" commit -q --allow-empty -m 'only here'; G -C "$W8/local/repo" commit -q --allow-empty -m 'and here'
 G -C "$W8/stale/repo" checkout -q -b gone; G -C "$W8/stale/repo" commit -q --allow-empty -m gone; G -C "$W8/stale/repo" push -q origin gone
 git -C "$T/w-origin.git" update-ref -d refs/heads/gone  # deleted on the remote; the clone's origin/gone stays
 G -C "$W8/pullref/repo" checkout -q -b fix; G -C "$W8/pullref/repo" commit -q --allow-empty -m fix; G -C "$W8/pullref/repo" push -q origin fix fix:refs/pull/1/head
@@ -283,7 +283,7 @@ check "keep: a PROMISED line in proposals-open.md" "proposals-open.md has an und
 check "keep: an untracked file" "./repo: 1 modified or untracked file(s), e.g. notes.txt" "$(why untracked)"
 check "keep: a modified file" "./repo: 1 modified or untracked file(s), e.g. README" "$(why modified)"
 check "keep: a stash" "./repo: 1 stash(es)" "$(why stash)"
-check "keep: a commit on no remote" "./repo: 1 commit(s) on no remote, e.g. $(sha "$W8/local/repo")" "$(why local)"
+check "keep: two commits on no remote, one branch: both counted" "./repo: 2 commit(s) on no remote, e.g. $(sha "$W8/local/repo")" "$(why local)"
 check "keep: a branch deleted on the remote, its stale tracking ref left" "./repo: 1 commit(s) on no remote, e.g. $(sha "$W8/stale/repo")" "$(why stale)"
 check "keep: a squash-merged branch whose remote branch is gone, its commit held by the pull request's head ref" "-" "$(why pullref)"
 check "keep: two tips on no remote with a GitHub remote, GitHub confirming one: the row names the other" "./repo: 2 commit(s) on no remote, e.g. $(sha "$W8/github/repo"), nor confirmed by GitHub" "$(why github)"
@@ -297,7 +297,7 @@ check "keep: a repo in an ignored folder whose config names a clean filter, a re
 check "keep: a repo nested in a path its enclosing repo does not ignore is checked like any other" "./repo: 1 modified or untracked file(s), e.g. sub/inner/ | ./repo/sub/inner: 1 modified or untracked file(s), e.g. w" "$(why nestedtracked)"
 check "keep: commits only a local tag holds, lightweight or annotated" "./repo: 2 commit(s) on no remote, e.g. $TAG2" "$(why tag)"
 check "keep: a partial clone loses nothing and fetches nothing" "- $PACKS" "$(why partial) $(packs "$W8/partial/repo")"
-check "keep: 30 tags on commits no remote holds, the remote unreadable: one GitHub call, one row" "./repo: 30 commit(s) on no remote, e.g. $MT, nor confirmed by GitHub (not read: origin)|1" "$(why manytags)|$(awk -F'\t' '$1 == "manytags" { print $3 }' "$T/keep.out" | wc -w)"
+check "keep: 30 tags on commits no remote holds, the remote unreadable (so the base commit too): one GitHub call, one row" "./repo: 31 commit(s) on no remote, e.g. $MT, nor confirmed by GitHub (not read: origin)|1" "$(why manytags)|$(awk -F'\t' '$1 == "manytags" { print $3 }' "$T/keep.out" | wc -w)"
 check "keep: a commit no remote holds that GitHub confirms" - "$(why ghall)"
 check "keep: a bare repo" "./backup.git: a bare repo; check it by hand" "$(why bare)"
 check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
