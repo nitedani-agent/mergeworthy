@@ -237,6 +237,7 @@ G -C "$W8/outwt/repo" worktree add -q -b side "$T/outside-wt"
 G clone -q "$T/w-origin.git" "$T/user-clone"; mkdir -p "$W8/extwt" "$W8/extdet"; touch "$W8/extwt/retired" "$W8/extdet/retired"
 G -C "$T/user-clone" worktree add -q -b wt-branch "$W8/extwt/checkout"; G -C "$W8/extwt/checkout" commit -q --allow-empty -m 'on the clone outside'
 G -C "$T/user-clone" worktree add -q --detach "$W8/extdet/checkout"; G -C "$W8/extdet/checkout" commit -q --allow-empty -m 'detached, on no branch'
+mkdir -p "$W8/extwip"; touch "$W8/extwip/retired"; G -C "$T/user-clone" worktree add -q --detach "$W8/extwip/checkout" wt-branch  # reading the user's local, unpushed branch
 G init -q "$W8/nested/repo/cache/inner"; echo w > "$W8/nested/repo/cache/inner/w"; mkdir -p "$W8/jj/proj/.jj"; for n in unread unreadlocal; do G -C "$W8/$n/repo" remote add gone "$T/no-such.git"; done; G -C "$W8/unreadlocal/repo" commit -q --allow-empty -m 'only here'
 printf '#!/bin/sh\nwhile kill -0 $PPID 2>/dev/null; do sleep 0.2; done\n' > "$T/bin/hang-ssh"; chmod +x "$T/bin/hang-ssh"  # a server that takes the connection and never answers
 git config -f "$H8/.gitconfig" core.sshCommand "$T/bin/hang-ssh"; G -C "$W8/hang/repo" remote add fork ssh://git@hang.invalid/x.git
@@ -271,7 +272,8 @@ check "keep: tips on no remote with a GitHub remote: the one GitHub has goes, th
 check "keep: a detached HEAD in a worktree of its repo" 1 "$(why detached | grep -c "commit $(sha "$W8/detached/wt") is on no remote$")"
 check "keep: a worktree of its repo outside the folder" "./repo: its worktree $(readlink -f "$T")/outside-wt is outside the folder" "$(why outwt)"
 check "keep: a worktree on a branch of a repo outside loses nothing, the branch stays there" "- yes" "$(why extwt) $(G -C "$T/user-clone" rev-parse -q --verify wt-branch >/dev/null && echo yes)"
-check "keep: a detached HEAD in a worktree of a repo outside" "./checkout: commit $(sha "$W8/extdet/checkout") is on no remote" "$(why extdet)"
+check "keep: a detached HEAD in a worktree of a repo outside, on none of its refs" "./checkout: commit $(sha "$W8/extdet/checkout") is on no branch, tag or remote-tracking ref of $(readlink -f "$T")/user-clone/.git" "$(why extdet)"
+check "keep: a detached worktree of an outside repo's local, unpushed branch loses nothing" - "$(why extwip)"
 check "keep: a nested repo in an ignored folder with an untracked file" "./repo/cache/inner: 1 modified or untracked file(s), e.g. w" "$(why nested)"
 check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
 check "keep: a repo's own core.fsmonitor and core.sshCommand never run; its commit keeps the folder" "0 yes" "$(ls "$T" | grep -c PWNED) $([ "$(why planted)" != - ] && echo yes)"

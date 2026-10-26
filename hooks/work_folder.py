@@ -94,8 +94,8 @@ def keep(folder, on_github):
     """Why deleting folder would lose something, one reason each, [] when nothing: its watcher hasn't retired (no `retired` file) or
     still runs; replies-owed.md has an open line or proposals-open.md a PROMISED one; a work tree under
     it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it;
-    a branch tip or worktree HEAD of such a repo, or a detached HEAD of a worktree inside it whose repo is outside, is reachable from
-    no commit its readable remotes hold now and on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names
+    a detached HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo;
+    a branch tip or worktree HEAD of a repo whose git data is inside it is reachable from no commit its readable remotes hold now and on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names
     the remotes it couldn't read); another version-control system's data."""
     folder = os.path.realpath(folder)
     why = [] if os.path.isfile(os.path.join(folder, 'retired')) else ['its watcher has not retired']
@@ -123,13 +123,14 @@ def keep(folder, on_github):
         repos.setdefault(os.path.realpath(git(top, 'rev-parse', '--path-format=absolute', '--git-common-dir').stdout.strip()), top)
     for common, top in repos.items():
         wts = worktrees(top)
-        if inside(common, folder):
-            if stashes := git(top, 'stash', 'list').stdout.splitlines():
-                why.append(f'{top}: {len(stashes)} stash(es)')
-            why += [f'{top}: its worktree {p} is outside the folder' for p, _, _ in wts if not inside(os.path.realpath(p), folder) and os.path.exists(p)]
-            tips = set(git(top, 'for-each-ref', '--format=%(objectname)', 'refs/heads').stdout.split()) | {h for _, h, _ in wts}
-        else:  # its branches live on in the repo outside
-            tips = {h for p, h, detached in wts if detached and inside(os.path.realpath(p), folder)}
+        if not inside(common, folder):  # the repo outside stays, with what its refs reach (not --all: it counts worktree HEADs)
+            why += [f'{top}: commit {h[:12]} is on no branch, tag or remote-tracking ref of {common}' for p, h, detached in wts
+                    if detached and inside(os.path.realpath(p), folder) and git(top, 'rev-list', '-n1', h, '--not', '--branches', '--tags', '--remotes').stdout.strip()]
+            continue
+        if stashes := git(top, 'stash', 'list').stdout.splitlines():
+            why.append(f'{top}: {len(stashes)} stash(es)')
+        why += [f'{top}: its worktree {p} is outside the folder' for p, _, _ in wts if not inside(os.path.realpath(p), folder) and os.path.exists(p)]
+        tips = set(git(top, 'for-each-ref', '--format=%(objectname)', 'refs/heads').stdout.split()) | {h for _, h, _ in wts}
         tips -= {'', '0' * 40}  # an unborn HEAD has no commit
         if not tips:
             continue
