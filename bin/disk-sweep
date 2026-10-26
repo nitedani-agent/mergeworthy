@@ -330,7 +330,10 @@ def sweep_work():
     for e in sorted(os.scandir(root), key=lambda e: e.name):
         if not e.is_dir(follow_symlinks=False) or not os.path.isfile(os.path.join(e.path, 'retired')):
             continue
-        why = work_folder.keep(e.path, github_has)
+        try:
+            why = work_folder.keep(e.path, github_has)
+        except Exception as err:  # this folder stays; the next ones and the other rules still run
+            why = [f'check failed: {err}']
         if not why and not delete(e.path, e.path, dev, 'w-done', vcs=False):
             why = ['a file changed in the last 24 hours, a process or agent job works in it, it holds a mount, a symlinked path or an '
                    'unreadable folder, or its deletion failed (disk-sweep.log)']

@@ -6,6 +6,7 @@ import glob, os, re, subprocess
 
 ROOT = os.path.join(os.path.expanduser('~'), '.mergeworthy', 'work')
 OTHER_VCS = ('.hg', '.svn', '.jj')
+TIMEOUT = 60  # seconds a remote has to answer ls-remote
 GITHUB = re.compile(r'(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([\w.-]+/[\w.-]+?)(?:\.git)?/?$')
 
 
@@ -72,21 +73,21 @@ def remotes(top):
 
 
 def held(top, urls):
-    """(the commits of top's repo that its remotes (urls) hold now, as `git ls-remote` lists them; a reason for each remote it can't read).
+    """(the commits of top's repo that its remotes (urls) hold now, as `git ls-remote` lists them; the names of the remotes it can't read).
     ls-remote runs from / on the URL, so the repo's own config (core.sshCommand, credential.helper, insteadOf) isn't read."""
-    shas, why = set(), []
+    shas, unread = set(), []
     for name, url in urls.items():
         try:
             r = subprocess.run(['git', '-C', '/', 'ls-remote', url], capture_output=True, text=True, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
-                               stdin=subprocess.DEVNULL, timeout=60)
-        except subprocess.TimeoutExpired:
+                               stdin=subprocess.DEVNULL, timeout=TIMEOUT)
+        except (subprocess.TimeoutExpired, OSError):
             r = None
-        if not r or r.returncode:
-            why.append(f'{top}: its remote {name} could not be read' + (f': {r.stderr.strip()[:120]}' if r else ' in 60 s'))
-        else:
+        if r and not r.returncode:
             shas.update(l.split()[0] for l in r.stdout.splitlines() if l.strip())
+        else:
+            unread.append(name)
     known = git(top, 'cat-file', '--batch-check=%(objectname) %(objecttype)', input=''.join(s + '\n' for s in shas)).stdout
-    return [l.split()[0] for l in known.splitlines() if l.endswith(' commit')], why
+    return [l.split()[0] for l in known.splitlines() if l.endswith(' commit')], unread
 
 
 def keep(folder, on_github):
@@ -94,8 +95,8 @@ def keep(folder, on_github):
     still runs; replies-owed.md has an open line or proposals-open.md a PROMISED one; a work tree under
     it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it;
     a branch tip or worktree HEAD of such a repo, or a detached HEAD of a worktree inside it whose repo is outside, is reachable from
-    no commit its remotes hold now and on_github(owner/repo, sha) doesn't answer True for any GitHub remote; a remote can't be read;
-    another version-control system's data."""
+    no commit its readable remotes hold now and on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names
+    the remotes it couldn't read); another version-control system's data."""
     folder = os.path.realpath(folder)
     why = [] if os.path.isfile(os.path.join(folder, 'retired')) else ['its watcher has not retired']
     try:
@@ -134,11 +135,9 @@ def keep(folder, on_github):
             continue
         urls = remotes(top)
         remote, unread = held(top, urls)
-        if unread:
-            why += unread
-            continue
         hub = sorted({m[1] for u in urls.values() if (m := GITHUB.match(u))})
         for sha in sorted(tips):
             if git(top, 'rev-list', '-n1', '--stdin', sha, input=''.join(f'^{s}\n' for s in remote)).stdout.strip() and True not in (on_github(r, sha) for r in hub):
-                why.append(f'{top}: commit {sha[:12]} is on no remote' + (', nor confirmed by GitHub' if hub else ''))
+                why.append(f'{top}: commit {sha[:12]} is on no remote' + (', nor confirmed by GitHub' if hub else '')
+                           + (f" (not read: {', '.join(unread)})" if unread else ''))
     return why
