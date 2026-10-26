@@ -145,8 +145,10 @@ def unpushed(top, wts, on_github):
         return f'{top}: git rev-list failed: {walk.stderr.strip()[:120]}'
     if not (unproven := sorted(tips & set(walk.stdout.split()))):  # the tips no commit a remote holds reaches
         return None
+    def confirmed(h):
+        return any(on_github(r, h) is True for r in hub)
     ends = git(top, 'merge-base', '--independent', *unproven)  # GitHub holding a commit holds its history: ask only about these
-    lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if True not in (on_github(r, h) for r in hub)), None)
+    lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if not confirmed(h)), None)
     if not lost:
         return None
     return (f'{top}: {len(walk.stdout.split())} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
@@ -183,8 +185,9 @@ def keep(folder, on_github):
     for common, top in repos.items():
         wts = worktrees(top)
         if not inside(common, folder):  # the repo outside stays, with what its refs reach (not --all: it counts worktree HEADs)
-            why += [f'{top}: commit {h[:12]} is on no branch, tag or remote-tracking ref of {common}' for p, h, detached in wts
-                    if detached and inside(os.path.realpath(p), folder) and git(top, 'rev-list', '-n1', h, '--not', '--branches', '--tags', '--remotes').stdout.strip()]
+            for p, h, detached in wts:
+                if detached and inside(os.path.realpath(p), folder) and git(top, 'rev-list', '-n1', h, '--not', '--branches', '--tags', '--remotes').stdout.strip():
+                    why.append(f'{top}: commit {h[:12]} is on no branch, tag or remote-tracking ref of {common}')
             continue
         if stashes := git(top, 'stash', 'list').stdout.splitlines():
             why.append(f'{top}: {len(stashes)} stash(es)')
