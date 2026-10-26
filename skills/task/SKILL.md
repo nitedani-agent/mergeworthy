@@ -56,7 +56,7 @@ The work folder (`~/.mergeworthy/work/<task>/`, the task's checkouts inside) hol
 - **The owed lists,** each cleared only by the thing named:
   - `replies-owed.md`: every comment you answer (the watcher writes it). Cleared by `done: <reply URL> <what changed>`, or `done: 👍 <comment URL>` for a reaction alone; a holding reply makes it `holding: <reply URL> <ETA as an ISO time>`; while a drafter works, `drafting: <comment URL> <ETA>`.
   - `proposals-open.md`: every "OK?" you ask, and every promise you post as `PROMISED <thread>: <what> (<draft file name>)`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it.
-  - `questions-owed.md`: each user question that needs work, with an ETA.
+  - `questions-owed.md`: each user question that needs work, with an ETA. Cleared by `done: <where you answered it>`.
 - Log and artifact names include a unique pass ID; never overwrite another pass's file.
 - **Deleted when done:** 14 days after the watcher retires (every thread merged or closed, and 60 days after each merge of yours), disk-sweep's `w-done` (`docs/mechanisms.md`) deletes it, unless a process or agent works in it, a file changed within a day, or it holds an open owed or `waiting-on.txt` line or anything no remote has (an edit, an untracked file git doesn't ignore, a stash, a commit); `~/.mergeworthy/work-kept.md` says why one stays. Nothing deletes an older `~/*-work/` folder, nor any folder with the watcher off or off Linux.
 
