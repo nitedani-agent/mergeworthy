@@ -1364,6 +1364,13 @@ touch "$D-work/prior-art.md"; mkdir -p "$D-work/design"; touch "$D-work/design/x
 check "BLOCK: Tier M edit with only the design debate and review records" 2 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 mkdir -p "$D-work/decisions"; touch "$D-work/decisions/x.md"
 check "Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+DW="$HOME/.mergeworthy/work/dg"; D="$DW/repo"; mkdir -p "$D"; git -C "$D" init -q  # the work folder holding the checkout
+(cd "$D" && bash "$R/bin/pr-steps" preflight 'none, because the design gate is tested here' >/dev/null)
+printf 'Tier: M, because x\n' > "$DW/scope.md"
+check "BLOCK: in ~/.mergeworthy/work/<task>/, a Tier M edit and an implementation agent with no prior art or decision" "2 2" "$(gate Edit "{\"file_path\":\"$D/a.ts\"}") $(gate mcp__t3-code__delegate_task '{"role":"implementation"}')"
+check "there, an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$DW/prior-art.md\"}")"
+touch "$DW/prior-art.md"; mkdir -p "$DW/decisions"; touch "$DW/decisions/x.md"
+check "there, a Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
 # ---------- pre-skill-gate: an action waits for the skills its always-on row names, opened since the last compaction ----------
 sg_tr() { # <transcript> <event>...: skill:<input.skill> | typed:<name> | compact | text
   python3 - "$@" <<'EOF'
