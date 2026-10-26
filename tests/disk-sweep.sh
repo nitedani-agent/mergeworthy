@@ -219,7 +219,7 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean notretired running owed promised untracked modified stash local stale pullref github detached outwt nested jj unread; do mk "$n"; done
+for n in clean notretired running owed promised untracked modified stash local stale pullref github detached outwt nested jj unread planted; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"
 rm "$W8/notretired/retired"; echo $$ > "$W8/running/gh-watch.pid"
@@ -230,7 +230,7 @@ G -C "$W8/stale/repo" checkout -q -b gone; G -C "$W8/stale/repo" commit -q --all
 git -C "$T/w-origin.git" update-ref -d refs/heads/gone  # deleted on the remote; the clone's origin/gone stays
 G -C "$W8/pullref/repo" checkout -q -b fix; G -C "$W8/pullref/repo" commit -q --allow-empty -m fix; G -C "$W8/pullref/repo" push -q origin fix fix:refs/pull/1/head
 git -C "$T/w-origin.git" update-ref -d refs/heads/fix  # squash-merged: the branch is gone, the pull request's head stays
-G -C "$W8/github/repo" config url."$T/w-origin.git".insteadOf https://github.com/o/r.git; G -C "$W8/github/repo" remote set-url origin https://github.com/o/r.git
+git config -f "$H8/.gitconfig" url."$T/w-origin.git".insteadOf https://github.com/o/r.git; G -C "$W8/github/repo" remote set-url origin https://github.com/o/r.git
 G -C "$W8/github/repo" checkout -q -b a; G -C "$W8/github/repo" commit -q --allow-empty -m a; G -C "$W8/github/repo" checkout -q -b b main; G -C "$W8/github/repo" commit -q --allow-empty -m b
 G -C "$W8/detached/repo" worktree add -q --detach "$W8/detached/wt"; G -C "$W8/detached/wt" commit -q --allow-empty -m detached
 G -C "$W8/outwt/repo" worktree add -q -b side "$T/outside-wt"
@@ -238,6 +238,8 @@ G clone -q "$T/w-origin.git" "$T/user-clone"; mkdir -p "$W8/extwt" "$W8/extdet";
 G -C "$T/user-clone" worktree add -q -b wt-branch "$W8/extwt/checkout"; G -C "$W8/extwt/checkout" commit -q --allow-empty -m 'on the clone outside'
 G -C "$T/user-clone" worktree add -q --detach "$W8/extdet/checkout"; G -C "$W8/extdet/checkout" commit -q --allow-empty -m 'detached, on no branch'
 G init -q "$W8/nested/repo/cache/inner"; echo w > "$W8/nested/repo/cache/inner/w"; mkdir -p "$W8/jj/proj/.jj"; G -C "$W8/unread/repo" remote add gone "$T/no-such.git"
+PL="$W8/planted/repo/cache/repro"; G init -q "$PL"; G -C "$PL" commit -q --allow-empty -m repro  # an extracted archive's repo, in an ignored folder
+G -C "$PL" config core.fsmonitor "touch $T/PWNED-fsmonitor; false"; G -C "$PL" remote add origin ssh://example.invalid/x.git; G -C "$PL" config core.sshCommand "touch $T/PWNED-sshCommand; false"
 sha() { G -C "$1" rev-parse HEAD | cut -c1-12; }
 HOME="$H8" dsm 'calls = []
 def fake(repo, sha):
@@ -266,6 +268,7 @@ check "keep: a worktree on a branch of a repo outside loses nothing, the branch 
 check "keep: a detached HEAD in a worktree of a repo outside" "./checkout: commit $(sha "$W8/extdet/checkout") is on no remote" "$(why extdet)"
 check "keep: a nested repo in an ignored folder with an untracked file" "./repo/cache/inner: 1 modified or untracked file(s), e.g. w" "$(why nested)"
 check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
+check "keep: a repo's own core.fsmonitor and core.sshCommand never run; its commit keeps the folder" "0 yes" "$(ls "$T" | grep -c PWNED) $([ "$(why planted)" != - ] && echo yes)"
 check "keep: a remote that can't be read" 1 "$(why unread | grep -c '^./repo: its remote gone could not be read: ')"
 
 # github_has: gh api's status line; nothing asked while the watchers' shared pause holds

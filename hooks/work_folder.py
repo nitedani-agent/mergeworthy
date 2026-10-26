@@ -10,8 +10,9 @@ GITHUB = re.compile(r'(?:https://github\.com/|git@github\.com:|ssh://git@github\
 
 
 def git(repo, *args, **kw):
-    """git in repo, captured; --no-optional-locks: a refreshed index would reset disk-sweep's idle check."""
-    return subprocess.run(['git', '--no-optional-locks', '-C', repo, *args], capture_output=True, text=True, **kw)
+    """git in repo, captured; --no-optional-locks: a refreshed index would reset disk-sweep's idle check; no fsmonitor: a repo's
+    own config (an extracted archive's) would run it."""
+    return subprocess.run(['git', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-C', repo, *args], capture_output=True, text=True, **kw)
 
 
 def of(path):
@@ -61,12 +62,23 @@ def worktrees(top):
     return out
 
 
-def held(top):
-    """(the commits of top's repo that its remotes hold now, as `git ls-remote` lists them; a reason for each remote it can't read)."""
+def remotes(top):
+    """{name: URL} of top's remotes as configured, a relative path made absolute."""
+    out = {}
+    for l in git(top, 'config', '--get-regexp', r'^remote\..*\.url$').stdout.splitlines():
+        key, _, url = l.partition(' ')
+        out[key[len('remote.'):-len('.url')]] = url if '://' in url or ':' in url.split('/')[0] else os.path.join(top, url)
+    return out
+
+
+def held(top, urls):
+    """(the commits of top's repo that its remotes (urls) hold now, as `git ls-remote` lists them; a reason for each remote it can't read).
+    ls-remote runs from / on the URL, so the repo's own config (core.sshCommand, credential.helper, insteadOf) isn't read."""
     shas, why = set(), []
-    for name in git(top, 'remote').stdout.split():
+    for name, url in urls.items():
         try:
-            r = git(top, 'ls-remote', name, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'}, stdin=subprocess.DEVNULL, timeout=60)
+            r = subprocess.run(['git', '-C', '/', 'ls-remote', url], capture_output=True, text=True, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'},
+                               stdin=subprocess.DEVNULL, timeout=60)
         except subprocess.TimeoutExpired:
             r = None
         if not r or r.returncode:
@@ -75,12 +87,6 @@ def held(top):
             shas.update(l.split()[0] for l in r.stdout.splitlines() if l.strip())
     known = git(top, 'cat-file', '--batch-check=%(objectname) %(objecttype)', input=''.join(s + '\n' for s in shas)).stdout
     return [l.split()[0] for l in known.splitlines() if l.endswith(' commit')], why
-
-
-def github_repos(top):
-    """The owner/repo of each of top's remotes on GitHub, from its configured URL."""
-    urls = git(top, 'config', '--get-regexp', r'^remote\..*\.url$').stdout.splitlines()
-    return sorted({m[1] for l in urls if (m := GITHUB.match(l.split(' ', 1)[-1]))})
 
 
 def keep(folder, on_github):
@@ -126,11 +132,12 @@ def keep(folder, on_github):
         tips -= {'', '0' * 40}  # an unborn HEAD has no commit
         if not tips:
             continue
-        remote, unread = held(top)
+        urls = remotes(top)
+        remote, unread = held(top, urls)
         if unread:
             why += unread
             continue
-        hub = github_repos(top)
+        hub = sorted({m[1] for u in urls.values() if (m := GITHUB.match(u))})
         for sha in sorted(tips):
             if git(top, 'rev-list', '-n1', '--stdin', sha, input=''.join(f'^{s}\n' for s in remote)).stdout.strip() and True not in (on_github(r, sha) for r in hub):
                 why.append(f'{top}: commit {sha[:12]} is on no remote' + (', nor confirmed by GitHub' if hub else ''))
