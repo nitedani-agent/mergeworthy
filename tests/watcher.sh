@@ -482,6 +482,13 @@ check "gh-watch-start: !N on a GitHub repo is not a thread" "o/r" "$(cat "$GS/re
 
 ( dir="$GS"; : > "$GS/repos.txt"; set -- o/r all o/r 5; eval "$args_step" ) >/dev/null 2>&1
 check "gh-watch-start: an 'owner/repo all' line stays when a thread of its repo joins" "o/r all" "$(cat "$GS/repos.txt")"
+# the whole gh-watch-start, cron branch (systemctl fails; crontab and the daemon stubbed), on a dir whose watcher had retired
+GI="$T/ghinst"; mkdir -p "$GI/bin" "$GI/watcher" "$T/cronbin" "$T/retiredwatch"; cp "$R/bin/gh-watch-start" "$GI/bin/"; : > "$GI/watcher/gh-watch.py"
+printf '#!/bin/bash\necho $$ > gh-watch.pid\nexec sleep 30\n' > "$GI/watcher/gh-watch-daemon.sh"; printf '#!/bin/sh\nexit 1\n' > "$T/cronbin/systemctl"; printf '#!/bin/sh\n[ "$1" = -l ] && exit 0\ncat > /dev/null\n' > "$T/cronbin/crontab"
+chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/crontab"; echo 2026-01-01T00:00:00Z > "$T/retiredwatch/retired"
+PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
+check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
+GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
 
 # `owner/repo all` in repos.txt: a moved thread of the repo joins that dir (unless another dir lists it), a new one is reported unless
 # it carries the badge, and /agent at the start of a new body is an agent command (routed to the dir watching the repo whole, else main_dir)
