@@ -3,7 +3,6 @@
 <checkout>-work/ beside a checkout. keep() says what deleting a folder would lose; disk-sweep's w-done rule deletes a retired
 folder it finds nothing in."""
 import glob, os, re, subprocess
-import steward
 
 ROOT = os.path.join(os.path.expanduser('~'), '.mergeworthy', 'work')
 OTHER_VCS = ('.hg', '.svn', '.jj')
@@ -86,7 +85,7 @@ def github_repos(top):
 
 def keep(folder, on_github):
     """Why deleting folder would lose something, one reason each, [] when nothing: its watcher hasn't retired (no `retired` file) or
-    still runs; it is the steward's watch dir; replies-owed.md has an open line or proposals-open.md a PROMISED one; a work tree under
+    still runs; replies-owed.md has an open line or proposals-open.md a PROMISED one; a work tree under
     it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it;
     a branch tip or worktree HEAD of such a repo, or a detached HEAD of a worktree inside it whose repo is outside, is reachable from
     no commit its remotes hold now and on_github(owner/repo, sha) doesn't answer True for any GitHub remote; a remote can't be read;
@@ -98,8 +97,6 @@ def keep(folder, on_github):
         why.append('its watcher is running')
     except (OSError, ValueError):
         pass
-    if (s := steward.read()) and inside(os.path.realpath(s[0]), folder):
-        why.append("it is the steward's watch dir (~/.mergeworthy/steward)")
     owed = os.path.join(folder, 'replies-owed.md')
     if os.path.isfile(owed) and any(l.strip() and not l.startswith('#') and not l.lower().startswith('done:') for l in open(owed, errors='replace')):
         why.append('replies-owed.md has an open line')

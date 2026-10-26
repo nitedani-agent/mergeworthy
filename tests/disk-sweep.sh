@@ -144,7 +144,7 @@ rm -rf "$AT"
 : > "$DOCKER_LOG"; dsm 'os.environ["HOME"] = "/elsewhere"; m.DRY = False; sys.exit(m.prune_docker())' 2> "$T/prune.err"; rc=$?
 check "prune_docker in a process the daemon didn't start prunes nothing and says so" "0 0 1" "$rc $(grep -c prune "$DOCKER_LOG") $(grep -c 'Docker skipped' "$T/prune.err")"
 # the same check from a process tree shaped like the daemon's: a loop shell that wrote gh-watch.pid, its gh-watch.py, the sweep
-I="$T/inst"; W="$T/watchdir"; mkdir -p "$I/bin" "$I/hooks" "$I/watcher" "$W"; cp "$R/bin/disk-sweep" "$I/bin/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/work_folder.py" "$R/hooks/steward.py" "$I/hooks/";ln -s "$I/watcher/gh-watch.py" "$W/gh-watch.py"
+I="$T/inst"; W="$T/watchdir"; mkdir -p "$I/bin" "$I/hooks" "$I/watcher" "$W"; cp "$R/bin/disk-sweep" "$I/bin/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/work_folder.py" "$I/hooks/";ln -s "$I/watcher/gh-watch.py" "$W/gh-watch.py"
 LOAD='import importlib.machinery as M, importlib.util as U, sys
 l = M.SourceFileLoader("ds", sys.argv[1]); m = U.module_from_spec(U.spec_from_loader("ds", l)); l.exec_module(m)
 '
@@ -219,10 +219,10 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean notretired running steward owed promised untracked modified stash local stale pullref github detached outwt nested jj unread; do mk "$n"; done
+for n in clean notretired running owed promised untracked modified stash local stale pullref github detached outwt nested jj unread; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"
-rm "$W8/notretired/retired"; echo $$ > "$W8/running/gh-watch.pid"; echo "$W8/steward t1" > "$H8/.mergeworthy/steward"
+rm "$W8/notretired/retired"; echo $$ > "$W8/running/gh-watch.pid"
 printf '# replies owed\nhttps://example.invalid/c1 by alice\n' > "$W8/owed/replies-owed.md"; echo 'PROMISED o/r#1: the fix (d.md)' > "$W8/promised/proposals-open.md"
 echo x > "$W8/untracked/repo/notes.txt"; echo b >> "$W8/modified/repo/README"; echo y >> "$W8/stash/repo/README"; G -C "$W8/stash/repo" stash push -q
 G -C "$W8/local/repo" commit -q --allow-empty -m 'only here'
@@ -251,7 +251,6 @@ why() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' "$T/keep.out"; }
 check "keep: a clean clone with an ignored node_modules, an answered reply and a delivered promise loses nothing, and asks GitHub nothing" "-|" "$(why clean)|$(awk -F'\t' '$1 == "clean" { print $3 }' "$T/keep.out")"
 check "keep: a folder without retired" "its watcher has not retired" "$(why notretired)"
 check "keep: a folder whose watcher's PID is alive" "its watcher is running" "$(why running)"
-check "keep: the steward's watch dir" "it is the steward's watch dir (~/.mergeworthy/steward)" "$(why steward)"
 check "keep: an open line in replies-owed.md" "replies-owed.md has an open line" "$(why owed)"
 check "keep: a PROMISED line in proposals-open.md" "proposals-open.md has an undelivered PROMISED line" "$(why promised)"
 check "keep: an untracked file" "./repo: 1 modified or untracked file(s), e.g. notes.txt" "$(why untracked)"
