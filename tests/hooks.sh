@@ -883,6 +883,9 @@ alive() { # task [transcript_path]
     | python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 (cd "$T/aw/src" && exec sleep 600) & APID=$!; sleep 0.2
 check "BLOCK: a process works in the worktree, naming its PID" "2 1" "$(alive "Run e2e in $T/aw/src") $(grep -c "$APID (sleep)" "$T/err")"
+CUR=$(readlink "$HOME/.mergeworthy/current"); ln -sfn "$T/aw" "$HOME/.mergeworthy/current"; mkdir -p "$HOME/.mergeworthy/work"; ln -sfn "$T/aw" "$HOME/.mergeworthy/work/aw"
+check "an installed skill is no worktree a brief names, though ~/.mergeworthy/current links to the busy one; a task's folder under ~/.mergeworthy/work is" "0 2" "$(alive 'Follow ~/.mergeworthy/current/skills/review/SKILL.md') $(alive 'Run e2e in ~/.mergeworthy/work/aw/src')"
+rm "$HOME/.mergeworthy/work/aw"; ln -sfn "$CUR" "$HOME/.mergeworthy/current"
 kill $APID; wait $APID 2>/dev/null
 echo "{\"cwd\":\"$T/aw\"}" > "$AD/main-session.jsonl"
 check "a main session's transcript naming the worktree (the steward's, say) doesn't make it busy" 0 "$(alive "Run e2e in $T/aw")"
