@@ -118,7 +118,8 @@ def keep(folder, on_github):
     its enclosing repo ignores (no git runs in it); a work tree under it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it; a detached
     HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo; a branch
     tip, tag or worktree HEAD of a repo whose git data is inside it is reachable from no commit its readable remotes hold now, and
-    on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names the remotes it couldn't read); a bare repo;
+    on_github(owner/repo, sha) doesn't answer True for any GitHub remote, asked only about the tips no other such tip reaches and no
+    further after its first other answer (one reason per repo, naming the remotes it couldn't read); a bare repo;
     another version-control system's data."""
     folder = os.path.realpath(folder)
     why = [] if os.path.isfile(os.path.join(folder, 'retired')) else ['its watcher has not retired']
@@ -173,8 +174,15 @@ def keep(folder, on_github):
         urls = remotes(top)
         remote, unread = held(top, urls)
         hub = sorted({m[1] for u in urls.values() if (m := GITHUB.match(u))})
-        for sha in sorted(tips):
-            if git(top, 'rev-list', '-n1', '--stdin', sha, input=''.join(f'^{s}\n' for s in remote)).stdout.strip() and True not in (on_github(r, sha) for r in hub):
-                why.append(f'{top}: commit {sha[:12]} is on no remote' + (', nor confirmed by GitHub' if hub else '')
-                           + (f" (not read: {', '.join(unread)})" if unread else ''))
+        walk = git(top, 'rev-list', '--stdin', input=''.join(t + '\n' for t in tips) + ''.join(f'^{s}\n' for s in remote))
+        if walk.returncode:
+            why.append(f'{top}: git rev-list failed: {walk.stderr.strip()[:120]}')
+            continue
+        if not (unproven := sorted(tips & set(walk.stdout.split()))):  # the tips no commit a remote holds reaches
+            continue
+        ends = git(top, 'merge-base', '--independent', *unproven)  # GitHub holding a commit holds its history: ask only about these
+        lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if True not in (on_github(r, h) for r in hub)), None)
+        if lost:
+            why.append(f'{top}: {len(unproven)} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
+                       + (f" (not read: {', '.join(unread)})" if unread else ''))
     return why
