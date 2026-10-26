@@ -90,9 +90,14 @@ def held(top, urls):
     return [l.split()[0] for l in known.splitlines() if l.endswith(' commit')], unread
 
 
+def open_line(path, cleared):
+    """Whether the file path has a line that isn't blank, a # comment or cleared (it starts with cleared, in any case)."""
+    return os.path.isfile(path) and any((l := s.strip()) and not l.startswith('#') and not l.lower().startswith(cleared) for s in open(path, errors='replace'))
+
+
 def keep(folder, on_github):
     """Why deleting folder would lose something, one reason each, [] when nothing: its watcher hasn't retired (no `retired` file) or
-    still runs; replies-owed.md has an open line or proposals-open.md a PROMISED one; a work tree under
+    still runs; replies-owed.md or waiting-on.txt has an open line, or proposals-open.md a PROMISED one; a work tree under
     it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it;
     a detached HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo;
     a branch tip or worktree HEAD of a repo whose git data is inside it is reachable from no commit its readable remotes hold now and on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names
@@ -104,9 +109,10 @@ def keep(folder, on_github):
         why.append('its watcher is running')
     except (OSError, ValueError):
         pass
-    owed = os.path.join(folder, 'replies-owed.md')
-    if os.path.isfile(owed) and any(l.strip() and not l.startswith('#') and not l.lower().startswith('done:') for l in open(owed, errors='replace')):
+    if open_line(os.path.join(folder, 'replies-owed.md'), 'done:'):
         why.append('replies-owed.md has an open line')
+    if open_line(os.path.join(folder, 'waiting-on.txt'), 'done'):
+        why.append('waiting-on.txt has an open wait')
     if any(l.startswith('PROMISED') for po in glob.glob(os.path.join(folder, 'proposals-open.md')) + glob.glob(os.path.join(folder, '*', 'proposals-open.md'))
            for l in open(po, errors='replace')):
         why.append('proposals-open.md has an undelivered PROMISED line')
