@@ -259,16 +259,17 @@ def busy(path):
 
 
 def delete(path, owner, dev, rule, age=DAY, vcs=True):
-    """Delete path, a candidate inside owner (its repo, or a loose node_modules' parent), unless it or owner must stay; True when it
-    did (a dry run: would)."""
+    """Delete path, a candidate inside owner (its repo, or a loose node_modules' parent), unless it or owner must stay; None when it
+    did (a dry run: would), else why not."""
     st = os.lstat(path)
     if os.path.realpath(path) != path:
-        return
+        return 'a symlink on its path'
     nbytes = measure(path, dev, age, vcs)
     if nbytes is None:
-        return
+        recent = 'a file changed in the last 24 hours' if age == DAY else 'a file used in the last 14 days'
+        return f"{recent}, {'version-control data, ' if vcs else ''}a mount or an unreadable folder"
     if busy(owner):  # a process or a job may have started in owner since its selection
-        return
+        return 'a process or agent job works in it'
     if not DRY:
         record(nbytes, path, rule, 'deleting')
         try:
@@ -276,9 +277,8 @@ def delete(path, owner, dev, rule, age=DAY, vcs=True):
         except OSError as e:
             print(f'disk-sweep: {path}: {e}', file=sys.stderr)
             record(nbytes, path, rule, 'failed')
-            return
+            return f'its deletion failed: {e} (disk-sweep.log)'
     record(nbytes, path, rule, 'deleted')
-    return True
 
 
 def walk(root, work):
@@ -353,9 +353,8 @@ def sweep_work():
         except Exception as err:  # this folder stays; the next ones and the other rules still run
             why = [f'check failed: {err}']
         if not why:
-            if not delete(e.path, e.path, dev, 'w-done', vcs=False):
-                why = ['a file changed in the last 24 hours, a process or agent job works in it, it holds a mount, a symlinked path or an '
-                       'unreadable folder, or its deletion failed (disk-sweep.log)']
+            if refused := delete(e.path, e.path, dev, 'w-done', vcs=False):
+                why = [refused]
             elif not DRY:
                 for c in linked:  # the deleted worktrees' entries there would keep holding their branches
                     authorized(c)
