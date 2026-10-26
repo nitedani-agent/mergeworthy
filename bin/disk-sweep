@@ -16,8 +16,8 @@ deleted.
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
 - w-done, once a day: a folder directly under ~/.mergeworthy/work whose watcher retired 14 days ago (its `retired` file), whole, when
-  work_folder.keep() finds nothing in it that would be lost; ~/.mergeworthy/work-kept.md lists each retired folder that stays, with
-  its reasons (a dry run prints those rows).
+  work_folder.keep() finds nothing in it that would be lost, then `git worktree prune` in each repo outside it that had a worktree in it;
+  ~/.mergeworthy/work-kept.md lists each retired folder that stays, with its reasons (a dry run prints those rows).
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
@@ -349,11 +349,17 @@ def sweep_work():
             continue
         try:
             why = work_folder.keep(e.path, github_has)
+            linked = [] if why else work_folder.outside(e.path)
         except Exception as err:  # this folder stays; the next ones and the other rules still run
             why = [f'check failed: {err}']
-        if not why and not delete(e.path, e.path, dev, 'w-done', vcs=False):
-            why = ['a file changed in the last 24 hours, a process or agent job works in it, it holds a mount, a symlinked path or an '
-                   'unreadable folder, or its deletion failed (disk-sweep.log)']
+        if not why:
+            if not delete(e.path, e.path, dev, 'w-done', vcs=False):
+                why = ['a file changed in the last 24 hours, a process or agent job works in it, it holds a mount, a symlinked path or an '
+                       'unreadable folder, or its deletion failed (disk-sweep.log)']
+            elif not DRY:
+                for c in linked:  # the deleted worktrees' entries there would keep holding their branches
+                    authorized(c)
+                    work_folder.git(c, 'worktree', 'prune')
         rows += [f'- {e.path}: {w}' for w in why]
     if DRY:
         for r in rows:

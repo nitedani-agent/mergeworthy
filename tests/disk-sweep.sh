@@ -301,14 +301,17 @@ check "github_has: None while the shared pause holds, gh not called" "None 0" "$
 H9="$T/home9"; W9="$H9/.mergeworthy/work"; mkdir -p "$W9" "$H9/.claude/agent-jobs"
 mkdir -p "$W9/broken/proposals-open.md"  # its check fails: open() on a folder
 for n in done kept live; do G clone -q "$T/w-origin.git" "$W9/$n/repo"; mkdir -p "$W9/$n/repo/node_modules" "$W9/$n/drafts/node_modules"; echo x > "$W9/$n/repo/node_modules/x"; echo x > "$W9/$n/drafts/node_modules/x"; done
-for n in young untimed; do G clone -q "$T/w-origin.git" "$W9/$n/repo"; done; echo x > "$W9/kept/repo/notes.txt"
+for n in young untimed; do G clone -q "$T/w-origin.git" "$W9/$n/repo"; done; G clone -q "$T/w-origin.git" "$T/user9"; mkdir -p "$W9/fix"
+G -C "$T/user9" worktree add -q -b fix-1 "$W9/fix/fix-1" origin/main; G -C "$W9/fix/fix-1" commit -q --allow-empty -m fix; G -C "$W9/fix/fix-1" push -q origin fix-1
+ echo x > "$W9/kept/repo/notes.txt"
 Y=$(( $(date +%s) - 2 * 86400 )); date -u -d "@$Y" +%FT%TZ > "$W9/young/retired"; : > "$W9/untimed/retired"  # retired 2 days ago; a marker with no time
-for n in broken done kept; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done; age "$H9"; touch -d '20 days ago' "$W9/untimed/retired"
+for n in broken done kept fix; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done; age "$H9"; touch -d '20 days ago' "$W9/untimed/retired"
 HOME="$H9" python3 "$R/bin/disk-sweep" > "$T/dry9.out" 2>&1
 check "a dry run prints w-done's deletion and the kept folder's row, and deletes nothing" "1 1 kept no" "$(grep -c "^[^ ]* [0-9][0-9]* $W9/done w-done$" "$T/dry9.out") $(grep -c "^- $W9/kept: " "$T/dry9.out") $(there "$W9/done") $([ -e "$H9/.mergeworthy/work-kept.md" ] && echo yes || echo no)"
 HOME="$H9" python3 "$R/bin/disk-sweep" --delete > "$T/run9.out" 2>&1
 check "w-done deletes a retired folder holding nothing to lose, logged before and after" "removed deleting|deleted|" "$(there "$W9/done") $(grep "^[^ ]* [0-9][0-9]* $W9/done w-done " "$H9/.mergeworthy/disk-sweep.log" | cut -d' ' -f5 | tr '\n' '|')"
 check "a folder whose check fails stays with that reason, and the sweep goes on" "kept 1" "$(there "$W9/broken") $(grep -c "^- $W9/broken: check failed: " "$H9/.mergeworthy/work-kept.md")"
+check "a deleted folder's worktree of a repo outside: that repo's entry is pruned, so its branch can be checked out there" "removed 1 0" "$(there "$W9/fix") $(G -C "$T/user9" worktree list | wc -l) $(G -C "$T/user9" switch -q fix-1 2>&1 | wc -l)"
 check "a folder retired 2 days ago stays, its row saying when it may go; a marker without a time counts from its mtime, 20 days ago" "kept 1 removed" "$(there "$W9/young/repo/README") $(grep -cx -- "- $W9/young: retired at $(date -u -d "@$Y" +%FT%TZ); deleted no sooner than $(date -u -d "@$(( Y + 14 * 86400 ))" +%FT%TZ)" "$H9/.mergeworthy/work-kept.md") $(there "$W9/untimed")"
 check "a retired folder that would lose something stays, its row in work-kept.md as the dry run printed it" "kept 3 same" "$(there "$W9/kept/repo/notes.txt") $(grep -c '^- ' "$H9/.mergeworthy/work-kept.md") $([ "$(grep '^- ' "$T/dry9.out")" = "$(grep '^- ' "$H9/.mergeworthy/work-kept.md")" ] && echo same)"
 check "a folder whose watcher didn't retire: w-done leaves it, c-ignored and c-node_modules sweep its build folders" "kept 0 removed removed" "$(there "$W9/live/repo/README") $(grep -c "$W9/live" "$H9/.mergeworthy/work-kept.md") $(there "$W9/live/repo/node_modules") $(there "$W9/live/drafts/node_modules")"

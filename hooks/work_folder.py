@@ -53,6 +53,18 @@ def trees(folder):
     return found, why
 
 
+def common_dir(top):
+    """The real path of top's git common dir (its repo's git data), or None."""
+    c = git(top, 'rev-parse', '--path-format=absolute', '--git-common-dir').stdout.strip()
+    return os.path.realpath(c) if c else None
+
+
+def outside(folder):
+    """The git common dirs outside folder whose repos have a worktree under it."""
+    folder = os.path.realpath(folder)
+    return sorted({c for c in map(common_dir, trees(folder)[0]) if c and not inside(c, folder)})
+
+
 def worktrees(top):
     """[(path, HEAD sha, detached)] of each worktree of top's repo."""
     out = []
@@ -126,7 +138,7 @@ def keep(folder, on_github):
             continue
         if st.stdout:
             why.append(f'{top}: {len(st.stdout.splitlines())} modified or untracked file(s), e.g. {st.stdout.splitlines()[0][3:]}')
-        repos.setdefault(os.path.realpath(git(top, 'rev-parse', '--path-format=absolute', '--git-common-dir').stdout.strip()), top)
+        repos.setdefault(common_dir(top), top)
     for common, top in repos.items():
         wts = worktrees(top)
         if not inside(common, folder):  # the repo outside stays, with what its refs reach (not --all: it counts worktree HEADs)
