@@ -60,7 +60,7 @@ def common_dir(top):
     return os.path.realpath(c) if c else None
 
 
-def outside(folder):
+def outside_repos(folder):
     """The git common dirs outside folder whose repos have a worktree under it."""
     folder = os.path.realpath(folder)
     return sorted({c for c in map(common_dir, trees(folder)[0]) if c and not inside(c, folder)})
@@ -103,7 +103,7 @@ def held(top, urls):
     return [l.split()[0] for l in known.splitlines() if l.endswith(' commit')], unread
 
 
-def open_line(path, cleared):
+def has_open_line(path, cleared):
     """Whether the file path has a line that isn't blank, a # comment or cleared (it starts with cleared, in any case, after a `- ` or
     `* ` list marker if it has one)."""
     return os.path.isfile(path) and any((l := s.strip()) and not l.startswith('#') and not re.sub(r'^[-*] ', '', l).lower().startswith(cleared)
@@ -121,11 +121,11 @@ def keep(folder, on_github):
     another version-control system's data."""
     folder = os.path.realpath(folder)
     why = []
-    if open_line(os.path.join(folder, 'replies-owed.md'), 'done:'):
+    if has_open_line(os.path.join(folder, 'replies-owed.md'), 'done:'):
         why.append('replies-owed.md has an open line')
-    if open_line(os.path.join(folder, 'waiting-on.txt'), 'done'):
+    if has_open_line(os.path.join(folder, 'waiting-on.txt'), 'done'):
         why.append('waiting-on.txt has an open wait')
-    if open_line(os.path.join(folder, 'questions-owed.md'), 'done'):
+    if has_open_line(os.path.join(folder, 'questions-owed.md'), 'done'):
         why.append('questions-owed.md has an open line')
     if any(l.startswith('PROMISED') for po in glob.glob(os.path.join(folder, 'proposals-open.md')) + glob.glob(os.path.join(folder, '*', 'proposals-open.md'))
            for l in open(po, errors='replace')):

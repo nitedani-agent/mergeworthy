@@ -144,7 +144,7 @@ rm -rf "$AT"
 : > "$DOCKER_LOG"; dsm 'os.environ["HOME"] = "/elsewhere"; m.DRY = False; sys.exit(m.prune_docker())' 2> "$T/prune.err"; rc=$?
 check "prune_docker in a process the daemon didn't start prunes nothing and says so" "0 0 1" "$rc $(grep -c prune "$DOCKER_LOG") $(grep -c 'Docker skipped' "$T/prune.err")"
 # the same check from a process tree shaped like the daemon's: a loop shell that wrote gh-watch.pid, its gh-watch.py, the sweep
-I="$T/inst"; W="$T/watchdir"; mkdir -p "$I/bin" "$I/hooks" "$I/watcher" "$W"; cp "$R/bin/disk-sweep" "$I/bin/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/work_folder.py" "$I/hooks/";ln -s "$I/watcher/gh-watch.py" "$W/gh-watch.py"
+I="$T/inst"; W="$T/watchdir"; mkdir -p "$I/bin" "$I/hooks" "$I/watcher" "$W"; cp "$R/bin/disk-sweep" "$I/bin/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/work_folder.py" "$I/hooks/"; ln -s "$I/watcher/gh-watch.py" "$W/gh-watch.py"
 LOAD='import importlib.machinery as M, importlib.util as U, sys
 l = M.SourceFileLoader("ds", sys.argv[1]); m = U.module_from_spec(U.spec_from_loader("ds", l)); l.exec_module(m)
 '

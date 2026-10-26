@@ -349,7 +349,7 @@ def sweep_work():
             continue
         try:
             why = work_folder.keep(e.path, github_has)
-            linked = [] if why else work_folder.outside(e.path)
+            linked = [] if why else work_folder.outside_repos(e.path)
         except Exception as err:  # this folder stays; the next ones and the other rules still run
             why = [f'check failed: {err}']
         if not why:
