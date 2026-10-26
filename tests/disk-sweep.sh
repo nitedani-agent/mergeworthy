@@ -256,6 +256,11 @@ G -C "$W8/tag/repo" commit -q --allow-empty -m 'tagged only'; G -C "$W8/tag/repo
 G -C "$W8/tag/repo" tag -a pre-rebase -m 'before the rebase'; TAG1=$(G -C "$W8/tag/repo" rev-parse --short=12 keepme); TAG2=$(G -C "$W8/tag/repo" rev-parse --short=12 'pre-rebase^{commit}')
 G -C "$W8/tag/repo" reset -q --hard origin/main  # only the tags hold those commits now
 G init -q --bare "$W8/bare/backup.git"; G init -q "$W8/nestedtracked/repo/sub/inner"; echo w > "$W8/nestedtracked/repo/sub/inner/w"
+G init -q --bare -b main "$T/p-origin.git"; G -C "$T/p-origin.git" config uploadpack.allowFilter true; G clone -q "$T/p-origin.git" "$T/p-seed" 2>/dev/null
+echo a > "$T/p-seed/a"; G -C "$T/p-seed" add a; G -C "$T/p-seed" commit -qm base; G -C "$T/p-seed" push -q origin main
+for i in 1 2 3; do G -C "$T/p-seed" checkout -q -b "pr$i" main; echo "$i" > "$T/p-seed/f$i"; G -C "$T/p-seed" add "f$i"; G -C "$T/p-seed" commit -qm "pr$i"; G -C "$T/p-seed" push -q origin "pr$i:refs/pull/$i/head"; done
+mkdir -p "$W8/partial"; touch "$W8/partial/retired"; G clone -q --filter=blob:none "file://$T/p-origin.git" "$W8/partial/repo"  # a partial clone: git fetches what it lacks on demand
+packs() { ls "$1/.git/objects/pack/" | grep -c '\.pack$'; }; PACKS=$(packs "$W8/partial/repo")
 sha() { G -C "$1" rev-parse HEAD | cut -c1-12; }
 HOME="$H8" dsm 'm.work_folder.TIMEOUT = 2; calls = []
 def fake(repo, sha):
@@ -289,6 +294,7 @@ check "keep: a repo in an ignored folder: no git runs in it" "./repo/cache/inner
 check "keep: a repo in an ignored folder whose config names a clean filter, a repo inside it: the filter never runs, one reason" "0 ./repo/cache/x: a repo inside an ignored folder; check it by hand" "$(ls "$T" | grep -c PWNED-filter) $(why filter)"
 check "keep: a repo nested in a path its enclosing repo does not ignore is checked like any other" "./repo: 1 modified or untracked file(s), e.g. sub/inner/ | ./repo/sub/inner: 1 modified or untracked file(s), e.g. w" "$(why nestedtracked)"
 check "keep: commits only a local tag holds, lightweight or annotated" "$(printf './repo: commit %s is on no remote\n' "$TAG1" "$TAG2" | sort | tr '\n' '|' | sed 's/|$//')" "$(why tag | sed 's/ | /\n/g' | sort | tr '\n' '|' | sed 's/|$//')"
+check "keep: a partial clone loses nothing and fetches nothing" "- $PACKS" "$(why partial) $(packs "$W8/partial/repo")"
 check "keep: a bare repo" "./backup.git: a bare repo; check it by hand" "$(why bare)"
 check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
 check "keep: a checkout's own core.fsmonitor and core.sshCommand never run" "0 -" "$(ls "$T" | grep -c 'PWNED-[fs][sh]') $(why planted)"

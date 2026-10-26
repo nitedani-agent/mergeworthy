@@ -12,8 +12,9 @@ GITHUB = re.compile(r'(?:https://github\.com/|git@github\.com:|ssh://git@github\
 
 def git(repo, *args, **kw):
     """git in repo, captured; --no-optional-locks: a refreshed index would reset disk-sweep's idle check; no fsmonitor: a repo's
-    own config (an extracted archive's) would run it."""
-    return subprocess.run(['git', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-C', repo, *args], capture_output=True, text=True, **kw)
+    own config (an extracted archive's) would run it; no lazy fetch: a partial clone would download each object it lacks."""
+    return subprocess.run(['git', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-C', repo, *args], capture_output=True, text=True,
+                          env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'}, **kw)
 
 
 def of(path):
