@@ -115,7 +115,7 @@ def open_line(path, cleared):
 
 
 def keep(folder, on_github):
-    """Why deleting folder would lose something, one reason each, [] when nothing: its watcher hasn't retired (no `retired` file) or
+    """Why deleting folder would lose something, one reason each, [] when nothing: its watcher
     still runs; replies-owed.md, waiting-on.txt or questions-owed.md has an open line, or proposals-open.md a PROMISED one; a repo lies below a folder
     its enclosing repo ignores (no git runs in it); a work tree under it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it; a detached
     HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo; a branch
@@ -124,7 +124,7 @@ def keep(folder, on_github):
     further after its first other answer (one reason per repo, naming the remotes it couldn't read); a bare repo;
     another version-control system's data."""
     folder = os.path.realpath(folder)
-    why = [] if os.path.isfile(os.path.join(folder, 'retired')) else ['its watcher has not retired']
+    why = []
     try:
         os.kill(int(open(os.path.join(folder, 'gh-watch.pid')).read().strip()), 0)
         why.append('its watcher is running')
