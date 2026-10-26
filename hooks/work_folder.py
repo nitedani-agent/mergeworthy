@@ -108,8 +108,10 @@ def held(top, urls):
 
 
 def open_line(path, cleared):
-    """Whether the file path has a line that isn't blank, a # comment or cleared (it starts with cleared, in any case)."""
-    return os.path.isfile(path) and any((l := s.strip()) and not l.startswith('#') and not l.lower().startswith(cleared) for s in open(path, errors='replace'))
+    """Whether the file path has a line that isn't blank, a # comment or cleared (it starts with cleared, in any case, after a `- ` or
+    `* ` list marker if it has one)."""
+    return os.path.isfile(path) and any((l := s.strip()) and not l.startswith('#') and not re.sub(r'^[-*] ', '', l).lower().startswith(cleared)
+                                        for s in open(path, errors='replace'))
 
 
 def keep(folder, on_github):
