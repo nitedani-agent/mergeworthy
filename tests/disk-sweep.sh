@@ -219,7 +219,7 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean owed waiting questions promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall ghnone badparent; do mk "$n"; done
+for n in clean owed waiting questions promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall ghnone badparent badref; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n- done: https://example.invalid/r2 answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"; printf '# waits\n\ndone: o/r#2 -> o/r#1: bumped\nDONE (released) o/r#3 -> o/r#1: x\n* done: o/r#4 -> o/r#1: bumped\n' > "$W8/clean/waiting-on.txt"
 echo 'vitejs/vite#123 -> nitedani/vike-react-rsc#32: bump vite once it is released' > "$W8/waiting/waiting-on.txt"
@@ -240,6 +240,8 @@ git config -f "$H8/.gitconfig" --add url."$T/w-origin.git".insteadOf https://git
 G -C "$W8/ghnone/repo" checkout -q -b d; G -C "$W8/ghnone/repo" commit -q --allow-empty -m d  # GitHub gives no answer for o/none (paused, or gh can't answer)
 G -C "$W8/badparent/repo" checkout -q -b side; G -C "$W8/badparent/repo" commit -q --allow-empty -m first; BP=$(G -C "$W8/badparent/repo" rev-parse HEAD)
 G -C "$W8/badparent/repo" commit -q --allow-empty -m second; G -C "$W8/badparent/repo" checkout -q main; rm "$W8/badparent/repo/.git/objects/${BP:0:2}/${BP:2}"  # a tip whose parent is gone: rev-list fails
+G -C "$W8/badref/repo" checkout -q -b mine; G -C "$W8/badref/repo" commit -q --allow-empty -m 'only here'; G -C "$W8/badref/repo" checkout -q -b gone main
+G -C "$W8/badref/repo" commit -q --allow-empty -m lost; BR=$(G -C "$W8/badref/repo" rev-parse HEAD); G -C "$W8/badref/repo" checkout -q main; rm "$W8/badref/repo/.git/objects/${BR:0:2}/${BR:2}"  # one branch's tip is gone
 G -C "$W8/ghall/repo" remote set-url origin https://github.com/o/r.git; G -C "$W8/ghall/repo" checkout -q -b c; G -C "$W8/ghall/repo" commit -q --allow-empty -m c
 G -C "$W8/github/repo" checkout -q -b a; G -C "$W8/github/repo" commit -q --allow-empty -m a; G -C "$W8/github/repo" checkout -q -b b main; G -C "$W8/github/repo" commit -q --allow-empty -m b
 G -C "$W8/detached/repo" worktree add -q --detach "$W8/detached/wt"; G -C "$W8/detached/wt" commit -q --allow-empty -m detached
@@ -305,6 +307,7 @@ check "keep: 30 tags on commits no remote holds, the remote unreadable (so the b
 check "keep: a commit no remote holds that GitHub confirms" - "$(why ghall)"
 check "keep: a commit no remote holds, GitHub giving no answer" "./repo: 1 commit(s) on no remote, e.g. $(sha "$W8/ghnone/repo"), nor confirmed by GitHub" "$(why ghnone)"
 check "keep: a branch whose history git can't walk keeps the folder" 1 "$(why badparent | grep -c '^./repo: git rev-list failed: ')"
+check "keep: a branch whose tip object is gone, beside one with a commit only here: the folder stays" 1 "$(why badref | grep -c '^./repo: git for-each-ref failed: ')"
 check "keep: a bare repo" "./backup.git: a bare repo; check it by hand" "$(why bare)"
 check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
 check "keep: a checkout's own core.fsmonitor and core.sshCommand never run" "0 -" "$(ls "$T" | grep -c 'PWNED-[fs][sh]') $(why planted)"

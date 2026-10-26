@@ -130,10 +130,12 @@ def unpushed(top, wts, on_github):
     """The reason top's repo would lose commits, or None: a branch tip, tag or worktree HEAD (wts) that no commit its readable remotes
     hold now reaches, and that on_github(owner/repo, sha) doesn't answer True for on any GitHub remote. GitHub is asked only about the
     tips no other such tip reaches, and no further after its first other answer. The reason counts the commits on no remote and names
-    the remotes it couldn't read; a failing git rev-list is a reason too."""
+    the remotes it couldn't read; a failing git for-each-ref or rev-list is a reason too."""
     # an annotated tag counts as the commit it points at
-    tips = set(git(top, 'for-each-ref', '--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)', 'refs/heads', 'refs/tags').stdout.split())
-    tips |= {h for _, h, _ in wts}
+    refs = git(top, 'for-each-ref', '--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)', 'refs/heads', 'refs/tags')
+    if refs.returncode:  # one broken ref and it lists none
+        return f'{top}: git for-each-ref failed: {refs.stderr.strip()[:120]}'
+    tips = set(refs.stdout.split()) | {h for _, h, _ in wts}
     tips -= {'', '0' * 40}  # an unborn HEAD has no commit
     if not tips:
         return None
