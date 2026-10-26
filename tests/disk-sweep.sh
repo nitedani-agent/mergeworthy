@@ -219,13 +219,12 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean running owed waiting questions promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall; do mk "$n"; done
+for n in clean owed waiting questions promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag manytags ghall; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n- done: https://example.invalid/r2 answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"; printf '# waits\n\ndone: o/r#2 -> o/r#1: bumped\nDONE (released) o/r#3 -> o/r#1: x\n* done: o/r#4 -> o/r#1: bumped\n' > "$W8/clean/waiting-on.txt"
 echo 'vitejs/vite#123 -> nitedani/vike-react-rsc#32: bump vite once it is released' > "$W8/waiting/waiting-on.txt"
 printf '# questions owed\nDONE how big is the cache? answered in chat\n- DONE 2026-10-26T03:27:57Z GENUINE-FORK asked: #32 (user answered: files it)\n- done: in chat, 2026-10-26\n' > "$W8/clean/questions-owed.md"
 echo '- How big is the cache? ETA 2026-10-27' > "$W8/questions/questions-owed.md"
-echo $$ > "$W8/running/gh-watch.pid"
 printf '# replies owed\nhttps://example.invalid/c1 by alice\n' > "$W8/owed/replies-owed.md"; echo 'PROMISED o/r#1: the fix (d.md)' > "$W8/promised/proposals-open.md"
 echo x > "$W8/untracked/repo/notes.txt"; echo b >> "$W8/modified/repo/README"; echo y >> "$W8/stash/repo/README"; G -C "$W8/stash/repo" stash push -q
 G -C "$W8/local/repo" commit -q --allow-empty -m 'only here'
@@ -277,7 +276,6 @@ for e in sorted(os.scandir(m.work_folder.ROOT), key=lambda e: e.name):
     print(e.name, " | ".join(why) or "-", " ".join(calls), sep="\t")' "$(G -C "$W8/github/repo" rev-parse a)" "$(G -C "$W8/ghall/repo" rev-parse c)" > "$T/keep.out"
 why() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' "$T/keep.out"; }
 check "keep: a clean clone with an ignored node_modules, an answered reply, a delivered promise, cleared waits and answered questions, list items among them, loses nothing, and asks GitHub nothing" "-|" "$(why clean)|$(awk -F'\t' '$1 == "clean" { print $3 }' "$T/keep.out")"
-check "keep: a folder whose watcher's PID is alive" "its watcher is running" "$(why running)"
 check "keep: an open line in replies-owed.md" "replies-owed.md has an open line" "$(why owed)"
 check "keep: an open wait in waiting-on.txt" "waiting-on.txt has an open wait" "$(why waiting)"
 check "keep: an open question in questions-owed.md, a list item" "questions-owed.md has an open line" "$(why questions)"
@@ -331,7 +329,8 @@ G -C "$T/user9" worktree add -q -b fix-1 "$W9/fix/fix-1" origin/main; G -C "$W9/
  echo x > "$W9/kept/repo/notes.txt"
 Y=$(( $(date +%s) - 2 * 86400 )); date -u -d "@$Y" +%FT%TZ > "$W9/young/retired"; : > "$W9/untimed/retired"  # retired 2 days ago; a marker with no time
 for n in broken done kept fix busy fresh; do date -u -d '20 days ago' +%FT%TZ > "$W9/$n/retired"; done; age "$H9"; touch -d '20 days ago' "$W9/untimed/retired"
-touch "$W9/fresh/repo/README"; bash -c "cd '$W9/busy' && exec sleep 600" & BUSY=$!; sleep 0.2  # a file changed now; a process working in the folder
+touch "$W9/fresh/repo/README"; bash -c "cd '$W9/busy' && exec sleep 600" & BUSY=$!; sleep 0.2  # a file changed now; a watcher still running there, as its daemon's cwd and PID file show
+echo "$BUSY" > "$W9/busy/gh-watch.pid"; touch -d '2 days ago' "$W9/busy/gh-watch.pid"
 HOME="$H9" python3 "$R/bin/disk-sweep" > "$T/dry9.out" 2>&1
 check "a dry run prints w-done's deletion and the kept folder's row, and deletes nothing" "1 1 kept no" "$(grep -c "^[^ ]* [0-9][0-9]* $W9/done w-done$" "$T/dry9.out") $(grep -c "^- $W9/kept: " "$T/dry9.out") $(there "$W9/done") $([ -e "$H9/.mergeworthy/work-kept.md" ] && echo yes || echo no)"
 HOME="$H9" python3 "$R/bin/disk-sweep" --delete > "$T/run9.out" 2>&1
@@ -340,7 +339,7 @@ check "w-done deletes a retired folder holding nothing to lose, logged before an
 check "a folder whose check fails stays with that reason, and the sweep goes on" "kept 1" "$(there "$W9/broken") $(grep -c "^- $W9/broken: check failed: " "$H9/.mergeworthy/work-kept.md")"
 check "a deleted folder's worktree of a repo outside: that repo's entry is pruned, so its branch can be checked out there" "removed 1 0" "$(there "$W9/fix") $(G -C "$T/user9" worktree list | wc -l) $(G -C "$T/user9" switch -q fix-1 2>&1 | wc -l)"
 check "a folder retired 2 days ago stays, its row saying when it may go; a marker without a time counts from its mtime, 20 days ago" "kept 1 removed" "$(there "$W9/young/repo/README") $(grep -cx -- "- $W9/young: retired at $(date -u -d "@$Y" +%FT%TZ); deleted no sooner than $(date -u -d "@$(( Y + 14 * 86400 ))" +%FT%TZ)" "$H9/.mergeworthy/work-kept.md") $(there "$W9/untimed")"
-check "a folder delete() refuses: its row names the cause, a process in it or a file changed in 24 hours" "1 1" "$(grep -cx -- "- $W9/busy: a process or agent job works in it" "$H9/.mergeworthy/work-kept.md") $(grep -cx -- "- $W9/fresh: a file changed in the last 24 hours, a mount or an unreadable folder" "$H9/.mergeworthy/work-kept.md")"
+check "a folder delete() refuses: its row names the cause, a running watcher in it or a file changed in 24 hours" "1 1" "$(grep -cx -- "- $W9/busy: a process or agent job works in it" "$H9/.mergeworthy/work-kept.md") $(grep -cx -- "- $W9/fresh: a file changed in the last 24 hours, a mount or an unreadable folder" "$H9/.mergeworthy/work-kept.md")"
 ln -s "$W9" "$T/w9link"
 check "delete() through a symlinked path deletes nothing and says why" "a symlink on its path kept" "$(dsm 'm.DRY = False; p = sys.argv[3]; print(m.delete(p, p, os.lstat(p).st_dev, "w-done", vcs=False))' "$T/w9link/kept") $(there "$W9/kept")"
 check "a retired folder that would lose something stays, its row in work-kept.md as the dry run printed it" "kept 5 same" "$(there "$W9/kept/repo/notes.txt") $(grep -c '^- ' "$H9/.mergeworthy/work-kept.md") $([ "$(grep '^- ' "$T/dry9.out")" = "$(grep '^- ' "$H9/.mergeworthy/work-kept.md")" ] && echo same)"
