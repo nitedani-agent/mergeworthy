@@ -110,16 +110,9 @@ def has_open_line(path, cleared):
                                         for s in open(path, errors='replace'))
 
 
-def keep(folder, on_github):
-    """Why deleting folder would lose something, one reason each, [] when nothing:
-    replies-owed.md, waiting-on.txt or questions-owed.md has an open line, or proposals-open.md a PROMISED one; a repo lies below a folder
-    its enclosing repo ignores (no git runs in it); a work tree under it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it; a detached
-    HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo; a branch
-    tip, tag or worktree HEAD of a repo whose git data is inside it is reachable from no commit its readable remotes hold now, and
-    on_github(owner/repo, sha) doesn't answer True for any GitHub remote, asked only about the tips no other such tip reaches and no
-    further after its first other answer (one reason per repo, naming the remotes it couldn't read); a bare repo;
-    another version-control system's data."""
-    folder = os.path.realpath(folder)
+def owed(folder):
+    """The owed lists' open lines in folder (mergeworthy:task §Files), one reason each: replies-owed.md, waiting-on.txt or
+    questions-owed.md has a line has_open_line() finds; proposals-open.md, at the top or one folder down, a PROMISED line."""
     why = []
     if has_open_line(os.path.join(folder, 'replies-owed.md'), 'done:'):
         why.append('replies-owed.md has an open line')
@@ -130,6 +123,44 @@ def keep(folder, on_github):
     if any(l.startswith('PROMISED') for po in glob.glob(os.path.join(folder, 'proposals-open.md')) + glob.glob(os.path.join(folder, '*', 'proposals-open.md'))
            for l in open(po, errors='replace')):
         why.append('proposals-open.md has an undelivered PROMISED line')
+    return why
+
+
+def unpushed(top, wts, on_github):
+    """The reason top's repo would lose commits, or None: a branch tip, tag or worktree HEAD (wts) that no commit its readable remotes
+    hold now reaches, and that on_github(owner/repo, sha) doesn't answer True for on any GitHub remote. GitHub is asked only about the
+    tips no other such tip reaches, and no further after its first other answer. The reason counts the commits on no remote and names
+    the remotes it couldn't read; a failing git rev-list is a reason too."""
+    # an annotated tag counts as the commit it points at
+    tips = set(git(top, 'for-each-ref', '--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)', 'refs/heads', 'refs/tags').stdout.split())
+    tips |= {h for _, h, _ in wts}
+    tips -= {'', '0' * 40}  # an unborn HEAD has no commit
+    if not tips:
+        return None
+    urls = remotes(top)
+    remote, unread = held(top, urls)
+    hub = sorted({m[1] for u in urls.values() if (m := GITHUB.match(u))})
+    walk = git(top, 'rev-list', '--stdin', input=''.join(t + '\n' for t in tips) + ''.join(f'^{s}\n' for s in remote))
+    if walk.returncode:
+        return f'{top}: git rev-list failed: {walk.stderr.strip()[:120]}'
+    if not (unproven := sorted(tips & set(walk.stdout.split()))):  # the tips no commit a remote holds reaches
+        return None
+    ends = git(top, 'merge-base', '--independent', *unproven)  # GitHub holding a commit holds its history: ask only about these
+    lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if True not in (on_github(r, h) for r in hub)), None)
+    if not lost:
+        return None
+    return (f'{top}: {len(walk.stdout.split())} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
+            + (f" (not read: {', '.join(unread)})" if unread else ''))
+
+
+def keep(folder, on_github):
+    """Why deleting folder would lose something, one reason each, [] when nothing: an open owed line (owed()); an unreadable folder, a
+    bare repo or another version-control system's data (trees()); a repo below a folder its enclosing repo ignores (no git runs in
+    it); a work tree with a modified or untracked file (ignored ones aside); a detached HEAD of a worktree inside it whose repo is
+    outside, which no branch, tag or remote-tracking ref of that repo reaches; a repo whose git data is inside it with a stash, a
+    worktree outside it, or commits unpushed() finds."""
+    folder = os.path.realpath(folder)
+    why = owed(folder)
     tops, found = trees(folder)
     why += found
     repos, unchecked = {}, []  # git common dir: a work tree of it; work trees git doesn't run in
@@ -158,24 +189,6 @@ def keep(folder, on_github):
         if stashes := git(top, 'stash', 'list').stdout.splitlines():
             why.append(f'{top}: {len(stashes)} stash(es)')
         why += [f'{top}: its worktree {p} is outside the folder' for p, _, _ in wts if not inside(os.path.realpath(p), folder) and os.path.exists(p)]
-        # an annotated tag counts as the commit it points at
-        tips = set(git(top, 'for-each-ref', '--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)', 'refs/heads', 'refs/tags').stdout.split())
-        tips |= {h for _, h, _ in wts}
-        tips -= {'', '0' * 40}  # an unborn HEAD has no commit
-        if not tips:
-            continue
-        urls = remotes(top)
-        remote, unread = held(top, urls)
-        hub = sorted({m[1] for u in urls.values() if (m := GITHUB.match(u))})
-        walk = git(top, 'rev-list', '--stdin', input=''.join(t + '\n' for t in tips) + ''.join(f'^{s}\n' for s in remote))
-        if walk.returncode:
-            why.append(f'{top}: git rev-list failed: {walk.stderr.strip()[:120]}')
-            continue
-        if not (unproven := sorted(tips & set(walk.stdout.split()))):  # the tips no commit a remote holds reaches
-            continue
-        ends = git(top, 'merge-base', '--independent', *unproven)  # GitHub holding a commit holds its history: ask only about these
-        lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if True not in (on_github(r, h) for r in hub)), None)
-        if lost:
-            why.append(f'{top}: {len(walk.stdout.split())} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
-                       + (f" (not read: {', '.join(unread)})" if unread else ''))
+        if lost := unpushed(top, wts, on_github):
+            why.append(lost)
     return why
