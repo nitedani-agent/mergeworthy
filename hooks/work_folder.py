@@ -32,7 +32,7 @@ def inside(p, top):
 
 def trees(folder):
     """(every git work tree under folder, nested and ignored ones too, without following a symlink or leaving its filesystem;
-    a reason for each folder it can't read and each other version-control system's data)."""
+    a reason for each folder it can't read, each bare repo and each other version-control system's data)."""
     dev, found, why, stack = os.lstat(folder).st_dev, [], [], [folder]
     while stack:
         d = stack.pop()
@@ -40,6 +40,10 @@ def trees(folder):
             entries = list(os.scandir(d))
         except OSError:
             why.append(f'{d}: unreadable')
+            continue
+        names = {e.name for e in entries}
+        if d != folder and {'HEAD', 'objects', 'refs'} <= names and '.git' not in names:
+            why.append(f'{d}: a bare repo; check it by hand')
             continue
         for e in entries:
             if e.is_symlink() or e.stat(follow_symlinks=False).st_dev != dev:
@@ -113,8 +117,8 @@ def keep(folder, on_github):
     its enclosing repo ignores (no git runs in it); a work tree under it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it; a detached
     HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo; a branch
     tip or worktree HEAD of a repo whose git data is inside it is reachable from no commit its readable remotes hold now, and
-    on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names the remotes it couldn't read); another
-    version-control system's data."""
+    on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names the remotes it couldn't read); a bare repo;
+    another version-control system's data."""
     folder = os.path.realpath(folder)
     why = [] if os.path.isfile(os.path.join(folder, 'retired')) else ['its watcher has not retired']
     try:
