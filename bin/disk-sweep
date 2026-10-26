@@ -15,7 +15,7 @@ deleted.
 - c-ignored: in an idle repo or worktree that isn't busy, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
-- w-done, once a day: a folder directly under ~/.mergeworthy/work whose watcher retired (its `retired` file), whole, when
+- w-done, once a day: a folder directly under ~/.mergeworthy/work whose watcher retired 14 days ago (its `retired` file), whole, when
   work_folder.keep() finds nothing in it that would be lost; ~/.mergeworthy/work-kept.md lists each retired folder that stays, with
   its reasons (a dry run prints those rows).
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
@@ -320,15 +320,32 @@ def github_has(repo, sha):
     return True if code == ['200'] else False if code in (['404'], ['422']) else None
 
 
+def iso(t):
+    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def retired_at(path):
+    """When the watcher retired: the time retire_if_done wrote in path, else path's mtime."""
+    try:
+        return datetime.datetime.strptime(open(path).read().strip(), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
+    except (OSError, ValueError):
+        return os.path.getmtime(path)
+
+
 def sweep_work():
-    """Once a day, w-done: each folder directly under work_folder.ROOT holding `retired` that keep() finds nothing in is deleted whole
-    through delete(); ~/.mergeworthy/work-kept.md (a dry run: stdout) lists each retired folder that stays, and why."""
+    """Once a day, w-done: each folder directly under work_folder.ROOT whose `retired` time is 14 days old (OLD: a closed thread may still
+    get an answer) and that keep() finds nothing in is deleted whole through delete(); ~/.mergeworthy/work-kept.md (a dry run: stdout)
+    lists each retired folder that stays, and why."""
     root = work_folder.ROOT
     if not due('work', DAY) or os.path.islink(root) or not os.path.isdir(root):
         return
     dev, rows = os.lstat(root).st_dev, []
     for e in sorted(os.scandir(root), key=lambda e: e.name):
         if not e.is_dir(follow_symlinks=False) or not os.path.isfile(os.path.join(e.path, 'retired')):
+            continue
+        at = retired_at(os.path.join(e.path, 'retired'))
+        if at > NOW - OLD:
+            rows.append(f'- {e.path}: retired at {iso(at)}; deleted no sooner than {iso(at + OLD)}')
             continue
         try:
             why = work_folder.keep(e.path, github_has)
