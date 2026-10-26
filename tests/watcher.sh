@@ -451,15 +451,15 @@ print(out.count("### PR CHANGED gitlab.com/ns/sub/proj!9: {"), "merged" in out, 
 check "GitLab: a merged MR emits PR CHANGED" "1 True 0" "$got"
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
-print(repr(run(m.scan_gitlab) + run(m.retire_if_done)))
+print(repr(run(m.scan_gitlab) + run(m.retire_if_done)), os.path.exists(os.path.join(m.HERE, "retired")))
 ')
-check "GitLab: an open issue keeps the watcher" "''" "$got"
+check "GitLab: an open issue keeps the watcher, and no retired file is written" "'' False" "$got"
 got=$(glpy '
 thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
 out = run(m.scan_gitlab) + run(m.retire_if_done)
-print(out.count("### ISSUE CHANGED gitlab.com/ns/sub/proj#4: open -> closed"), out.count("WATCHER RETIRED"))
+print(out.count("### ISSUE CHANGED gitlab.com/ns/sub/proj#4: open -> closed"), out.count("WATCHER RETIRED"), bool(__import__("re").fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\n", open(os.path.join(m.HERE, "retired")).read())))
 ')
-check "GitLab: an issue close is reported, and with every thread closed or merged the watcher retires" "1 1" "$got"
+check "GitLab: an issue close is reported, and with every thread closed or merged the watcher retires, its time in retired (disk-sweep's w-done)" "1 1 True" "$got"
 got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
 check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused

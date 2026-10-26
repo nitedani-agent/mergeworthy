@@ -1601,8 +1601,8 @@ def shared_pass(force=False):
 
 
 def retire_if_done():
-    """A watcher whose every thread is merged or closed (and that covers no whole repo) has nothing left to watch: it
-    disables its service, so it doesn't come back after a reboot, or stops its daemon."""
+    """A watcher whose every thread is merged or closed (and that covers no whole repo) has nothing left to watch: it writes
+    the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon."""
     repos = os.path.join(HERE, 'repos.txt')
     if os.path.exists(repos) and open(repos).read().strip():
         return
@@ -1632,6 +1632,8 @@ def retire_if_done():
         if not done:
             return
     print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    with open(os.path.join(HERE, 'retired'), 'w') as f:  # disk-sweep's w-done may delete this folder once nothing in it would be lost
+        f.write(iso(time.time()) + '\n')
     # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
     supervisor = os.environ.get('GH_WATCH_SUPERVISOR', '')  # set by the unit or the launchd agent gh-watch-start wrote
     if supervisor == 'systemd':
