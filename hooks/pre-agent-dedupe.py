@@ -79,10 +79,12 @@ if not register:
 path_set = lambda t: {os.path.expanduser(p.rstrip('/.,:')) for p in re.findall(r'(~?/[^\s`\'"()<>,;]+)', t)}
 paths = path_set(gate_text)
 # A brief names a worktree in its launch text or its brief file (a ticket it says to follow, or named so), not in a reference it names
+# or an installed skill (~/.mergeworthy/current may link to a worktree of mergeworthy)
 said = {os.path.abspath(os.path.expanduser(m)) for x in re.split(r'(?<=[.!?])\s+|\n', text)
         if re.search(r'\b(follow|execute|exactly|what it says)\b', x, re.I) for m in re.findall(MD, x)}
-worktree_paths = path_set(text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t)
-                                                  and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
+worktree_paths = {p for p in path_set(text + '\n' + '\n'.join(open(t).read() for t in tickets if os.path.isfile(t)
+                                      and (t in said or re.search(r'brief|ticket|prompt', os.path.basename(t)))))
+                  if not (os.path.abspath(p) + os.sep).startswith(mw + 'current' + os.sep)}
 # A brief pinned to an older commit of a worktree it names (a linked one: the user's own checkouts are read at any
 # commit) re-runs work on code that has moved on.
 if not register:
