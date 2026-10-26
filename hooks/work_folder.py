@@ -129,8 +129,8 @@ def owed(folder):
 def unpushed(top, wts, on_github):
     """The reason top's repo would lose commits, or None: a branch tip, tag or worktree HEAD (wts) that no commit its readable remotes
     hold now reaches, and that on_github(owner/repo, sha) doesn't answer True for on any GitHub remote. GitHub is asked only about the
-    tips no other such tip reaches, and no further after its first other answer. The reason counts the commits on no remote and names
-    the remotes it couldn't read; a failing git for-each-ref or rev-list is a reason too."""
+    tips no other such tip reaches, and no further after its first other answer. The reason names that tip, the first GitHub doesn't
+    confirm, and the remotes it couldn't read; a failing git for-each-ref or rev-list is a reason too."""
     # an annotated tag counts as the commit it points at
     refs = git(top, 'for-each-ref', '--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)', 'refs/heads', 'refs/tags')
     if refs.returncode:  # one broken ref and it lists none
@@ -153,7 +153,7 @@ def unpushed(top, wts, on_github):
     lost = next((h for h in sorted(ends.stdout.split() if not ends.returncode else unproven) if not confirmed(h)), None)
     if not lost:
         return None
-    return (f'{top}: {len(walk.stdout.split())} commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
+    return (f'{top}: commit(s) on no remote, e.g. {lost[:12]}' + (', nor confirmed by GitHub' if hub else '')
             + (f" (not read: {', '.join(unread)})" if unread else ''))
 
 
