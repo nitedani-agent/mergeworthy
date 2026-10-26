@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
   fi
   grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
-  # the thread covers its repo now: a bare repo line left behind would keep the watcher from retiring
+  # the thread covers its repo now: its bare repo line says nothing more
   if [ "$file" = threads.txt ]; then grep -vxF "$repo" "$dir/repos.txt" > "$dir/repos.txt.tmp" || true; mv "$dir/repos.txt.tmp" "$dir/repos.txt"; fi
 done
 # the session that started it owns it: post-bash-register adds that session's new threads here (cron's revival has no session)

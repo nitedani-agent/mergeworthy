@@ -460,6 +460,16 @@ out = run(m.scan_gitlab) + run(m.retire_if_done)
 print(out.count("### ISSUE CHANGED gitlab.com/ns/sub/proj#4: open -> closed"), out.count("WATCHER RETIRED"), bool(__import__("re").fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\n", open(os.path.join(m.HERE, "retired")).read())))
 ')
 check "GitLab: an issue close is reported, and with every thread closed or merged the watcher retires, its time in retired (disk-sweep's w-done)" "1 1 True" "$got"
+got=$(glpy '
+thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
+out = []
+for line in ("o/r\n", "o/r all  # watched whole\n"):
+    open(os.path.join(m.HERE, "repos.txt"), "w").write(line)
+    out.append(run(m.retire_if_done).count("WATCHER RETIRED"))
+os.remove(os.path.join(m.HERE, "repos.txt"))
+print(*out)
+')
+check "retire_if_done: every thread done, a bare owner/repo line in repos.txt doesn't keep the watcher, an owner/repo all line does" "1 0" "$got"
 got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
 check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused

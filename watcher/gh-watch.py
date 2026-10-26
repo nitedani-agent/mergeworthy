@@ -1601,10 +1601,10 @@ def shared_pass(force=False):
 
 
 def retire_if_done():
-    """A watcher whose every thread is merged or closed (and that covers no whole repo) has nothing left to watch: it writes
-    the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon."""
-    repos = os.path.join(HERE, 'repos.txt')
-    if os.path.exists(repos) and open(repos).read().strip():
+    """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt doesn't
+    keep it, an `owner/repo all` line does) has nothing left to watch: it writes the time to HERE/retired and disables its service, so
+    it doesn't come back after a reboot, or stops its daemon."""
+    if any(repo_lines(HERE).values()):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:

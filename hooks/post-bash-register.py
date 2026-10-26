@@ -119,7 +119,7 @@ for repo, num, line in found:
         home = ([dr for dr in own if dr in covering] + own + covering + live_dirs + [None])[0]
         if home:
             open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')
-    # the thread now covers its repo there: a bare repo line left behind would keep the watcher from retiring
+    # the thread now covers its repo there: its bare repo line says nothing more
     if home and repo in lines(home, 'repos.txt'):
         p = os.path.join(home, 'repos.txt')
         keep = [l for l in open(p) if l.split('#', 1)[0].strip() != repo]

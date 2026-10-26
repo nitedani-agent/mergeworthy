@@ -328,7 +328,7 @@ python3 -c 'import json; print(json.dumps({"session_id":"sess-2","tool_input":{"
   | python3 "$R/hooks/post-bash-register.py"
 check "a new PR joins the posting session's dir, not an older dir covering the repo" "o/r 8|none" \
   "$(cat "$D2/threads.txt" 2>/dev/null)|$(cat "$D1/threads.txt" 2>/dev/null || echo none)"
-check "the thread replaces that dir's bare repo line, so the watcher can retire" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
+check "the thread replaces that dir's bare repo line" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
