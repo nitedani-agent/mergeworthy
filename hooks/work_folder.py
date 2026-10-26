@@ -109,8 +109,8 @@ def open_line(path, cleared):
 
 def keep(folder, on_github):
     """Why deleting folder would lose something, one reason each, [] when nothing: its watcher hasn't retired (no `retired` file) or
-    still runs; replies-owed.md or waiting-on.txt has an open line, or proposals-open.md a PROMISED one; a work tree under it has a
-    modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it; a detached
+    still runs; replies-owed.md or waiting-on.txt has an open line, or proposals-open.md a PROMISED one; a repo lies below a folder
+    its enclosing repo ignores (no git runs in it); a work tree under it has a modified or untracked file (ignored ones aside); a repo whose git data is inside it has a stash or a worktree outside it; a detached
     HEAD of a worktree inside it whose repo is outside is reachable from no branch, tag or remote-tracking ref of that repo; a branch
     tip or worktree HEAD of a repo whose git data is inside it is reachable from no commit its readable remotes hold now, and
     on_github(owner/repo, sha) doesn't answer True for any GitHub remote (the reason names the remotes it couldn't read); another
@@ -131,8 +131,16 @@ def keep(folder, on_github):
         why.append('proposals-open.md has an undelivered PROMISED line')
     tops, found = trees(folder)
     why += found
-    repos = {}  # git common dir: a work tree of it
-    for top in tops:
+    repos, unchecked = {}, []  # git common dir: a work tree of it; work trees git doesn't run in
+    for top in sorted(tops):  # a repo before the repos inside it
+        outer = max((t for t in tops if t != top and inside(top, t)), key=len, default=None)
+        if outer in unchecked:
+            unchecked.append(top)
+            continue
+        if outer and git(outer, 'check-ignore', '-q', os.path.relpath(top, outer)).returncode != 1:  # its config (a filter) may run commands
+            why.append(f'{top}: a repo inside an ignored folder; check it by hand')
+            unchecked.append(top)
+            continue
         st = git(top, 'status', '--porcelain', '-uall')
         if st.returncode:
             why.append(f'{top}: git status failed: {st.stderr.strip()[:120]}')

@@ -219,7 +219,7 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean notretired running owed waiting promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted; do mk "$n"; done
+for n in clean notretired running owed waiting promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"; printf '# waits\n\ndone: o/r#2 -> o/r#1: bumped\nDONE (released) o/r#3 -> o/r#1: x\n' > "$W8/clean/waiting-on.txt"
 echo 'vitejs/vite#123 -> nitedani/vike-react-rsc#32: bump vite once it is released' > "$W8/waiting/waiting-on.txt"
@@ -246,8 +246,11 @@ G init -q --bare -b main "$T/many.git"  # 45000 refs/pull/N/head, each a commit 
 python3 -c 'for i in range(1, 45001): print(f"commit refs/heads/main\nmark :{i}\ncommitter t <t@example.invalid> {1700000000 + i} +0000\ndata 2\nc\n")
 for i in range(1, 45001): print(f"reset refs/pull/{i}/head\nfrom :{i}\n")' | git -C "$T/many.git" fast-import --quiet
 mkdir -p "$W8/manyrefs"; touch "$W8/manyrefs/retired"; G clone -q "$T/many.git" "$W8/manyrefs/repo"; G -C "$W8/manyrefs/repo" checkout -q -b feat; G -C "$W8/manyrefs/repo" commit -q --allow-empty -m mine
-PL="$W8/planted/repo/cache/repro"; G init -q "$PL"; G -C "$PL" commit -q --allow-empty -m repro  # an extracted archive's repo, in an ignored folder
-G -C "$PL" config core.fsmonitor "touch $T/PWNED-fsmonitor; false"; G -C "$PL" remote add origin ssh://example.invalid/x.git; G -C "$PL" config core.sshCommand "touch $T/PWNED-sshCommand; false"
+PL="$W8/planted/repo"; G -C "$PL" config core.fsmonitor "touch $T/PWNED-fsmonitor; false"; G -C "$PL" remote add evil ssh://example.invalid/x.git; G -C "$PL" config core.sshCommand "touch $T/PWNED-sshCommand; false"
+FR="$W8/filter/repo/cache/x"; G init -q "$FR"; echo 'f filter=evil' > "$FR/.gitattributes"; echo hi > "$FR/f"; G -C "$FR" add .gitattributes f; G -C "$FR" commit -qm f  # an extracted archive's repo, in an ignored folder
+G -C "$FR" config filter.evil.clean "touch $T/PWNED-filter; cat"; rm "$FR/.git/index"; G -C "$FR" read-tree HEAD  # the index has no stat data, as after an extraction
+G init -q "$FR/vendor/y"; echo z > "$FR/vendor/y/z"  # a repo inside it: git doesn't run there either
+G init -q "$W8/nestedtracked/repo/sub/inner"; echo w > "$W8/nestedtracked/repo/sub/inner/w"
 sha() { G -C "$1" rev-parse HEAD | cut -c1-12; }
 HOME="$H8" dsm 'm.work_folder.TIMEOUT = 2; calls = []
 def fake(repo, sha):
@@ -276,9 +279,11 @@ check "keep: a worktree of its repo outside the folder" "./repo: its worktree $(
 check "keep: a worktree on a branch of a repo outside loses nothing, the branch stays there" "- yes" "$(why extwt) $(G -C "$T/user-clone" rev-parse -q --verify wt-branch >/dev/null && echo yes)"
 check "keep: a detached HEAD in a worktree of a repo outside, on none of its refs" "./checkout: commit $(sha "$W8/extdet/checkout") is on no branch, tag or remote-tracking ref of $(readlink -f "$T")/user-clone/.git" "$(why extdet)"
 check "keep: a detached worktree of an outside repo's local, unpushed branch loses nothing" - "$(why extwip)"
-check "keep: a nested repo in an ignored folder with an untracked file" "./repo/cache/inner: 1 modified or untracked file(s), e.g. w" "$(why nested)"
+check "keep: a repo in an ignored folder: no git runs in it" "./repo/cache/inner: a repo inside an ignored folder; check it by hand" "$(why nested)"
+check "keep: a repo in an ignored folder whose config names a clean filter, a repo inside it: the filter never runs, one reason" "0 ./repo/cache/x: a repo inside an ignored folder; check it by hand" "$(ls "$T" | grep -c PWNED-filter) $(why filter)"
+check "keep: a repo nested in a path its enclosing repo does not ignore is checked like any other" "./repo: 1 modified or untracked file(s), e.g. sub/inner/ | ./repo/sub/inner: 1 modified or untracked file(s), e.g. w" "$(why nestedtracked)"
 check "keep: another version-control system's data" "./proj: .jj data" "$(why jj)"
-check "keep: a repo's own core.fsmonitor and core.sshCommand never run; its commit keeps the folder" "0 yes" "$(ls "$T" | grep -c PWNED) $([ "$(why planted)" != - ] && echo yes)"
+check "keep: a checkout's own core.fsmonitor and core.sshCommand never run" "0 -" "$(ls "$T" | grep -c 'PWNED-[fs][sh]') $(why planted)"
 check "keep: a remote that can't be read, every tip on another, loses nothing" - "$(why unread)"
 check "keep: a commit on no remote, with a remote that can't be read: the reason names it" "./repo: commit $(sha "$W8/unreadlocal/repo") is on no remote (not read: gone)" "$(why unreadlocal)"
 check "keep: a remote that never answers is unread after the timeout" - "$(why hang)"
