@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""disk-sweep [--delete]: with --delete, deletes the build folders and node_modules under the work folders (~/*-work/) and
-~/.t3/worktrees/ that hold nothing a rebuild can't restore, and prunes Docker's dangling images and build cache. Before each
+"""disk-sweep [--delete]: with --delete, deletes the build folders and node_modules under the work folders (~/.mergeworthy/work/*/
+and ~/*-work/) and ~/.t3/worktrees/ that hold nothing a rebuild can't restore, each finished work folder that holds nothing to lose
+(w-done), and prunes Docker's dangling images and build cache. Before each
 deletion it appends `<UTC time, YYYY-MM-DDTHH:MM:SSZ> <bytes> <path, or docker:image or docker:builder> <rule> deleting` to
 ~/.mergeworthy/disk-sweep.log, and the same line ending `deleted` or `failed` after it. <bytes> is the allocated size of the
 entries whose every hard link is inside the path; a Docker prune writes one line, `deleted`, with the size Docker reports once it
@@ -8,11 +9,15 @@ succeeded. Without --delete it prints those lines without the last word, `?` for
 It never follows a symlink or leaves a root's filesystem, deletes nothing with a symlink on its path, and runs one at a time.
 "Idle": no file outside the paths git ignores has an mtime within 24 hours of the sweep's start. "Busy": a process works in the
 folder or holds a file open in it, or an unfinished job in ~/.claude/agent-jobs names its absolute or ~/ path, read each time.
-A candidate is kept when it holds version-control data, a file with an mtime in the last 24 hours or a folder the sweep can't
-read, or when its repo or loose parent is busy right before it would be listed or deleted.
+A candidate is kept when it holds version-control data (w-done: what work_folder.keep() finds instead), a file with an mtime in
+the last 24 hours or a folder the sweep can't read, or when its repo or loose parent is busy right before it would be listed or
+deleted.
 - c-ignored: in an idle repo or worktree that isn't busy, the folders git ignores named in BUILD.
 - c-node_modules: outside any repo in a work folder, a node_modules whose parent is idle (node_modules and nested repos aside)
   and isn't busy.
+- w-done, once a day: a folder directly under ~/.mergeworthy/work whose watcher retired 14 days ago (its `retired` file), whole, when
+  work_folder.keep() finds nothing in it that would be lost, then `git worktree prune` in each repo outside it that had a worktree in it;
+  ~/.mergeworthy/work-kept.md lists each retired folder that stays, with its reasons (a dry run prints those rows).
 - h-ignored, once a day: the same folders in any git repo up to 5 levels below HOME (hidden folders and the work folders
   aside), each unused for 14 days (neither written nor read).
 - k-cache, once a day: `pnpm store prune`, `pip cache purge`, `npm cache clean --force` when ~/.npm/_cacache is unused for
@@ -22,9 +27,9 @@ read, or when its repo or loose parent is busy right before it would be listed o
 Weekly, ~/.mergeworthy/disk-report.md lists the 20 largest folders under HOME unused for 14 days (neither written nor read) that no rule deletes.
 Deleting under the account's home and pruning Docker happen only when the watcher daemon of the main watch dir started the sweep
 (from_daemon); anything else deletes only in folders outside that home, a test's temp roots."""
-import datetime, fcntl, glob, os, pwd, re, shutil, subprocess, sys, time
+import datetime, fcntl, glob, json, os, pwd, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
-import agent_jobs
+import agent_jobs, work_folder
 
 if not os.path.isdir('/proc/self'):
     sys.exit('disk-sweep: needs /proc to see which processes work where')
@@ -254,15 +259,17 @@ def busy(path):
 
 
 def delete(path, owner, dev, rule, age=DAY, vcs=True):
-    """Delete path, a candidate inside owner (its repo, or a loose node_modules' parent), unless it or owner must stay."""
+    """Delete path, a candidate inside owner (its repo, or a loose node_modules' parent), unless it or owner must stay; None when it
+    did (a dry run: would), else why not."""
     st = os.lstat(path)
     if os.path.realpath(path) != path:
-        return
+        return 'a symlink on its path'
     nbytes = measure(path, dev, age, vcs)
     if nbytes is None:
-        return
+        recent = 'a file changed in the last 24 hours' if age == DAY else 'a file used in the last 14 days'
+        return f"{recent}, {'version-control data, ' if vcs else ''}a mount or an unreadable folder"
     if busy(owner):  # a process or a job may have started in owner since its selection
-        return
+        return 'a process or agent job works in it'
     if not DRY:
         record(nbytes, path, rule, 'deleting')
         try:
@@ -270,7 +277,7 @@ def delete(path, owner, dev, rule, age=DAY, vcs=True):
         except OSError as e:
             print(f'disk-sweep: {path}: {e}', file=sys.stderr)
             record(nbytes, path, rule, 'failed')
-            return
+            return f'its deletion failed: {e} (disk-sweep.log)'
     record(nbytes, path, rule, 'deleted')
 
 
@@ -297,8 +304,72 @@ def walk(root, work):
     return dev, repos, loose
 
 
+def github_has(repo, sha):
+    """Whether GitHub stores commit sha in repo, a pull request's head after its branch is gone included: True on 200, False on 404
+    or 422, None while the watchers' shared rate-limit pause holds or gh gives no answer."""
+    try:
+        if json.load(open(os.path.join(STATE, 'shared-watch.json'))).get('pause_until', 0) > time.time():
+            return None
+    except (OSError, ValueError):
+        pass
+    try:
+        r = subprocess.run(['gh', 'api', '-i', f'repos/{repo}/commits/{sha}'], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    code = r.stdout.split(None, 2)[1:2] if r.stdout.startswith('HTTP/') else []
+    return True if code == ['200'] else False if code in (['404'], ['422']) else None
+
+
+def iso(t):
+    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def retired_at(path):
+    """When the watcher retired: the time retire_if_done wrote in path, else path's mtime."""
+    try:
+        return datetime.datetime.strptime(open(path).read().strip(), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
+    except (OSError, ValueError):
+        return os.path.getmtime(path)
+
+
+def sweep_work():
+    """Once a day, w-done: each folder directly under work_folder.ROOT whose `retired` time is 14 days old (OLD: a closed thread may still
+    get an answer) and that keep() finds nothing in is deleted whole through delete(); ~/.mergeworthy/work-kept.md (a dry run: stdout)
+    lists each retired folder that stays, and why."""
+    root = work_folder.ROOT
+    if not due('work', DAY) or os.path.islink(root) or not os.path.isdir(root):
+        return
+    dev, rows = os.lstat(root).st_dev, []
+    for e in sorted(os.scandir(root), key=lambda e: e.name):
+        if not e.is_dir(follow_symlinks=False) or not os.path.isfile(os.path.join(e.path, 'retired')):
+            continue
+        at = retired_at(os.path.join(e.path, 'retired'))
+        if at > NOW - OLD:
+            rows.append(f'- {e.path}: retired at {iso(at)}; deleted no sooner than {iso(at + OLD)}')
+            continue
+        try:
+            why = work_folder.keep(e.path, github_has)
+            linked = [] if why else work_folder.outside_repos(e.path)
+        except Exception as err:  # this folder stays; the next ones and the other rules still run
+            why = [f'check failed: {err}']
+        if not why:
+            if refused := delete(e.path, e.path, dev, 'w-done', vcs=False):
+                why = [refused]
+            elif not DRY:
+                for c in linked:  # the deleted worktrees' entries there would keep holding their branches
+                    authorized(c)
+                    work_folder.git(c, 'worktree', 'prune')
+        rows += [f'- {e.path}: {w}' for w in why]
+    if DRY:
+        for r in rows:
+            print(r, flush=True)
+        return
+    with open(os.path.join(STATE, 'work-kept.md'), 'w') as f:
+        f.write('# Retired work folders disk-sweep keeps, and why (rule w-done)\n\n' + ''.join(r + '\n' for r in rows))
+
+
 def sweep_files():
-    roots = [(r.rstrip('/'), True) for r in sorted(glob.glob(os.path.join(HOME, '*-work/')))]
+    roots = [(r.rstrip('/'), True) for r in sorted(glob.glob(os.path.join(HOME, '*-work/')) + glob.glob(os.path.join(work_folder.ROOT, '*/')))]
     roots.append((os.path.join(HOME, '.t3', 'worktrees'), False))
     for root, work in roots:
         if os.path.islink(root) or not os.path.isdir(root):
@@ -492,6 +563,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         sys.exit('disk-sweep: another sweep is running')
+    sweep_work()
     sweep_files()
     sweep_home()
     sweep_caches()

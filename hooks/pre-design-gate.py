@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Write, Edit, MultiEdit, NotebookEdit, delegate_task). Exit 2 blocks; stderr goes to the agent.
 An edit inside a git work tree waits for its repo and branch's `pr-steps preflight` record.
-At Tier M or L (first line of <repo>-work/scope.md), code waits for prior art (task step 6) and the design (design step 4):
-<repo>-work/prior-art.md and a <repo>-work/decisions/*.md must exist before an edit inside the repo or an implementation agent."""
+At Tier M or L (first line of scope.md in the work folder: ~/.mergeworthy/work/<task>/ holding the checkout, or <repo>-work/ beside it),
+code waits for prior art (task step 6) and the design (design step 4): the work folder's prior-art.md and a decisions/*.md must exist
+before an edit inside the repo or an implementation agent."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import no_preflight
+import work_folder
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 tool = d.get('tool_name', '')
@@ -22,7 +24,7 @@ except OSError:
     top = ''
 if not top:
     sys.exit(0)
-work = top + '-work'
+work = work_folder.of(cwd) or top + '-work'
 try:
     tier = open(os.path.join(work, 'scope.md')).readline()
 except OSError:

@@ -8,6 +8,7 @@
 # - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
 # - A thread line drops its repo's bare line (not an `all` line) from repos.txt; <dir>/session records the Claude session that ran it.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
+# - Removes <dir>/retired, which the watcher writes when it retires (disk-sweep's w-done rule).
 # - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply).
 set -e
@@ -36,7 +37,7 @@ while [ $# -gt 0 ]; do
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
   fi
   grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
-  # the thread covers its repo now: a bare repo line left behind would keep the watcher from retiring
+  # the thread covers its repo now: its bare repo line says nothing more
   if [ "$file" = threads.txt ]; then grep -vxF "$repo" "$dir/repos.txt" > "$dir/repos.txt.tmp" || true; mv "$dir/repos.txt.tmp" "$dir/repos.txt"; fi
 done
 # the session that started it owns it: post-bash-register adds that session's new threads here (cron's revival has no session)
@@ -120,6 +121,7 @@ else
   echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron (eyes: $(cat "$dir/eyes"))"
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
+rm -f "$dir/retired"  # a re-armed dir is not finished: disk-sweep's w-done deletes only a dir its watcher retired
 echo "Arm a Monitor in this session on (max timeout; re-arm it when it expires, since the expiry notice wakes the session):"
 # a shell loop, not grep or awk: an agent shell's grep can be a wrapper, and mawk, that hold matched lines back
 echo "  tail -n 0 -F $dir/events.log 2>/dev/null | while IFS= read -r l; do case \$l in '###'*|'WATCH ERROR'*|'WATCHER RETIRED'*) printf '%s\\n' \"\$l\";; esac; done"

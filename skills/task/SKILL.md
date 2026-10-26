@@ -10,7 +10,7 @@ From a request to the skill that delivers it. Each step names what to open or ru
 ## Steps
 
 1. **Read the task and every link in it,** recursively: issues, PRs, review comments, commits, CI. Pull the default branch. Look for open PRs and other sessions' work folders on the same thing.
-   Run: `gh issue view`, `gh pr list --state all --search "<keyword>"`, `ls ~/*-work`
+   Run: `gh issue view`, `gh pr list --state all --search "<keyword>"`, `ls -d ~/.mergeworthy/work/*/ ~/*-work/`
 2. **Triage.** Write `Tier: <0|S|M|L>, because <signals>` as line 1 of `<work folder>/scope.md`, and in your first report. Count every PR and repo the work has had so far, not only today's ask: two or more independently maintained repos make it Tier L. Re-triage when the deliverables or open decisions change, and say so.
    Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
 3. **Scope.** Write each ask and link as a scope.md checkbox, at the start and whenever the user adds one; under them, the critical path: the goal's open items, in order. Dropping or deferring one, also when a later instruction seems to replace it, needs the user's OK first: ask in one line whether that item holds.
@@ -49,15 +49,16 @@ The tier changes the records, never the steps: every PR runs `converge`, a small
 
 ### Files
 
-The work folder (`<task>-work/` next to the worktree) holds, each with the step that writes it:
+The work folder (`~/.mergeworthy/work/<task>/`, the task's checkouts inside) holds, each with the step that writes it:
 - `scope.md` (steps 2–3); `ledger.md`, Tier M: one row per event (time | unit | event | head SHA | result): each pass, round, fix with its commits, gate run with its exit code, push and CI result; answer every status question from it, skipped steps included.
 - `drafts/<thread>/` (`post` step 1); `maps/`, `decisions/` (settled decisions only), `design/` (`design`); `prior-art.md`, `precedent.md` (step 6); `memory.md` (step 8).
 - The watcher's files: `events.log` and your `events.cursor` (`reply` step 1), `threads.txt`, `repos.txt`, `umbrella.txt`, and `waiting-on.txt`: each thing a PR of yours waits on, as `<owner/repo#N> -> <dependent>: <what to do>`, also in that PR's notes table.
 - **The owed lists,** each cleared only by the thing named:
   - `replies-owed.md`: every comment you answer (the watcher writes it). Cleared by `done: <reply URL> <what changed>`, or `done: 👍 <comment URL>` for a reaction alone; a holding reply makes it `holding: <reply URL> <ETA as an ISO time>`; while a drafter works, `drafting: <comment URL> <ETA>`.
   - `proposals-open.md`: every "OK?" you ask, and every promise you post as `PROMISED <thread>: <what> (<draft file name>)`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it.
-  - `questions-owed.md`: each user question that needs work, with an ETA.
+  - `questions-owed.md`: each user question that needs work, with an ETA. Cleared by `done: <where you answered it>`.
 - Log and artifact names include a unique pass ID; never overwrite another pass's file.
+- **Deleted when done:** 14 days after the watcher retires (every thread merged or closed, and 60 days after each merge of yours), disk-sweep's `w-done` (`docs/mechanisms.md`) deletes it, unless a process or agent works in it, a file changed within a day, or it holds an open owed or `waiting-on.txt` line or anything no remote has (an edit, an untracked file git doesn't ignore, a stash, a commit); `~/.mergeworthy/work-kept.md` says why one stays. Nothing deletes an older `~/*-work/` folder, nor any folder with the watcher off or off Linux.
 
 The plugin's options (`/plugin` → mergeworthy → Configure options; an environment variable `MERGEWORTHY_<KEY>` wins): `badge` (`on`, `off`, or `auto`: only when the posting account is not a bot), `merge` (`reviewer`: never merge yourself), `watcher` (`off`: no watcher).
 

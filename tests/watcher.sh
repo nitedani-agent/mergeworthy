@@ -451,15 +451,25 @@ print(out.count("### PR CHANGED gitlab.com/ns/sub/proj!9: {"), "merged" in out, 
 check "GitLab: a merged MR emits PR CHANGED" "1 True 0" "$got"
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
-print(repr(run(m.scan_gitlab) + run(m.retire_if_done)))
+print(repr(run(m.scan_gitlab) + run(m.retire_if_done)), os.path.exists(os.path.join(m.HERE, "retired")))
 ')
-check "GitLab: an open issue keeps the watcher" "''" "$got"
+check "GitLab: an open issue keeps the watcher, and no retired file is written" "'' False" "$got"
 got=$(glpy '
 thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
 out = run(m.scan_gitlab) + run(m.retire_if_done)
-print(out.count("### ISSUE CHANGED gitlab.com/ns/sub/proj#4: open -> closed"), out.count("WATCHER RETIRED"))
+print(out.count("### ISSUE CHANGED gitlab.com/ns/sub/proj#4: open -> closed"), out.count("WATCHER RETIRED"), bool(__import__("re").fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\n", open(os.path.join(m.HERE, "retired")).read())))
 ')
-check "GitLab: an issue close is reported, and with every thread closed or merged the watcher retires" "1 1" "$got"
+check "GitLab: an issue close is reported, and with every thread closed or merged the watcher retires, its time in retired (disk-sweep's w-done)" "1 1 True" "$got"
+got=$(glpy '
+thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
+out = []
+for line in ("o/r\n", "o/r all  # watched whole\n"):
+    open(os.path.join(m.HERE, "repos.txt"), "w").write(line)
+    out.append(run(m.retire_if_done).count("WATCHER RETIRED"))
+os.remove(os.path.join(m.HERE, "repos.txt"))
+print(*out)
+')
+check "retire_if_done: every thread done, a bare owner/repo line in repos.txt doesn't keep the watcher, an owner/repo all line does" "1 0" "$got"
 got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
 check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused
@@ -472,6 +482,13 @@ check "gh-watch-start: !N on a GitHub repo is not a thread" "o/r" "$(cat "$GS/re
 
 ( dir="$GS"; : > "$GS/repos.txt"; set -- o/r all o/r 5; eval "$args_step" ) >/dev/null 2>&1
 check "gh-watch-start: an 'owner/repo all' line stays when a thread of its repo joins" "o/r all" "$(cat "$GS/repos.txt")"
+# the whole gh-watch-start, cron branch (systemctl fails; crontab and the daemon stubbed), on a dir whose watcher had retired
+GI="$T/ghinst"; mkdir -p "$GI/bin" "$GI/watcher" "$T/cronbin" "$T/retiredwatch"; cp "$R/bin/gh-watch-start" "$GI/bin/"; : > "$GI/watcher/gh-watch.py"
+printf '#!/bin/bash\necho $$ > gh-watch.pid\nexec sleep 30\n' > "$GI/watcher/gh-watch-daemon.sh"; printf '#!/bin/sh\nexit 1\n' > "$T/cronbin/systemctl"; printf '#!/bin/sh\n[ "$1" = -l ] && exit 0\ncat > /dev/null\n' > "$T/cronbin/crontab"
+chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/crontab"; echo 2026-01-01T00:00:00Z > "$T/retiredwatch/retired"
+PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
+check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
+GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
 
 # `owner/repo all` in repos.txt: a moved thread of the repo joins that dir (unless another dir lists it), a new one is reported unless
 # it carries the badge, and /agent at the start of a new body is an agent command (routed to the dir watching the repo whole, else main_dir)

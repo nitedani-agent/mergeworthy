@@ -34,7 +34,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 ### Words every skill uses
 - **The main session** is the session the user talks to. It decides from the code, docs and JSDoc it read itself, briefs agents, approves and posts every word that goes out, and talks to the user; implementers do the edits, commits, builds, tests and browser work. A **subagent** does its brief and nothing else.
 - **The user** owns the goal and their own repos. A **maintainer** is whoever merges in a repo the user doesn't own; their requests are decisions. **Owner code** is a commit by a human account, or without the agent trailer (the `Co-Authored-By:` line your harness adds to an agent's commits, e.g. `Co-Authored-By: Claude …`): it is never removed or rewritten on an agent's reading alone (`code §Owner code and authority`).
-- **The work folder** is `<task>-work/` next to the worktree, never `/tmp`. The watcher writes `events.log` there; you keep `scope.md`, the drafts and the owed lists there (`task §Files`).
+- **The work folder** is `~/.mergeworthy/work/<task>/`, with the task's checkouts inside, never `/tmp`. It holds the watcher's `events.log`, `scope.md`, the drafts and the owed lists (`task §Files`, which also says when it is deleted).
 - **The project file** is `~/.mergeworthy/projects/<owner>/<repo>.md`: how one repo works and what its maintainers taught you. Every brief for work in that repo names it.
 - **Tier** is the size of the work (0, S, M, L: `task` step 2). The model an agent runs on is its **model class** (`delegate` step 2).
 - **The Monitor** is Claude Code's `Monitor` tool (load it with ToolSearch `select:Monitor`). To arm it, call it with the command `gh-watch-start` printed and `timeout_ms` 1800000; it wakes you on each line the watcher writes to `events.log`.
@@ -49,6 +49,6 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 
 ### At session start and after compaction
 1. If the `session-memory` hook printed an order to refresh `memory.md`, follow it before anything else.
-2. Read line 1 (the Tier) and the critical path of `<task>-work/scope.md`, the work folder next to your worktree (`ls ~/*-work` lists them); if there is none, run `task`.
+2. Read line 1 (the Tier) and the critical path of `scope.md` in the work folder holding your checkout (`ls -d ~/.mergeworthy/work/*/ ~/*-work/` lists them, older tasks in the second); if there is none, run `task`.
 3. Read `events.log` past the line in `events.cursor`, re-arm the Monitor, and handle each event by `reply`.
 4. Open the skill and step that the critical path or the compaction summary names as in progress, before acting; if neither does, run `task` from step 1.
