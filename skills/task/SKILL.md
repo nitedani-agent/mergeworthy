@@ -58,7 +58,7 @@ The work folder (`~/.mergeworthy/work/<task>/`, the task's checkouts inside) hol
   - `proposals-open.md`: every "OK?" you ask, and every promise you post as `PROMISED <thread>: <what> (<draft file name>)`. Each new maintainer comment is checked against it first. Cleared by the commit or link that delivers it.
   - `questions-owed.md`: each user question that needs work, with an ETA.
 - Log and artifact names include a unique pass ID; never overwrite another pass's file.
-- **Deleted when done:** once the watcher retires (every thread merged or closed, its follow-ups over), disk-sweep's daily `w-done` rule (`docs/mechanisms.md`) deletes the folder, unless a process or agent works in it, a file in it changed in the last day, or it holds an open owed line or anything no remote has (an edit, an untracked file, a stash, a commit); `~/.mergeworthy/work-kept.md` says why one stays. With the watcher off, nothing deletes it.
+- **Deleted when done:** 14 days after the watcher retires (every thread merged or closed, follow-ups over), disk-sweep's `w-done` (`docs/mechanisms.md`) deletes it, unless a process or agent works in it, a file changed within a day, or it holds an open owed line or anything no remote has (an edit, a file git doesn't ignore, a stash, a commit); `~/.mergeworthy/work-kept.md` says why one stays. With the watcher off, or off Linux, nothing deletes it.
 
 The plugin's options (`/plugin` → mergeworthy → Configure options; an environment variable `MERGEWORTHY_<KEY>` wins): `badge` (`on`, `off`, or `auto`: only when the posting account is not a bot), `merge` (`reviewer`: never merge yourself), `watcher` (`off`: no watcher).
 

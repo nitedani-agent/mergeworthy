@@ -219,10 +219,11 @@ H8="$T/home8"; W8="$H8/.mergeworthy/work"; mkdir -p "$W8"
 G init -q --bare -b main "$T/w-origin.git"; G init -q -b main "$T/w-seed"; printf 'cache/\nnode_modules\n' > "$T/w-seed/.gitignore"; echo a > "$T/w-seed/README"
 G -C "$T/w-seed" add .gitignore README; G -C "$T/w-seed" commit -qm base; G -C "$T/w-seed" push -q "$T/w-origin.git" main
 mk() { mkdir -p "$W8/$1"; G clone -q "$T/w-origin.git" "$W8/$1/repo"; touch "$W8/$1/retired"; }
-for n in clean notretired running owed waiting promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag; do mk "$n"; done
+for n in clean notretired running owed waiting questions promised untracked modified stash local stale pullref github detached outwt nested jj unread unreadlocal hang planted filter nestedtracked bare tag; do mk "$n"; done
 mkdir -p "$W8/clean/repo/node_modules"; echo x > "$W8/clean/repo/node_modules/x"; printf '# replies owed\ndone: https://example.invalid/r answered\n' > "$W8/clean/replies-owed.md"
 echo 'DONE abc123 PROMISED o/r#1: the fix (d.md)' > "$W8/clean/proposals-open.md"; printf '# waits\n\ndone: o/r#2 -> o/r#1: bumped\nDONE (released) o/r#3 -> o/r#1: x\n' > "$W8/clean/waiting-on.txt"
 echo 'vitejs/vite#123 -> nitedani/vike-react-rsc#32: bump vite once it is released' > "$W8/waiting/waiting-on.txt"
+printf '# questions owed\nDONE how big is the cache? answered in chat\n' > "$W8/clean/questions-owed.md"; echo 'How big is the cache? ETA 2026-10-27' > "$W8/questions/questions-owed.md"
 rm "$W8/notretired/retired"; echo $$ > "$W8/running/gh-watch.pid"
 printf '# replies owed\nhttps://example.invalid/c1 by alice\n' > "$W8/owed/replies-owed.md"; echo 'PROMISED o/r#1: the fix (d.md)' > "$W8/promised/proposals-open.md"
 echo x > "$W8/untracked/repo/notes.txt"; echo b >> "$W8/modified/repo/README"; echo y >> "$W8/stash/repo/README"; G -C "$W8/stash/repo" stash push -q
@@ -265,11 +266,12 @@ for e in sorted(os.scandir(m.work_folder.ROOT), key=lambda e: e.name):
     why = [w.replace(os.path.realpath(e.path), ".") for w in m.work_folder.keep(e.path, fake)]
     print(e.name, " | ".join(why) or "-", " ".join(calls), sep="\t")' "$(G -C "$W8/github/repo" rev-parse a)" > "$T/keep.out"
 why() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' "$T/keep.out"; }
-check "keep: a clean clone with an ignored node_modules, an answered reply, a delivered promise and cleared waits loses nothing, and asks GitHub nothing" "-|" "$(why clean)|$(awk -F'\t' '$1 == "clean" { print $3 }' "$T/keep.out")"
+check "keep: a clean clone with an ignored node_modules, an answered reply, a delivered promise, cleared waits and an answered question loses nothing, and asks GitHub nothing" "-|" "$(why clean)|$(awk -F'\t' '$1 == "clean" { print $3 }' "$T/keep.out")"
 check "keep: a folder without retired" "its watcher has not retired" "$(why notretired)"
 check "keep: a folder whose watcher's PID is alive" "its watcher is running" "$(why running)"
 check "keep: an open line in replies-owed.md" "replies-owed.md has an open line" "$(why owed)"
 check "keep: an open wait in waiting-on.txt" "waiting-on.txt has an open wait" "$(why waiting)"
+check "keep: an open question in questions-owed.md" "questions-owed.md has an open line" "$(why questions)"
 check "keep: a PROMISED line in proposals-open.md" "proposals-open.md has an undelivered PROMISED line" "$(why promised)"
 check "keep: an untracked file" "./repo: 1 modified or untracked file(s), e.g. notes.txt" "$(why untracked)"
 check "keep: a modified file" "./repo: 1 modified or untracked file(s), e.g. README" "$(why modified)"
