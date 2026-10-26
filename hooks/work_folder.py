@@ -18,13 +18,9 @@ def git(repo, *args, **kw):
 
 
 def of(path):
-    """The work folder holding path: its ancestor directly under ROOT, else <git toplevel>-work beside path's checkout when it
-    exists (the old layout), else None."""
+    """The work folder holding path: its ancestor directly under ROOT, else None."""
     p, root = os.path.realpath(path), os.path.realpath(ROOT)
-    if p.startswith(root + '/'):
-        return os.path.join(root, p[len(root) + 1:].split('/')[0])
-    top = git(p if os.path.isdir(p) else os.path.dirname(p), 'rev-parse', '--show-toplevel').stdout.strip()
-    return top + '-work' if top and os.path.isdir(top + '-work') else None
+    return os.path.join(root, p[len(root) + 1:].split('/')[0]) if p.startswith(root + '/') else None
 
 
 def inside(p, top):

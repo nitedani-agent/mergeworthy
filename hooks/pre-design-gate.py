@@ -24,9 +24,7 @@ except OSError:
     top = ''
 if not top:
     sys.exit(0)
-work = work_folder.of(cwd)
-if not work:
-    sys.exit(0)
+work = work_folder.of(cwd) or top + '-work'
 try:
     tier = open(os.path.join(work, 'scope.md')).readline()
 except OSError:
