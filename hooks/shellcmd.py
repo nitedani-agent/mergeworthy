@@ -1,5 +1,5 @@
-"""Shell command parsing shared by the Bash hooks (pre-bash-guard, pre-skill-gate, post-bash-register)."""
-import hashlib, os, re, shlex, subprocess
+"""Shell command parsing and transcript reading shared by the hooks (pre-bash-guard, pre-design-gate, pre-skill-gate, post-bash-register)."""
+import hashlib, json, os, re, shlex, subprocess
 
 
 def branch_record(d, kind):
@@ -110,3 +110,74 @@ def new_post_drafts(t):
         if posts and method == 'POST':
             return [v[len('body=@'):] for v in opt(a[1:], ['-F', '--field']) if v.startswith('body=@')] + inputs
     return []
+
+
+def rlines(path, chunk=1 << 20):
+    """The file's lines, last first."""
+    with open(path, 'rb') as f:
+        f.seek(0, 2)
+        pos, rest = f.tell(), b''
+        while pos > 0:
+            n = min(chunk, pos); pos -= n; f.seek(pos)
+            lines = (f.read(n) + rest).split(b'\n')
+            rest = lines.pop(0)
+            yield from reversed(lines)
+        yield rest
+
+
+def transcript(d):
+    path = d.get('transcript_path') or ''
+    if d.get('agent_id'):  # a subagent's context holds only its own skills
+        path = d.get('agent_transcript_path') or os.path.join(os.path.dirname(path), d.get('session_id', ''), 'subagents', f"agent-{d['agent_id']}.jsonl")
+    return path if path and os.path.isfile(path) else None
+
+
+def unread_instructions(path, d):
+    """The AGENTS.md and CLAUDE.md at the root of the git repo holding path that this session's transcript shows no Read,
+    cat or sed of since its last compaction; [] outside git or when the root has neither."""
+    near = os.path.dirname(os.path.realpath(path))
+    while not os.path.isdir(near): near = os.path.dirname(near)  # a new file's folder may not exist yet
+    root = subprocess.run(['git', '-C', near, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
+    need = [f for f in (os.path.join(root, n) for n in ('AGENTS.md', 'CLAUDE.md')) if root and os.path.isfile(f)]
+    if not need:
+        return []
+    t = transcript(d)
+    seen = files_read(t, {os.path.basename(f).encode() for f in need}) if t else set()
+    return [f for f in need if os.path.realpath(f) not in seen]
+
+
+def files_read(path, names):
+    """Real paths the transcript's Read calls, and its Bash cat and sed (not sed -i), read since its last compaction;
+    only lines naming one of names are parsed."""
+    seen = set()
+    for l in rlines(path):
+        if not any(k in l for k in (b'compact_boundary', b'isCompactSummary', *names)):
+            continue
+        try:
+            e = json.loads(l)
+        except ValueError:
+            continue
+        if e.get('subtype') == 'compact_boundary' or e.get('isCompactSummary'):
+            break
+        content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
+        if e.get('type') != 'assistant' or not isinstance(content, list):
+            continue
+        for b in content:
+            if not isinstance(b, dict) or b.get('type') != 'tool_use':
+                continue
+            i, cwd = b.get('input') or {}, e.get('cwd') or '/'
+            if b.get('name') == 'Read' and i.get('file_path'):
+                seen.add(os.path.realpath(os.path.join(cwd, os.path.expanduser(str(i['file_path'])))))
+            elif b.get('name') == 'Bash':
+                try:
+                    segs = segments(str(i.get('command') or ''))
+                except ValueError:
+                    continue
+                for s in segs:  # `cd <dir>` moves where the later commands' relative paths point
+                    t = prog(s)
+                    p, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
+                    if p in ('cd', 'pushd') and a:
+                        cwd = os.path.join(cwd, os.path.expanduser(a[0]))
+                    elif p == 'cat' or p == 'sed' and not any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a):
+                        seen |= {os.path.realpath(os.path.join(cwd, os.path.expanduser(x))) for x in a if not x.startswith('-')}
+    return seen

@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Write, Edit, MultiEdit, NotebookEdit, delegate_task). Exit 2 blocks; stderr goes to the agent.
-An edit inside a git work tree waits for its repo and branch's `pr-steps preflight` record.
+An edit inside a git work tree waits until this session read the AGENTS.md and CLAUDE.md at its root (pre-bash-guard checks the files a
+command writes the same way), then for its repo and branch's `pr-steps preflight` record.
 At Tier M or L (first line of scope.md in the work folder: ~/.mergeworthy/work/<task>/ holding the checkout, or <repo>-work/ beside it),
 code waits for prior art (task step 6) and the design (design step 4): the work folder's prior-art.md and a decisions/*.md must exist
 before an edit inside the repo or an implementation agent."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import no_preflight
+from shellcmd import no_preflight, unread_instructions
 import work_folder
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
 tool = d.get('tool_name', '')
 cwd = d.get('cwd') or os.getcwd()
 if 'delegate_task' not in tool:
-    near = os.path.dirname(os.path.realpath(os.path.join(cwd, str(ti.get('file_path') or ti.get('notebook_path') or ''))))
+    target = os.path.join(cwd, str(ti.get('file_path') or ti.get('notebook_path') or ''))
+    if unread := unread_instructions(target, d):
+        sys.stderr.write(f"BLOCKED: read this repo's instructions first, with the Read tool, and follow them: {', '.join(unread)}\n")
+        sys.exit(2)
+    near = os.path.dirname(os.path.realpath(target))
     while not os.path.isdir(near): near = os.path.dirname(near)  # a new file's folder may not exist yet
     if why := no_preflight(near):
         sys.stderr.write(f"BLOCKED: {why}\n")

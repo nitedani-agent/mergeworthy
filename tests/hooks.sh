@@ -1382,6 +1382,47 @@ check "BLOCK: in ~/.mergeworthy/work/<task>/, a Tier M edit and an implementatio
 check "there, an artifact-root write passes" 0 "$(gate Write "{\"file_path\":\"$DW/prior-art.md\"}")"
 touch "$DW/prior-art.md"; mkdir -p "$DW/decisions"; touch "$DW/decisions/x.md"
 check "there, a Tier M edit passes once prior art and a decision exist" 0 "$(gate Edit "{\"file_path\":\"$D/a.ts\"}")"
+# ---------- pre-design-gate and pre-bash-guard: no file change in a repo before this session read its AGENTS.md and CLAUDE.md ----------
+I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
+IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q
+for x in "$I" "$IN"; do (cd "$x" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null); done
+ir_tr() { # <transcript> <event>...: read:<path> | bash:<cwd>|<command> | compact
+  python3 - "$@" <<'EOF'
+import json, sys
+out = open(sys.argv[1], 'w')
+w = lambda e: out.write(json.dumps(e) + '\n')
+call = lambda cwd, name, i: w({"type": "assistant", "cwd": cwd, "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": name, "input": i}]}})
+w({"type": "user", "message": {"role": "user", "content": "fix the bug"}})
+for ev in sys.argv[2:]:
+    kind, _, v = ev.partition(':')
+    if kind == 'read': call('/', 'Read', {"file_path": v})
+    elif kind == 'bash': call(v.split('|', 1)[0], 'Bash', {"command": v.split('|', 1)[1]})
+    elif kind == 'compact': w({"type": "system", "subtype": "compact_boundary", "content": "Conversation compacted"})
+EOF
+}
+iedit() { # <transcript> <tool> <file> [extra hook input as JSON]: pre-design-gate's exit code (its message in $T/ierr)
+  python3 -c 'import json,sys; d={"tool_name":sys.argv[2],"tool_input":{("notebook_path" if sys.argv[2]=="NotebookEdit" else "file_path"):sys.argv[3]},"cwd":sys.argv[4],"transcript_path":sys.argv[1]}; d.update(json.loads(sys.argv[5])); print(json.dumps(d))' "$1" "$2" "$3" "$T" "${4:-{\}}" | python3 "$R/hooks/pre-design-gate.py" 2>"$T/ierr"; echo $?
+}
+ibash() { # <transcript> <command>: pre-bash-guard's exit code for the command run in $I
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3],"transcript_path":sys.argv[1]}))' "$1" "$2" "$I" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?
+}
+IT="$T/instr.jsonl"; ir_tr "$IT"
+check "BLOCK: an edit in a repo whose root has AGENTS.md and CLAUDE.md, before reading them, naming both" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "read this repo's instructions first.*$I/AGENTS.md, $I/CLAUDE.md" "$T/ierr")"
+check "BLOCK: Write, MultiEdit and NotebookEdit there, and a new file in a new folder" "2 2 2 2" "$(iedit "$IT" Write "$I/b.ts") $(iedit "$IT" MultiEdit "$I/a.ts") $(iedit "$IT" NotebookEdit "$I/n.ipynb") $(iedit "$IT" Write "$I/new/dir/c.ts")"
+ir_tr "$IT" "read:$I/AGENTS.md"; check "BLOCK: with only AGENTS.md read, naming CLAUDE.md" "2 1" "$(iedit "$IT" Edit "$I/a.ts") $(grep -c "follow them: $I/CLAUDE.md$" "$T/ierr")"
+ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "an edit passes once both were read" 0 "$(iedit "$IT" Edit "$I/sub/a.ts")"
+ir_tr "$IT" "bash:$T|cd $I && cat AGENTS.md" "bash:$I|sed -n 1,40p CLAUDE.md"; check "a cat after cd, and a sed -n, count as reads" 0 "$(iedit "$IT" Edit "$I/a.ts")"
+ir_tr "$IT" "bash:$I|sed -i s/a/b/ AGENTS.md" "read:$I/CLAUDE.md"; check "BLOCK: sed -i doesn't count as a read" 2 "$(iedit "$IT" Edit "$I/a.ts")"
+ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md" compact; check "BLOCK: reads before the last compaction don't count" 2 "$(iedit "$IT" Edit "$I/a.ts")"
+check "BLOCK: no transcript at all" 2 "$(iedit "$T/no-such.jsonl" Edit "$I/a.ts")"
+SUB="$T/instr-agent.jsonl"; ir_tr "$SUB"; ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"
+check "BLOCK: a subagent whose own transcript has no read, though its session's has" 2 "$(iedit "$IT" Edit "$I/a.ts" "{\"agent_id\":\"a1\",\"agent_transcript_path\":\"$SUB\"}")"
+ir_tr "$IT"
+check "a repo without AGENTS.md or CLAUDE.md is never blocked" 0 "$(iedit "$IT" Edit "$IN/a.ts")"
+check "a path outside any git repo is never blocked" 0 "$(iedit "$IT" Write "$T/nogit/a.md")"
+check "BLOCK: a command writing into that repo before the reads: a redirect, tee, sed -i, cp" "2 2 2 2" "$(ibash "$IT" "echo x > $I/a.txt") $(ibash "$IT" "echo x | tee sub/b.txt") $(ibash "$IT" "sed -i s/a/b/ $I/a.ts") $(ibash "$IT" "cp /etc/hostname $I/h")"
+check "a command reading there, or writing outside it, passes" "0 0 0" "$(ibash "$IT" "cat $I/AGENTS.md") $(ibash "$IT" "echo x > /dev/null") $(ibash "$IT" "echo x > $T/nogit/a.md")"
+ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
 # ---------- pre-skill-gate: an action waits for the skills its always-on row names, opened since the last compaction ----------
 sg_tr() { # <transcript> <event>...: skill:<input.skill> | typed:<name> | compact | text
   python3 - "$@" <<'EOF'

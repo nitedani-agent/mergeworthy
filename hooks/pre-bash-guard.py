@@ -4,7 +4,7 @@ Checks each simple command separately (split at ; && || | & and newlines, heredo
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight
+from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, unread_instructions
 import steward, post_words
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -327,6 +327,10 @@ def by_agent():
     """A subagent's command: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
     return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
 
+def unread(path):
+    """The repo instructions this session hasn't read yet, for a command writing path (shellcmd.unread_instructions)."""
+    return unread_instructions(path, d)
+
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
@@ -414,6 +418,8 @@ def check(t, has_cd):
     files = [x for x in a if not x.startswith('-')]
     written = redirected + (files if p == 'tee' or p == 'sed' and any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a) else
                             files[-1:] if p in ('cp', 'mv', 'install') else [])
+    if missing := sorted({f for x in written for f in unread(os.path.join(run_dir, os.path.expanduser(x)))}):
+        block(f"read this repo's instructions first, with the Read tool, and follow them: {', '.join(missing)}")
     if any(x.endswith('.review.out') for x in written) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
