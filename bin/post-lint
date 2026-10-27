@@ -476,8 +476,8 @@ if status:
                        r'|\b(?:fixed|fixes|works|passe[sd]|fail(?:s|ed|ing)?|broke|breaks|reproduced|verified|confirmed|caus(?:es|ed)|returns|regression|bug|done in)\b', _st, re.I | re.M)
     if _claim:
         findings.append(f"status: {_claim[0].strip()[:40]!r} is a claim, a result or a number to check: post it as a reply, through the review (post step 3)")
-    for _s in re.split(r'(?<=[.!?])\s+|\n\s*\n', _st):  # the allowed form: anything else may hold a claim the lists above miss
-        _s = re.sub(r"^(?:@[\w-]+[\s,:]*)*(?:On it\b[\s:,.!]*)?(?:(?:Next|Then|Now|Meanwhile|After that),?\s+)?", '', _s.strip(), flags=re.I)
+    for _s in re.split(r'(?<=[.!?])\s+|\n\s*\n|\n(?=\s*(?:[-*+]|\d+[.)])\s)', _st):  # the allowed form: anything else may hold a claim the lists above miss
+        _s = re.sub(r"^(?:(?:[-*+]|\d+[.)])(?:\s+|$))?(?:@[\w-]+[\s,:]*)*(?:On it\b[\s:,.!]*)?(?:(?:Next|Then|Now|Meanwhile|After that),?\s+)?", '', _s.strip(), flags=re.I)
         if _s and not re.match(r"(?:I|we)(?:['’]m| am|['’]re| are)\s+(?:\w+\s+)?\w+ing\b|(?:I|we)(?:['’]ll| will)\b", _s, re.I) and not re.search(_by, _s, re.I):
             findings.append(f"status: {_s[:40]!r} says neither what is being done ('I'm rating …', 'I'll merge …') nor by when: post it as a reply, through the review (post step 3)")
     if re.search(r'\?|^#+\s*Decision\b|GENUINE-FORK', prose, re.M):
