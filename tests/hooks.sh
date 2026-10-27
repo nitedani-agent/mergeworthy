@@ -291,7 +291,8 @@ check "a PROMISED line in the session's watch dir counts, wherever the draft liv
 
 # ---------- a status post (post step 3): post-lint checks it in place of a review, and gate-pass takes `none` for it alone ----------
 FUT=$(date -u -d '+1 day' +%Y-%m-%dT%H:%MZ); PAST=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%MZ)
-sl() { printf '%s\n' "$2" > "$T/st.md"; MERGEWORTHY_BADGE="${3:-off}" python3 "$R/bin/post-lint" "$T/st.md" --kind status --parent none 2>/dev/null | grep -c "$1"; }
+# sl <finding> <draft> [badge]: the lines naming <finding>; with '' post-lint's exit code, so a crash isn't a pass
+sl() { printf '%s\n' "$2" > "$T/st.md"; local out rc; out=$(MERGEWORTHY_BADGE="${3:-off}" python3 "$R/bin/post-lint" "$T/st.md" --kind status --parent none 2>/dev/null); rc=$?; [ -n "$1" ] || { echo "$rc"; return; }; printf '%s\n' "$out" | grep -c "$1"; }
 check "status: what is being done and by when, in UTC, passes" 0 "$(sl '' "@brillout On it: I'm rating everything this PR adds or changes against your refactor skill, with one commit per refactor. The table of old ⇒ new ratings comes by $FUT.")"
 check "status: a time without UTC, one that passed, a relative one, and none at all are findings" "1 1 1 1" "$(sl 'without UTC' 'The table comes by 16:00.') $(sl 'has passed' "The table comes by $PAST.") $(sl 'relative time' "The table comes tomorrow, the rest by $FUT.") $(sl 'say by when' 'On it.')"
 check "status: a sha, a count, a result word, a table and a question each need the review" "1 1 1 1 1" "$(sl 'is a claim' "Fixed in abc1234, the rest by $FUT.") $(sl 'is a claim' "12 tests to go, done by $FUT.") $(sl 'is a claim' "It passes now, the docs come by $FUT.") $(sl 'is a claim' "$(printf '| a | b |\n|---|---|\n| 1 | 2 |\n\nBy %s.' "$FUT")") $(sl 'question or a decision' "Should it cover X? I recommend yes, by $FUT.")"
