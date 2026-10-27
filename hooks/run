@@ -12,7 +12,7 @@ cat "$err" >&2
 if [ "$rc" = 2 ]; then
   l="$(date -u +%F) $s $(head -1 "$err" | tr -s '[:space:]' ' ' | cut -d' ' -f1-8)"
   log="$HOME/.mergeworthy/hooks-fired.log"
-  grep -qxF "$l" "$log" 2>/dev/null || echo "$l" >> "$log" 2>/dev/null
+  { grep -qxF "$l" "$log" || echo "$l" >> "$log"; } 2>/dev/null  # no ~/.mergeworthy: nothing logged, the message unchanged
 fi
 rm -f "$err"
 exit "$rc"

@@ -93,6 +93,8 @@ printf 'import sys\nsys.stdin.read()\nprint("no gate record for x: run post-lint
 echo '{}' | bash "$HR/run" block.py 2>/dev/null; echo '{}' | bash "$HR/run" block.py 2>"$T/err"; rc=$?; echo '{}' | bash "$HR/run" ok.py
 check "hooks/run: a block keeps its exit code and message and is logged once a day; a pass isn't logged" "2|1|$(date -u +%F) block.py no gate record for x: run post-lint and" \
   "$rc|$(grep -c 'no gate record' "$T/err")|$(cat "$HOME/.mergeworthy/hooks-fired.log")"
+echo '{}' | HOME="$T/nohome" bash "$HR/run" block.py 2>"$T/err2"; rc=$?
+check "hooks/run without ~/.mergeworthy: the block's message alone, its exit code kept" "1|2" "$(wc -l < "$T/err2")|$rc"
 check "fired: a log younger than 60 days names no candidate" 1 "$(python3 "$R/bin/steward" fired | grep -c '^# no removal candidate yet')"
 echo '2026-01-01 pre-bash-guard.py BLOCK an old one' >> "$HOME/.mergeworthy/hooks-fired.log"
 out=$(python3 "$R/bin/steward" fired)
