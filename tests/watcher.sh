@@ -528,6 +528,15 @@ evs() { grep '^###' "$WH/$1/events.log" | tr '\n' '|'; }
 check "whole repo: new issue and PR reported once, the badge one and old threads not, /agent bodies are commands; :eyes: on each" \
   "8 10 11 4|### NEW ISSUE o/r#8 by me 2026-10-13T22:01:13Z <i8>: t8|### NEW PR o/r#10 by them 2026-10-13T22:03:00Z <i10>: t10|### AGENT COMMAND o/r#11 body 1011 by me 2026-10-13T22:04:00Z  <i11>|### UNROUTED /agent x/y#4 body 1004 by me 2026-10-13T22:00:00Z  <i4>||" \
   "$got|$(evs all)|$(evs other)$(evs bare)"
+got=$(py '
+B = "<img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\nDone."
+C = "<img src=\"https://github.com/openai.png\" width=\"20\"> *Codex wrote this.*\nDone."
+u = {"login": "another-agent-account", "assoc": "MEMBER"}
+Q = "> <img src=\"https://github.com/claude.png\" width=\"20\"> *Opus wrote this.*\n\nWhy this?"
+L = "Is https://github.com/openai.png the badge you mean? Please drop it."
+print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
+')
+check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'
