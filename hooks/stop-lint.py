@@ -2,7 +2,7 @@
 """Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
 or after posting on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers
 the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:reply)."""
-import glob, json, os, re, sys
+import glob, json, os, re, sys, time
 d = json.load(sys.stdin)
 if d.get('stop_hook_active'):
     sys.exit(0)
@@ -154,7 +154,7 @@ for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     home_wd = wd.replace(os.path.expanduser('~'), '~', 1)
     def mentions(c): return wd in c or home_wd in c
     if wd and (cwd_d == wd or cwd_d.startswith(wd.rstrip('/') + '/') or any(map(mentions, monitor_cmds))
-               or any(re.search(r'\b(gh-watch-start|gate-pass|steward round)\s+(--main\s+|--pass\s+)?(\S*/)?(' + re.escape(wd) + '|' + re.escape(home_wd) + r')(/\S*)?(\s|$)', c) for c in commands)): own_dirs.add(wd)  # started or posted from there, not merely mentioned
+               or any(re.search(r'\b(gh-watch-start|gate-pass)\s+(--main\s+)?(\S*/)?(' + re.escape(wd) + '|' + re.escape(home_wd) + r')(/\S*)?(\s|$)', c) for c in commands)): own_dirs.add(wd)  # started or posted from there, not merely mentioned
 _env = os.path.expanduser('~/.mergeworthy/settings.env')
 # MERGEWORTHY_WATCHER in the environment wins over the plugin option, as for every script
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
@@ -162,9 +162,16 @@ watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WA
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 # The user paused the work: nothing is to be watched or answered until they resume
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
-# A steward pass (gh-watch-start --pass or steward round, mergeworthy:steward) leaves nothing running: the next pass reads the replies, and
-# its dir's owed lines hold the turn as a live watcher's do
-pass_dirs = {os.path.realpath(os.path.expanduser(p)) for c in commands for p in re.findall(r'\b(?:gh-watch-start\s+--pass|steward\s+round)\s+(\S+)', c)}
+# A steward pass (gh-watch-start --pass, mergeworthy:steward) leaves nothing running: the next pass reads the replies. A round that ran
+# names its session in <dir>/passed; that dir's owed lines hold the session's turn as a live watcher's do
+def passed_by(wd):
+    try:
+        p = os.path.join(wd, 'passed')
+        return open(p).read().split()[0] if time.time() - os.path.getmtime(p) < 86400 else None
+    except (OSError, IndexError):
+        return None
+pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and passed_by(wd) == d['session_id']}
+own_dirs |= pass_dirs
 if posted and watcher_on and not headless and not paused and not pass_dirs and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
           "nothing else answers them. Run `gh-watch-start <your work folder> <owner/repo> <N>` and arm the Monitor it "
