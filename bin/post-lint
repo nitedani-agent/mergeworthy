@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
+"""post-lint <draft.md> [--kind reply|status|pr|issue|inline|tracker|proposal|title] [--draft] [--parent <file>|none]: checks a draft before it is posted to GitHub.
 Exit 1 with one line per finding. Checks: banned phrases, "stacked on" without gh stack, bare #N refs
 (must be owner/repo#N unless --repo matches), length budgets, unclassified maintainer notes, em dashes,
 process machinery in the thread, decisions not shown as code and lettered options, questions without a recommendation, and a bare "Done" answering a question.
 A reply or inline comment needs the comment it answers: <draft stem>.parent.md next to it, or --parent <file>;
 --parent none for a comment that answers nobody. --draft (with --kind pr): the body of a draft PR, which says why it is one.
+--kind status: a reply that only says what is being done and by when (post §Kinds), checked here instead of by a reviewer.
 Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for a human account."""
 import hashlib, os, re, sys, subprocess, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
@@ -15,7 +16,7 @@ def setting(name, default):
     saved = dict(l.strip().split('=', 1) for l in open(f) if '=' in l) if os.path.exists(f) else {}
     return os.environ.get(f'MERGEWORTHY_{name}') or saved.get(f'MERGEWORTHY_{name}', default)
 args = sys.argv[1:]
-USAGE = "usage: post-lint <draft.md> [--kind reply|pr|issue|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none]"
+USAGE = "usage: post-lint <draft.md> [--kind reply|status|pr|issue|inline|tracker|proposal|title] [--draft] [--repo owner/repo] [--parent <file>|none]"
 def arg(name, default):
     if name not in args: return default
     i = args.index(name)
@@ -23,7 +24,8 @@ def arg(name, default):
     return args[i + 1]
 if not args: sys.exit(USAGE)
 path = args[0]; kind = arg('--kind', 'reply'); repo = arg('--repo', None)
-kind = {'comment': 'reply'}.get(kind, kind)
+status = kind == 'status'  # linted as a reply, plus the status checks below
+kind = {'comment': 'reply', 'status': 'reply'}.get(kind, kind)
 _repo, _why = (repo, None) if repo else post_words.draft_repo(path)  # the language only: the other repo checks keep needing --repo
 W = post_words.words(_repo)  # the words the checks look for, in the repo's language
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
@@ -445,6 +447,36 @@ if kind in ('reply', 'inline'):
         if question and not suggestion_block and re.match(r'\s*(Done|Fixed|Removed|Applied|Changed|Reverted|Updated)\b', counted) \
                 and len(re.findall(r"[A-Za-z][\w'-]*", bare)) <= 4:
             findings.append("bare 'Done' answering a question or a soft suggestion: say what you checked and why you agree, or push back")
+# A status post skips the review (post step 3): it says only what is being done and by when, so nothing in it needs checking
+if status:
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if _m and re.search(r'\breview', _m.group(0), re.I):
+        findings.append("status: no reviewer worked on it, so the badge names only the writer")
+    _st = VISIBLE(text)
+    _times = []
+    for t in re.finditer(r'\b(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)(?::\d\d)?Z\b', _st):
+        _times.append(datetime.datetime.fromisoformat(f"{t[1]}T{t[2]}:{t[3]}+00:00"))
+    for t in re.finditer(r'(?<![\d:T-])(\d{1,2}):(\d\d)(?![\d:])(\s*(?:UTC|Z)\b)?', _st):
+        if not t[3]:
+            findings.append(f"status: {t[0]!r} without UTC: write every promised time in UTC ('by 16:00 UTC')")
+        elif int(t[1]) < 24:
+            _times.append(now.replace(hour=int(t[1]), minute=int(t[2]), second=0, microsecond=0))
+    _times += [None] if re.search(r'\b(?:tomorrow|tonight|later today|in an? (?:hour|minute)|in \d+ (?:hours?|minutes?))\b', _st, re.I) else []
+    if None in _times:
+        findings.append("status: a relative time ('tomorrow', 'in an hour'): write the time in UTC, with its date when it isn't today")
+    for at in (x for x in _times if x and x <= now):
+        findings.append(f"status: {at:%Y-%m-%d %H:%M} UTC has passed: promise a later time, with its date when it isn't today ('by 2026-10-28T16:00Z')")
+    if not _times:
+        findings.append("status: say by when, in UTC ('by 16:00 UTC'): a status post is what is being done and when")
+    _claim = re.search(r'```|^\s*\|.*\||\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b|/(?:commit|blob|tree|compare|files)\b|\b\d+(?:\.\d+)?\s*(?:%|ms\b|MB\b|GB\b|tests?\b|files?\b|lines?\b|calls?\b)|\d\s*(?:⇒|=>)\s*\d|\b\d+/10\b'
+                       r'|\b(?:fixed|fixes|works|passe[sd]|fail(?:s|ed|ing)?|broke|breaks|reproduced|verified|confirmed|caus(?:es|ed)|returns|regression|bug|done in)\b', _st, re.I | re.M)
+    if _claim:
+        findings.append(f"status: {_claim[0].strip()[:40]!r} is a claim, a result or a number to check: post it as a reply, through the review (post step 3)")
+    if re.search(r'\?|^#+\s*Decision\b|GENUINE-FORK', prose, re.M):
+        findings.append("status: a question or a decision needs the review: post it as a reply (post step 3)")
+    if words > 100:
+        findings.append(f"status: {words} words > 100: what is being done and by when, nothing else")
 for f in findings: print(f)
 # post step 3: the reviewer weighs each finding that adds words against this
 print(f"length: {words} words, " + (f"cap {cap}" if cap else "no cap"), file=sys.stderr)

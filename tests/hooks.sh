@@ -289,6 +289,20 @@ check "BLOCK: the draft's own \"I'll\" needs a PROMISED line" "1 1" "$(gp) $(gre
 WP="$T/wp"; mkdir -p "$WP"; echo sess1 > "$WP/session"; echo "$WP" >> "$HOME/.claude/gh-watch-dirs.txt"; echo "PROMISED o/r#1: a PR (r.md)" > "$WP/proposals-open.md"
 check "a PROMISED line in the session's watch dir counts, wherever the draft lives" 0 "$(CLAUDE_CODE_SESSION_ID=sess1 gp)"
 
+# ---------- a status post (post step 3): post-lint checks it in place of a review, and gate-pass takes `none` for it alone ----------
+FUT=$(date -u -d '+1 day' +%Y-%m-%dT%H:%MZ); PAST=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%MZ)
+sl() { printf '%s\n' "$2" > "$T/st.md"; MERGEWORTHY_BADGE="${3:-off}" python3 "$R/bin/post-lint" "$T/st.md" --kind status --parent none 2>/dev/null | grep -c "$1"; }
+check "status: what is being done and by when, in UTC, passes" 0 "$(sl '' "@brillout On it: I'm rating everything this PR adds or changes against your refactor skill, with one commit per refactor. The table of old ⇒ new ratings comes by $FUT.")"
+check "status: a time without UTC, one that passed, a relative one, and none at all are findings" "1 1 1 1" "$(sl 'without UTC' 'The table comes by 16:00.') $(sl 'has passed' "The table comes by $PAST.") $(sl 'relative time' "The table comes tomorrow, the rest by $FUT.") $(sl 'say by when' 'On it.')"
+check "status: a sha, a count, a result word, a table and a question each need the review" "1 1 1 1 1" "$(sl 'is a claim' "Fixed in abc1234, the rest by $FUT.") $(sl 'is a claim' "12 tests to go, done by $FUT.") $(sl 'is a claim' "It passes now, the docs come by $FUT.") $(sl 'is a claim' "$(printf '| a | b |\n|---|---|\n| 1 | 2 |\n\nBy %s.' "$FUT")") $(sl 'question or a decision' "Should it cover X? I recommend yes, by $FUT.")"
+check "status: a badge naming a reviewer is a finding" 1 "$(sl 'names only the writer' "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Opus 5.5 (low effort) wrote this; Opus 5.5 (low effort) reviewed it.*\nThe table comes by %s.' "$FUT")" on)"
+GS="$T/sdrafts/x"; mkdir -p "$GS"; cp "$TD/thread-context.md" "$GS/"; printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+1 minute' "$GS/s.md"
+sg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GS/s.md" none --kind "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
+check "BLOCK: gate-pass without a review for anything but a status post" "1 1" "$(sg reply) $(grep -c 'only a status post' "$T/gp.out")"
+check "BLOCK: a status post needs its PROMISED line" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+echo "PROMISED o/r#1: the ratings table (s.md)" > "$T/sdrafts/proposals-open.md"
+check "gate-pass gates a status post with no review once its PROMISED line is there" "0 yes" "$(sg status) $([ "$(sha256sum "$GS/s.md" | cut -d' ' -f1)" = "$(head -1 "$GS/s.md.gate")" ] && echo yes)"
+
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
 WD="$T/reg"; mkdir -p "$WD"; echo "$SPID" > "$WD/gh-watch.pid"
