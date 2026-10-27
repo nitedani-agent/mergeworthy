@@ -11,8 +11,9 @@ Threads are cached by updated_at under ~/.cache/mergeworthy/threads/.
                                        comment, and records the target's current latest human comment (gate-pass, pre-bash-guard)"""
 import json, os, re, subprocess, sys, datetime
 from concurrent.futures import ThreadPoolExecutor
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'watcher'))
+import gl_watch  # BADGE: what an agent's post starts with
 
-AGENT_BADGE = '<img src="https://github.com/claude.png"'
 LINKED_LAST = 30          # comments kept per linked thread
 LINKED_BODY = 4000        # characters kept per comment in a linked thread
 CACHE = os.path.expanduser('~/.cache/mergeworthy/threads')
@@ -45,7 +46,7 @@ def is_bot(u):
 def record(kind, c, at_key='created_at', extra=''):
     u = c.get('user') or {}
     body = c.get('body') or ''
-    return {'kind': kind, 'id': c.get('id') or 0, 'author': u.get('login') or 'ghost', 'bot': is_bot(u), 'agent': AGENT_BADGE in body,
+    return {'kind': kind, 'id': c.get('id') or 0, 'author': u.get('login') or 'ghost', 'bot': is_bot(u), 'agent': bool(gl_watch.BADGE.match(body)),
             'at': c.get(at_key) or c.get('created_at') or '', 'url': c.get('html_url') or '', 'body': body, 'extra': extra}
 
 def load(repo, num):
