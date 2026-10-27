@@ -455,7 +455,7 @@ if status:
         findings.append("status: no reviewer worked on it, so the badge names only the writer")
     _st = VISIBLE(text)
     _times = []
-    for t in re.finditer(r'\b(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)(?::\d\d)?Z\b', _st):
+    for t in re.finditer(r'\b(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)(?::\d\d)?Z\b', _st, re.I):
         _times.append(datetime.datetime.fromisoformat(f"{t[1]}T{t[2]}:{t[3]}+00:00"))
     for t in re.finditer(r'(?<![\d:T-])(\d{1,2}):(\d\d)(?![\d:])(\s*(?:UTC|Z)\b)?', _st):
         if not t[3]:
