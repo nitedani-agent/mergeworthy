@@ -22,7 +22,7 @@ esac
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
 own=$(sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d' "$d")  # quoted text is someone else's words, not a promise
-if [ "$kind" = status ] || printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; then
+if [ "$kind" = status ] || { printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; }; then
   # the list lives in the session's watch dir (github-threads), or beside a drafts folder kept in it
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
   while read -r w; do [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$(cat "$w/session" 2>/dev/null)" = "$CLAUDE_CODE_SESSION_ID" ] && po="$w/proposals-open.md"; done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)

@@ -295,11 +295,15 @@ sl() { printf '%s\n' "$2" > "$T/st.md"; MERGEWORTHY_BADGE="${3:-off}" python3 "$
 check "status: what is being done and by when, in UTC, passes" 0 "$(sl '' "@brillout On it: I'm rating everything this PR adds or changes against your refactor skill, with one commit per refactor. The table of old ⇒ new ratings comes by $FUT.")"
 check "status: a time without UTC, one that passed, a relative one, and none at all are findings" "1 1 1 1" "$(sl 'without UTC' 'The table comes by 16:00.') $(sl 'has passed' "The table comes by $PAST.") $(sl 'relative time' "The table comes tomorrow, the rest by $FUT.") $(sl 'say by when' 'On it.')"
 check "status: a sha, a count, a result word, a table and a question each need the review" "1 1 1 1 1" "$(sl 'is a claim' "Fixed in abc1234, the rest by $FUT.") $(sl 'is a claim' "12 tests to go, done by $FUT.") $(sl 'is a claim' "It passes now, the docs come by $FUT.") $(sl 'is a claim' "$(printf '| a | b |\n|---|---|\n| 1 | 2 |\n\nBy %s.' "$FUT")") $(sl 'question or a decision' "Should it cover X? I recommend yes, by $FUT.")"
+check "status: a time not after by or before (stop-lint's form), a link to code, a GENUINE-FORK line and over 100 words are findings" "1 1 1 1" "$(sl 'say by when' 'The table comes at 16:00 UTC.') $(sl 'is a claim' "See https://github.com/o/r/commit/abc, the rest by $FUT.") $(sl 'question or a decision' "$(printf 'The rest by %s.\nGENUINE-FORK: a or b; I recommend a' "$FUT")") $(sl '> 100' "$(printf 'word %.0s' $(seq 101)) by $FUT.")"
 check "status: a badge naming a reviewer is a finding" 1 "$(sl 'names only the writer' "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Opus 5.5 (low effort) wrote this; Opus 5.5 (low effort) reviewed it.*\nThe table comes by %s.' "$FUT")" on)"
 GS="$T/sdrafts/x"; mkdir -p "$GS"; cp "$TD/thread-context.md" "$GS/"; printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+1 minute' "$GS/s.md"
 sg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GS/s.md" none --kind "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass without a review for anything but a status post" "1 1" "$(sg reply) $(grep -c 'only a status post' "$T/gp.out")"
 check "BLOCK: a status post needs its PROMISED line" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The rebase lands by %s, and then I'"'"'ll merge.\n' "$FUT" > "$GS/s.md"; touch -d '+2 minutes' "$GS/s.md"
+check "BLOCK: a status post needs its PROMISED line even when it says it will merge" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+3 minutes' "$GS/s.md"
 echo "PROMISED o/r#1: the ratings table (s.md)" > "$T/sdrafts/proposals-open.md"
 check "gate-pass gates a status post with no review once its PROMISED line is there" "0 yes" "$(sg status) $([ "$(sha256sum "$GS/s.md" | cut -d' ' -f1)" = "$(head -1 "$GS/s.md.gate")" ] && echo yes)"
 

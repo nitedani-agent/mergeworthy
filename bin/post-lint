@@ -467,7 +467,7 @@ if status:
         findings.append("status: a relative time ('tomorrow', 'in an hour'): write the time in UTC, with its date when it isn't today")
     for at in (x for x in _times if x and x <= now):
         findings.append(f"status: {at:%Y-%m-%d %H:%M} UTC has passed: promise a later time, with its date when it isn't today ('by 2026-10-28T16:00Z')")
-    if not _times:
+    if not re.search(r'\b(?:by|before)\s+(?:\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?Z|\d{1,2}:\d\d\s*(?:UTC|Z)\b)', _st, re.I):  # the form stop-lint holds a PROMISED line to
         findings.append("status: say by when, in UTC ('by 16:00 UTC'): a status post is what is being done and when")
     _claim = re.search(r'```|^\s*\|.*\||\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b|/(?:commit|blob|tree|compare|files)\b|\b\d+(?:\.\d+)?\s*(?:%|ms\b|MB\b|GB\b|tests?\b|files?\b|lines?\b|calls?\b)|\d\s*(?:⇒|=>)\s*\d|\b\d+/10\b'
                        r'|\b(?:fixed|fixes|works|passe[sd]|fail(?:s|ed|ing)?|broke|breaks|reproduced|verified|confirmed|caus(?:es|ed)|returns|regression|bug|done in)\b', _st, re.I | re.M)
