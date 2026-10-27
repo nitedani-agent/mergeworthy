@@ -9,14 +9,14 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `code` | `delegate` |
 | `converge` | `design`, `finality`, `delegate`, `task`, `code`, `writing`, `pull-request`, `rules`, `post`, `merging` |
 | `delegate` | `code`, `writing` |
-| `design` | `pull-request`, `delegate`, `code`, `finality`, `writing`, `post`, `converge` |
+| `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
 | `evidence` | `post` |
 | `finality` | `delegate`, `code`, `post`, `design`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
-| `open-issue` | `pull-request`, `task`, `evidence`, `writing`, `post` |
+| `open-issue` | `pull-request`, `task`, `delegate`, `evidence`, `writing`, `post` |
 | `post` | `pull-request`, `open-issue`, `writing`, `delegate`, `task` |
-| `pull-request` | `post`, `evidence`, `design`, `finality`, `delegate`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
+| `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `delegate`, `reply` |
@@ -56,11 +56,11 @@ flowchart TB
   subgraph g0["Steps"]
     s0["12 rules: Worktree off the target<br/>repo's base, Check you can finish<br/>before you start, Already fixed?…"]
   end
-  s0 -.-> r1[["post"]]
-  s0 -.-> r2[["evidence"]]
-  s0 -.-> r3[["design"]]
-  s0 -.-> r4[["finality"]]
-  s0 -.-> r5[["delegate"]]
+  s0 -.-> r1[["delegate"]]
+  s0 -.-> r2[["post"]]
+  s0 -.-> r3[["evidence"]]
+  s0 -.-> r4[["design"]]
+  s0 -.-> r5[["finality"]]
   s0 -.-> r6[["code"]]
   s0 -.-> r7[["task"]]
   s0 -.-> r8[["docs"]]
@@ -118,8 +118,8 @@ flowchart TB
   subgraph g0["Steps"]
     s0["9 rules: Question the goal, Prototype on existing<br/>extension points first, Debate…"]
   end
-  s0 -.-> r1[["pull-request"]]
-  s0 -.-> r2[["delegate"]]
+  s0 -.-> r1[["delegate"]]
+  s0 -.-> r2[["pull-request"]]
   s0 -.-> r3[["code"]]
   s0 -.-> r4[["finality"]]
   s0 -.-> r5[["writing"]]
@@ -171,10 +171,11 @@ flowchart TB
   end
   s0 -.-> r1[["pull-request"]]
   s0 -.-> r2[["task"]]
-  s2 -.-> r3[["evidence"]]
-  s3 -.-> r4[["writing"]]
-  s4 -.-> r5[["post"]]
-  s4 -.-> r6[["evidence"]]
+  s2 -.-> r3[["delegate"]]
+  s2 -.-> r4[["evidence"]]
+  s3 -.-> r5[["writing"]]
+  s4 -.-> r6[["post"]]
+  s4 -.-> r7[["evidence"]]
   start --> g0
 ```
 
@@ -250,10 +251,11 @@ flowchart TB
     s4 --> s5
   end
   s1 -.-> r1[["task"]]
-  s3 -.-> r2[["delegate"]]
-  s5 -.-> r3[["reply"]]
-  s5 -.-> r4[["delegate"]]
-  s5 -.-> r5[["task"]]
+  s2 -.-> r2[["delegate"]]
+  s3 -.-> r3[["delegate"]]
+  s5 -.-> r4[["reply"]]
+  s5 -.-> r5[["delegate"]]
+  s5 -.-> r6[["task"]]
   start --> g0
 ```
 
