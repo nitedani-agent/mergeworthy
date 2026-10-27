@@ -35,6 +35,7 @@ STATE = os.path.join(HERE, 'gh-watch-state.json')
 THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
 PASS = '--pass' in sys.argv  # one round without a daemon (gh-watch-start --pass, mergeworthy:steward): it records what it reports, as a daemon's round does
+PASS_LOOKBACK = 7 * 86400  # a pass's first round reads back this far: no earlier round recorded where to start
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -378,7 +379,7 @@ def load_state():
         s.setdefault('etag', {})
         return s
     except Exception:
-        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=168 if PASS else 1)  # a first pass looks back a week
+        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=PASS_LOOKBACK if PASS else 3600)
         return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}, 'etag': {}}
 
 
@@ -1030,20 +1031,25 @@ def poll_feed(url, repo_of, watched, size):
     """One issue list, most recently updated first, with its validator. A watched thread whose update time moved since the last poll is
     published as activity, and its repo is marked for discovery (see discover_agent_commands). The first poll of a list only records.
     More pages are read while the page just read still shows moved threads: it ends on one the last poll saw changed, newer than the oldest
-    it saw, and FEED_PAGES isn't reached."""
+    it saw, and FEED_PAGES isn't reached. A pass's first poll reads back PASS_LOOKBACK instead: no daemon recorded the list before it."""
     pending, before = {}, shared_read()['feeds'].get(url)
+    first_pass = before is None and PASS
     key = lambda i: f"{repo_of(i)}#{i['number']}"
     resp = request(url, store=shared_read()['etags'], pending=pending, newest_first=True)
     if resp.status == 304:
         return
     page = items = resp.json()
-    oldest, pages = min(before.values()) if before else '', 1
-    while resp.next() and pages < FEED_PAGES and page and before and page[-1]['updated_at'] > oldest and before.get(key(page[-1])) != page[-1]['updated_at']:
+    if first_pass:
+        before, oldest = {}, iso(time.time() - PASS_LOOKBACK)
+    else:
+        oldest = min(before.values()) if before else ''
+    pages = 1
+    while resp.next() and pages < FEED_PAGES and page and (before or first_pass) and page[-1]['updated_at'] > oldest and before.get(key(page[-1])) != page[-1]['updated_at']:
         resp = request(resp.next())
         page = resp.json()
         items, pages = items + page, pages + 1
     seen = {key(i): i['updated_at'] for i in items}
-    moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
+    moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u and (not first_pass or u >= oldest)}
     for i in items:  # before the feed is recorded: a pass that ran out of calls finds them again, and claims keep each once
         if key(i) in moved:
             moved_thread(repo_of(i), i, key(i) not in before and (i.get('created_at') or '') >= oldest)
@@ -1061,7 +1067,7 @@ def moved_thread(repo, i, new):
     watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
     comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's."""
     num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
-    key, dirs = f"{repo}#{num}", live_dirs() + [HERE] * PASS  # a pass's dir has no daemon, but its round is the one reading
+    key, dirs = f"{repo}#{num}", live_dirs()
     if new and AGENT_CMD.match(body) and user.get('login') == ME:
         return agent_command(repo, num, 'body', i)
     d = next((d for d in dirs if repo_lines(d).get(repo)), None)
@@ -1100,7 +1106,8 @@ def first_line(path):
 
 
 def live_dirs():
-    return [d for d in dict.fromkeys(watch_dirs()) if live(d)]
+    """The watch dirs whose daemon runs, then a pass's own dir (--pass): it has no daemon, but its round is the one reading."""
+    return [d for d in dict.fromkeys(watch_dirs() + [HERE] * PASS) if live(d) or PASS and d == HERE]
 
 
 def repo_lines(d):
@@ -1214,7 +1221,7 @@ def discover_agent_commands():
     one lists. A feed is read with its ETag, newest first, only back to where the last read of that repo stopped. A failed call leaves
     the position, so it is retried."""
     started = iso(time.time())
-    first = iso_epoch(shared_read()['agent_since'] or iso(time.time() - 3600))
+    first = iso_epoch(shared_read()['agent_since'] or iso(time.time() - (PASS_LOOKBACK if PASS else 3600)))
     etags, ok = shared_read()['etags'], True
     repos, dirty, disc = watched_repos(), shared_read()['dirty'], shared_read()['disc']
     for repo in sorted(repos):

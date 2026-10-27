@@ -579,6 +579,22 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
+# a --pass dir has no daemon: its first poll of a list reads back a week, and /agent on a thread no one lists goes to it
+mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"
+got=$(py "$WHOLE"'
+import time
+m.PASS, m.HERE = True, os.path.join(WH, "pass")
+it = lambda n, created, upd: {"id": 2000 + n, "number": n, "user": {"login": "them"}, "body": "", "title": f"t{n}", "html_url": f"<p{n}>",
+                              "created_at": m.iso(time.time() - created * 86400), "updated_at": m.iso(time.time() - upd * 86400)}
+feed = [it(1, 1, 1), it(2, 30, 2), it(3, 30, 20)]
+m.request = lambda path, *a, **k: type("A", (), {"status": 200, "json": lambda self: feed if "/issues?" in path else {"body": ""}, "next": lambda self: None})()
+m.paged, m.react_eyes = (lambda *a, **k: []), (lambda *a: None)
+for _ in (1, 2): m.poll_feed("repos/p/q/issues?state=all", lambda i: "p/q", set(), 30)
+m.agent_command("p/q", 5, "comment", {"id": 77, "body": "/agent fix it", "user": {"login": m.ME}, "html_url": "<c77>", "updated_at": m.iso(time.time())})
+print(" ".join(open(os.path.join(m.HERE, "threads.txt")).read().split()))
+')
+check "a first --pass poll: a thread moved this week joins the pass dir, a new one is reported once, an older one not; /agent goes to the pass dir" \
+  "p/q 1 p/q 2 p/q 5|### NEW ISSUE p/q#1|### AGENT COMMAND p/q#5|" "$got|$(grep -o '^### [A-Z ]* p/q#[0-9]*' "$WH/pass/events.log" | tr '\n' '|')"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '
