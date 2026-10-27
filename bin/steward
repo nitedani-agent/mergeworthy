@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """steward round <folder> | owed | sessions [<folder>] [--since ISO] | metrics <folder> [--since ISO] [--author LOGIN]... | done <folder> <summary>:
 the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <folder> being the steward's. Reads only, except
-that `metrics` appends its records to <folder>/metrics.jsonl and `done` appends `<UTC time> <summary>` to <folder>/passes.txt.
+that `round` writes <folder>'s watcher files, `metrics` appends its records to <folder>/metrics.jsonl and `done` appends
+`<UTC time> <summary>` to <folder>/passes.txt.
 
 - round: `gh-watch-start --pass <folder> nitedani/mergeworthy all` plus every open PR of yours: one watcher round, no daemon.
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
