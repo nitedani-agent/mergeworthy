@@ -101,8 +101,13 @@ def task_dir(p):
     while p not in (home, '/'):
         if os.path.dirname(p) == home and p.endswith('-work'): return p
         p = os.path.dirname(p)
+parsed = {}
 def runs(rx):  # the simple commands of this session's commands that rx finds a word of: a push names git, a work folder's path names it
-    return [prog(t) for c in commands if re.search(rx, c) for t in segments(c)]
+    from concurrent.futures import ThreadPoolExecutor
+    todo = [c for c in dict.fromkeys(commands) if c not in parsed and re.search(rx, c)]
+    with ThreadPoolExecutor(8) as ex:  # each parse is its own shfmt process
+        parsed.update(zip(todo, ex.map(segments, todo)))
+    return [prog(t) for c in commands if re.search(rx, c) for t in parsed[c]]
 acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
                       for t in runs(r'(?:git|gh)'))
 # the folders it works in: its cwd, and where its commands cd, write, run git or the step tools; one it only read isn't
@@ -120,10 +125,10 @@ working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds)
 own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
 OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
-         r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|tell me (when|to|if|whether)|"
-         r"ask me (to|when|if)|ping me|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
-offer = re.search(OFFER, own, re.I)
-if working and offer and 'GENUINE-FORK' not in last:
+         r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"
+         r"(?:^[\s>*\-•]*|[.!?:;,]\s*|\b(?:or|and|just|please)\s+)(?:tell me (when|to|if|whether)|ask me (to|when|if)|ping me)|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
+offer = re.search(OFFER, own, re.I | re.M)
+if working and not child and offer and 'GENUINE-FORK' not in last:
     print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
           "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
           "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
@@ -149,8 +154,9 @@ if running and not child:
         c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
             # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
-            n = re.match(r'Delegated task (\S+) reached a terminal state', c)
-            if n: status[n.group(1)] = ('completed', status.get(n.group(1), ('', ''))[1])
+            # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
+            n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\])', c)
+            if n: status[n.group(1)] = (n.group(2) or 'completed', status.get(n.group(1), ('', ''))[1])
             elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status)$', b.get('name', '')):
@@ -213,13 +219,16 @@ if not child and re.search(DONE, own.strip()[:300], re.I):
 # ready, merged, CI green or red) is checked against GitHub now: the PR may have moved since the agent last looked (a maintainer
 # marks it ready, CI finishes), and the user acts on what the report says. "My reply to #12 is a draft" has another subject.
 REF = r"(?:https://github\.com/(?P<r1>[\w.-]+/[\w.-]+)/pull/(?P<n1>\d+)|(?<![\w/])(?P<r2>[\w.-]+/[\w.-]+)?#(?P<n2>\d+)\b)"
-SUBJECT = r"(?:^[\s>*\-•\d.)]*|(?<=[,;:(])\s*|\b(?:and|but|so|now|PR|MR|pull request)\s+)(?:PR\s*)?\(?" + REF + \
-          r"\)?(?:\s*\([^()\n]{0,80}\))?(?:'s\s+(?:CI|checks?|jobs?))?\s+"
-CI_ON = r"\b(?:CI|checks?)\s+(?:on|for|of)\s+(?:PR\s*)?" + REF + r"\s+"
-CLAIMS = [(claim, re.compile(subject + rx, re.I)) for subject in (SUBJECT, CI_ON) for claim, rx in [
-    ('a draft', r"(?:is|remains|stays)\s+(?:still\s+|now\s+)?(?:a\s+|in\s+)?draft\b"), ('ready for review', r"is\s+(?:now\s+)?(?:ready for review|out of draft|marked ready)\b"),
-    ('merged', r"(?:is|was|got|has been)\s+(?:now\s+)?merged\b"), ('green', r"(?:is|are)\s+(?:now\s+|all\s+)?(?:green|passing)\b"),
-    ('red', r"(?:is|are)\s+(?:still\s+|now\s+)?(?:red|failing)\b")] if subject == SUBJECT or claim in ('green', 'red')]
+SUBJECT = r"(?:^[\s>*\-•\d.)]*|(?<=[,;:(])\s*|\b(?:and|but|so|now)\s+)(?:(?:the\s+)?PR\s*)?\(?" + REF + \
+          r"\)?(?:\s*\([^()\n]{0,80}\))?(?:'s\s+(?:CI|checks?|jobs?)|:\s*(?:CI|checks?|jobs?))?\s+"
+STATE = {'a draft': r"(?:is|remains|stays)\s+(?:still\s+|now\s+)?(?:a\s+|in\s+)?draft\b", 'ready for review': r"is\s+(?:now\s+)?(?:ready for review|out of draft|marked ready)\b",
+         'merged': r"(?:is|was|got|has been)\s+(?:now\s+)?merged\b", 'green': r"(?:is|are)\s+(?:now\s+|all\s+)?(?:green|passing)\b", 'red': r"(?:is|are)\s+(?:still\s+|now\s+)?(?:red|failing)\b"}
+ON = r"\s+(?:on|for|of)\s+(?:PR\s*)?" + REF
+CLAIMS = [(c, re.compile(rx, re.I)) for c, rx in [(c, SUBJECT + x) for c, x in STATE.items()] + [
+    (c, r"\b(?:CI|checks?)" + ON + r"\s+" + STATE[c]) for c in ('green', 'red')] + [
+    (c, r"\b(?:CI|checks?|jobs?)\s+" + STATE[c] + ON) for c in ('green', 'red')] + [('green', r"\ball\s+\d+\s+(?:CI\s+)?(?:checks|jobs)\s+pass(?:ed)?" + ON)]]
+# a condition, a plan or a wait is no claim about now
+LATER = re.compile(r"\b(?:once|when|after|until|if|before|unless|whether|will|would|waiting|wait|expect)\b", re.I)
 if not child and last.strip():
     import subprocess
     def gh(*a):
@@ -236,7 +245,7 @@ if not child and last.strip():
     url_repos = re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', last)
     states, wrong = {}, []
     for sentence in re.split(r'(?<=[.!?])\s+|\n+', own):
-        for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I)]:
+        for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I) and not LATER.search(sentence[:m.end()])]:
             key = (m['r1'] or m['r2'], m['n1'] or m['n2'])
             if key not in states:
                 pr, why = None, ''

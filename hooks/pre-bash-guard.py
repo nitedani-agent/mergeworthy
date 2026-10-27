@@ -6,7 +6,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, git_argv, operands, GUARDED
+from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, git_argv, operands, unquoted, GUARDED
 import steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -83,13 +83,15 @@ def gh_login():
 
 def check_commit_identity(overrides, git_dir):
     """Commits are authored as the GitHub account that pushes them, never the global git identity (a user checkout's worktrees share its config).
-    While gh can't name the account (offline, never read), a commit passes: it stays local, and can be amended."""
+    While gh can't name the account (offline, never read), or the command computes the identity, a commit passes: it stays local, and can be amended."""
     name = overrides.get('user.name') or subprocess.run(['git', '-C', git_dir, 'config', 'user.name'], capture_output=True, text=True).stdout.strip()
     who = gh_login()
     if not who:
         return
     login, uid = who
     email = overrides.get('user.email') or subprocess.run(['git', '-C', git_dir, 'config', 'user.email'], capture_output=True, text=True).stdout.strip()
+    if re.search(r'[$`]', name + email):  # set when the command runs (`user.email=${id}+...`): a local commit, amendable
+        return
     if name != login or email != f'{uid}+{login}@users.noreply.github.com':
         block(f"commit author would be {name!r} <{email}>: commit as the pushing account, `git -c user.name={login} -c user.email={uid}+{login}@users.noreply.github.com commit ...`")
 
@@ -364,9 +366,21 @@ push_urls = []  # where this command's pushes go (pushed()), for the watcher che
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
+def repo_of(url):
+    """(host, repo path) of a remote URL in each form git takes (scheme://[user@]host[:port]/path, [user@]host:path); an ssh host
+    alias is resolved to its HostName. None for a local path."""
+    m = re.match(r'[a-z][\w+.-]*://(?:[^@/]*@)?([^/:]+)(?::\d*)?/(.+?)(?:\.git)?/*$', url, re.I) or re.match(r'(?:[^@/:]+@)?([^/:]+):(.+?)(?:\.git)?/*$', url)
+    if not m or url.startswith('file:'): return None
+    host = m[1].lower()
+    if not url.lower().startswith(('http://', 'https://')):
+        try: host = re.search(r'^hostname (\S+)', subprocess.run(['ssh', '-G', host], capture_output=True, text=True, timeout=10).stdout, re.M)[1].lower()
+        except (OSError, subprocess.TimeoutExpired, TypeError): pass
+    return host, m[2]
+
 def pushed(d, rest):
-    """(remote URL, [(commit, branch it updates)]) of a `git push <rest>` from d; no commits for a delete, tags only, or a local path."""
-    if '--delete' in rest or '-d' in rest: return '', []
+    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` from d: the remote's push URLs (pushurl, pushInsteadOf),
+    or the URL given; no commits for a delete, tags only, or a local path."""
+    if '--delete' in rest or '-d' in rest: return [], []
     if {'--all', '--branches', '--mirror'} & set(rest):
         block("push one branch, named (`git push <remote URL> <branch>`): each pushed head's records are checked (mergeworthy:merging step 1)")
     pos, skip = [], False
@@ -377,11 +391,17 @@ def pushed(d, rest):
     run = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True)
     git = lambda *a: run(*a).stdout.strip()
     to = git('rev-parse', '--abbrev-ref', '@{push}').split('/', 1)  # where a bare `git push` goes: remote/branch
-    remote = pos[0] if pos else to[0] or 'origin'
-    url = git('remote', 'get-url', remote) or remote
-    push_urls.append(url)
-    if re.match(r'(?:file://|/|\.{1,2}/|~)', url) and not re.match(r'[\w.-]+@[\w.-]+:', url):
-        return url, []  # a local path publishes nothing a reviewer or CI sees
+    remote = pos[0] if pos else (opt(rest, ['--repo']) or [to[0] or 'origin'])[-1]
+    if re.search(r'[$`]', remote):
+        block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out")
+    urls = git('remote', 'get-url', '--push', '--all', remote).split()
+    if not urls:  # a URL, rewritten as git does: the longest url.<base>.pushInsteadOf, else insteadOf, prefix
+        rules = [l.split(' ', 1) for l in git('config', '--get-regexp', r'^url\..*\.(push)?insteadof$').splitlines() if ' ' in l]
+        best = max((r for r in rules if remote.startswith(r[1])), key=lambda r: (r[0].endswith('pushinsteadof'), len(r[1])), default=None)
+        urls = [best[0][4:best[0].rindex('.')] + remote[len(best[1]):] if best else remote]
+    push_urls.extend(urls)
+    if all(repo_of(u) is None for u in urls):
+        return urls, []  # a local path publishes nothing a reviewer or CI sees
     out = []
     for spec in pos[1:] or ([] if '--tags' in rest else ['HEAD']):
         src, _, dst = spec.lstrip('+').partition(':')
@@ -392,16 +412,17 @@ def pushed(d, rest):
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
         branch = dst or (to[1] if not pos[1:] and len(to) > 1 else git('symbolic-ref', '--short', '-q', 'HEAD') if src == 'HEAD' else src)
         out.append((sha, re.sub(r'^refs/heads/', '', branch)))
-    return url, out
+    return urls, out
 
 def collaboration(d, url, heads):
     """([why this push is collaboration work], [{url, isDraft} of each open PR or MR it updates]): it updates an open PR's (MR's)
-    head, or goes to a repo the pushing account doesn't own. A push of its own (no PR, its own repo) has no why. When GitHub or
-    GitLab can't answer, a push to the account's own repo from a checkout of no one else's repo is its own; anything else blocks."""
-    m = work_folder.GITHUB.search(url) or re.search(r'(?:https://|git@|ssh://git@)([\w.-]*gitlab[\w.-]*)[:/](.+?)(?:\.git)?/?$', url)
-    if not (m and heads): return [], []
-    hub = 'github.com' in m[0]
-    host, repo = ('github.com', m[1]) if hub else (m[1], m[2])
+    head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab. A push of its own (no
+    PR, its own repo) has no why. When GitHub or GitLab can't answer, a push to the account's own repo from a checkout of no one
+    else's repo is its own; anything else blocks."""
+    if not heads or not (r := repo_of(url)): return [], []
+    host, repo = r
+    hub = host == 'github.com'
+    if not hub and 'gitlab' not in host: return [f"{host} is neither GitHub nor GitLab, so whether it updates a PR can't be told"], []
     owner = repo.rsplit('/', 1)[0]
     cli = ['gh', 'config', 'get', '-h', host, 'user'] if hub else ['glab', 'config', 'get', 'user', '--host', host]
     try: login = subprocess.run(cli, capture_output=True, text=True, timeout=20).stdout.strip()
@@ -425,7 +446,8 @@ def collaboration(d, url, heads):
         data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
         err = next((e for a, e in answers if not isinstance(a, list)), '')
     if data is None:
-        others = {o for o in re.findall(r'(?:github\.com|gitlab[\w.-]*)[:/]([\w.-]+)/', subprocess.run(['git', '-C', d, 'remote', '-v'], capture_output=True, text=True).stdout) if o != login}
+        others = {o[1].split('/')[0] for u in set(subprocess.run(['git', '-C', d, 'remote', '-v'], capture_output=True, text=True).stdout.split()[1::3])
+                  if (o := repo_of(u))} - {login}
         if login and login == owner and not others: return [], []
         block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
     if not hub:
@@ -552,8 +574,8 @@ def check(t, has_cd):
                         or (x.startswith('+') and len(x) > 1) for x in rest)
             if force or any(not re.match(r'^--force-with-lease=\S+:\S+$', x) for x in leases):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
-            url, heads = pushed(repo, rest)
-            why, prs = collaboration(repo, url, heads)
+            urls, heads = pushed(repo, rest)
+            why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
                 head, missing = missing_steps(repo)
@@ -674,7 +696,7 @@ def check(t, has_cd):
         for f in bodies + inputs: gated_file(f, has_cd, create=f in new_post_drafts(t))
 
 segs, err = parse(cmd)
-if err and (m := GUARDED.search(cmd)):  # its words are still checked below, but what they don't show can't be
+if err and (m := GUARDED.search(unquoted(cmd))):  # its words are still checked below, but what they don't show can't be
     verb = ' '.join(m.group(0).split()[:2])
     block(f"{err}, so this command's `{verb}` can't be checked" if 'shell parser' in err else f"this command doesn't parse ({err}), so its `{verb}` "
           "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
@@ -695,6 +717,9 @@ has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 for s in segs:
+    # a command named by an expansion (`"${a[@]}"`, `$GIT push`) runs what this hook can't see: one holding a guarded verb no command shows blocks
+    if prog(s)[:1] and prog(s)[0][:1] in '$`' and (m := GUARDED.search(unquoted(cmd))) and not any(GUARDED.search(' '.join(prog(x))) for x in segs if prog(x)[:1] and prog(x)[0][:1] not in '$`'):
+        block(f"`{prog(s)[0]}` runs a command named only when it runs, and this command holds `{' '.join(m.group(0).split()[:2])}`: write the command out")
     if s and all(re.match(r'^\w+=', x) for x in s):
         shell_vars.update(x.split('=', 1) for x in s)
     check(s, has_cd)

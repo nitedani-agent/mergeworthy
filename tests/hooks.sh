@@ -19,6 +19,7 @@ if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
+for a in "$@"; do case "$a" in o=*) [ -f "${f}_${a#o=}" ] && f="${f}_${a#o=}";; esac; done  # graphql: $FX/graphql_<owner> answers for that owner
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
 [ -f "$f" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
 q=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; shift; done
@@ -1011,6 +1012,7 @@ for e in ev:
     elif e == 'relaunch': res('delegate_task', 'running', 'Loop A', 'loop-a-2')
     elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
+    elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
 EOF
@@ -1033,6 +1035,7 @@ rl_tr $'Started Loop A again.
 
 Running:
 - Loop A on the new head' user notice relaunch; check "a title names its latest task: an earlier finished task of the same title isn't listed" 0 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other2; check "T3's newer notice (\`Delegated task <id> (<title>) [completed]:\`) is not the user either (the handoff session's 305 blocks)" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
@@ -1748,6 +1751,7 @@ check "BLOCK: a command that doesn't parse, holding a guarded verb, saying so; o
 check "BLOCK: a comment while gh can't read the thread (two in a row can't be checked)" "2 1" "$(GH_STUB_403=1 bg "gh issue comment 5 --repo o/r --body-file $D/new.md" "$T") $(grep -c "couldn't read o/r#5" "$T/err")"
 (cd "$TCO" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null); rm -f "$FX/user" "$HOME/.claude/gh-user.txt"
 check "a commit while gh can't say which account pushes (offline, nothing cached) passes: it stays local" 0 "$(bg 'git commit -m x' "$TCO")"
+check "an identity the command computes (\${id}, \$(git log ...)) isn't compared as written" 0 "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'id=42; git -c user.name=me -c user.email=${id}+me@users.noreply.github.com commit -m x' "$TCO")"
 echo 'me 42' > "$HOME/.claude/gh-user.txt"
 check "the account gh last named is the one checked while gh can't answer" "2 1" "$(bg 'git -c user.name=me -c user.email=me@example.com commit -m x' "$TCO") $(grep -c '42+me@users.noreply.github.com' "$T/err")"
 check "BLOCK: a hook that crashes (here on input it can't read) blocks, saying the check failed" "2 1" "$(printf 'not json' | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?) $(grep -c 'the check itself failed' "$T/err")"
@@ -1765,7 +1769,7 @@ if sys.argv[5]: d["last_assistant_message"]=sys.argv[5]
 print(json.dumps(d))' "$T/tr.jsonl" "${4:-$T}" "${2:-0}" "${3:-s-fc}" "${1:-}" | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 : > "$HOME/.claude/gh-watch-dirs.txt"
 hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or telling me to open a PR from a fork instead, is your call.' \
-             'I split them across lines by hand.\n\nTell me when to re-check CI.' \
+             $'I split them across lines by hand.\n\nTell me when to re-check CI.' \
              "I haven't opened one and haven't replied on the thread. Should I open the Telefunc PR and keep the workaround until it's released?" \
              'Telefunc would need a change to accept a full `request.url`. Do you want me to open that Telefunc PR and post the reply?' \
              'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
@@ -1851,6 +1855,30 @@ printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.
 tr_file 'README tidied.'
 check "a PR-state claim is checked only with the PR as its subject: not my reply to it, a quote, inline code or a code block" "2 0 0 0 0" \
   "$(slj 'o/r#12 is still a draft.') $(slj 'My reply to o/r#12 is a draft.') $(slj '> o/r#12 is still a draft') $(slj 'The lint flagged `o/r#12 is a draft`.') $(slj $'```\no/r#12 is a draft\n```')"
+# the bug hunt's push cases: every URL form, a computed remote, pushurl, --repo, pushInsteadOf, a later syntax error, an array
+gql nitedani-agent nitedani-agent; gql nitedani-agent vikejs; mv "$FX/graphql" "$FX/graphql_vikejs"; gql nitedani-agent nitedani-agent
+OWN2="$T/own2"; git clone -q "$OWN" "$OWN2"; git -C "$OWN2" remote set-url origin https://github.com/nitedani-agent/notes.git
+bp=; for c in 'git push https://x-access-token:T@github.com/vikejs/vike.git HEAD:s' 'git push ssh://git@github.com:22/vikejs/vike.git HEAD:s' \
+             'git push https://GitHub.com/vikejs/vike HEAD:s' 'git push git@example.org:me/x.git HEAD:s' 'U=https://github.com/vikejs/vike.git; git push $U HEAD:s' \
+             'git push --repo=https://github.com/vikejs/vike.git' $'"g"it push origin HEAD:s\nfi' 'a=(git push https://github.com/vikejs/vike.git HEAD:s); "${a[@]}"'; do
+  bp="$bp $(bg "$c" "$OWN2")"; done
+check "BLOCK: a push to another owner's repo however written: a token in the URL, ssh://host:port, GitHub.com, an unknown host, a variable, --repo, a quoted verb before a syntax error, an array" \
+  " 2 2 2 2 2 2 2 2" "$bp"
+git -C "$OWN2" config remote.origin.pushurl https://github.com/vikejs/vike.git
+check "BLOCK: a remote whose pushurl is another owner's repo" 2 "$(bg 'git push origin HEAD:s' "$OWN2")"
+git -C "$OWN2" config --unset remote.origin.pushurl; git -C "$OWN2" config url.https://github.com/vikejs/.pushInsteadOf https://github.com/nitedani-agent/
+check "BLOCK: a URL that pushInsteadOf rewrites to another owner's repo; without the rewrite it passes" "2 0" \
+  "$(bg 'git push https://github.com/nitedani-agent/notes.git HEAD:s' "$OWN2") $(git -C "$OWN2" config --unset url.https://github.com/vikejs/.pushInsteadOf; bg 'git push https://github.com/nitedani-agent/notes.git HEAD:s' "$OWN2")"
+check "parse: bash -c -- '<script>', \$'\\x67it', a herestring to bash -s, bash /dev/stdin <<EOF, find -exec, watch" "yes yes yes yes yes yes" \
+  "$(pushes "bash -c -- 'git push'") $(pushes "\$'\\x67it' push") $(pushes "bash -s x <<< 'git push'") $(pushes $'bash /dev/stdin <<EOF\ngit push\nEOF') $(pushes 'find . -maxdepth 0 -exec git push \;') $(pushes 'watch -n 5 git push')"
+printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/o/r/pull/12","head":{"sha":"abc"},"base":{"repo":{"full_name":"o/r"}}}' > "$FX/repos_o_r_pulls_12"
+printf '{"check_runs":[{"name":"t","status":"completed","conclusion":"failure"}]}' > "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
+tr_file 'README tidied.'
+check "a condition or a plan names no state: once, until, if, will" "0 0 0" \
+  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.')"
+check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
+  "$(slj 'o/r#12: CI is green.') $(slj 'CI is green on o/r#12.') $(slj 'All 12 checks pass on o/r#12.') $(slj 'o/r#12 is green.')"
+rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 # GitLab: a push to a group's repo is collaboration; one to the user's own namespace only while it is an open MR's source branch
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash
@@ -1861,6 +1889,7 @@ f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
 echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"
+check "GitLab: ssh://git@gitlab.com:22/ is the same own namespace" 0 "$(bg 'git push ssh://git@gitlab.com:22/me/app.git HEAD:scratch' "$GL")"
 check "GitLab: a push to its own namespace with no MR passes; to a group's repo, or an open MR's branch, it is blocked, naming why" "0 2 1 2 1" \
   "$(bg 'git push origin HEAD:scratch' "$GL") $(bg 'git push git@gitlab.com:acme/app.git HEAD:scratch' "$GL") $(grep -c "acme/app isn't me's" "$T/err") $(echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/4","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; bg 'git push origin HEAD:scratch' "$GL") $(grep -c 'updates https://gitlab.com/me/app/-/merge_requests/4' "$T/err")"
 # a plain question answered (no task, work folder, push, post, watcher or agent) is no mergeworthy work: no check-in, no hand-back check
@@ -1873,5 +1902,7 @@ QA2="opensource doesn't show up in this machine's Tailscale peer list. If the fi
 check "a plain Q&A answer (the user's 'can you access ssh the opensource machine?' session) gets no check-in and no hand-back block" "0 0 0" "$(qa "$QA1"; ci qa-1) $(qa "$QA1"; slj) $(qa "$QA2"; slj)"
 tr_file "$QA2" work
 check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
+tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
+check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or ask me to' are" "0 2 2" "$(slj) $(slj 'Tell me when to re-check CI.') $(slj 'I can rerun it, or ask me to stop.')"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

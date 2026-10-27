@@ -77,7 +77,7 @@ def _word(w, src):
         if t == 'Lit':
             out.append(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
         elif t == 'SglQuoted':
-            out.append(re.sub(r'\\(.)', lambda m: {'n': '\n', 't': '\t'}.get(m[1], m[1]), v, flags=re.S) if p.get('Dollar') else v)
+            out.append(v.encode('latin-1', 'backslashreplace').decode('unicode_escape', 'replace') if p.get('Dollar') else v)
         elif t == 'DblQuoted':
             out.append(''.join(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
                                for x in p.get('Parts') or []))
@@ -119,13 +119,20 @@ def _segments(tree, src, depth):
     without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
     (segs, docs), err = _calls(tree, src), ''
     for r, top in docs:
-        if any(prog(a)[:1] and os.path.basename(prog(a)[0]) in SHELLS and not [x for x in operands(prog(a)[1:]) if not x.startswith('-')]
-               for a in _calls(top, src)[0]) and depth < 4:
+        if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
             s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1)
         else:
             s, e = _segments(r['Hdoc'], src, depth)
         segs, err = segs + s, err or e
     return segs, err
+
+
+def reads_stdin(t):
+    """Whether argv t is a shell that runs what its stdin carries: no script operand, `-s`, or the script /dev/stdin."""
+    t = prog(t)
+    if not t or os.path.basename(t[0]) not in SHELLS or _nested(t) is not None: return False
+    ops = [x for x in operands(t[1:]) if not x.startswith(('-', '+'))]
+    return not ops or ops[0] in ('/dev/stdin', '-') or any(re.fullmatch(r'-[a-zA-Z]*s[a-zA-Z]*', x) for x in t[1:])
 
 
 REDIR = re.compile(r'\d*(?:&>>?|<<<|<<-?|<>|<&|>&|>>|>\||<|>)')
@@ -143,7 +150,12 @@ def operands(a):
 
 def _rough(cmd):
     """Words of a command that doesn't parse: quotes dropped, split at every separator; a guarded verb still shows."""
-    return [p.split() for p in re.split(r'[;&|()\n]+', re.sub(r'[\'"`\\]', ' ', cmd)) if p.split()]
+    return [p.split() for p in re.split(r'[;&|()\n`]+', unquoted(cmd)) if p.split()]
+
+
+def unquoted(cmd):
+    """cmd with its quote characters and escapes dropped: `"g"it push` reads git push."""
+    return re.sub(r'[\'"\\]', '', cmd)
 
 
 def _nested(t):
@@ -154,7 +166,8 @@ def _nested(t):
         return ' '.join(a)
     if name in SHELLS:
         i, c = 0, False
-        while i < len(a) and a[i][:1] in '-+' and a[i] not in ('-', '--'):
+        while i < len(a) and a[i][:1] in '-+' and a[i] != '-':
+            if a[i] == '--': i += 1; break
             c = c or re.fullmatch(r'-[a-zA-Z]*c[a-zA-Z]*', a[i]) is not None
             i += 2 if a[i] in ('-o', '+o', '-O', '+O') else 1
         return a[i] if c and i < len(a) else None
@@ -174,7 +187,11 @@ def parse(cmd, depth=0):
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
         segs, err = _rough(cmd), f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
     for s in list(segs):
-        script = _nested(s) if depth < 4 else None
+        t = prog(s)
+        if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
+            segs += [x.split('\0') for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
+        here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
+        script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
         if script:
             inner, e = parse(script, depth + 1)
             segs += inner
@@ -194,7 +211,7 @@ GUARDED = re.compile(r'\b(?:git\b.*?\b(?:push|commit)|gh\s+(?:pr|issue|api|relea
 WRAPPERS = {'sudo': ('-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U'), 'env': ('-u', '-C', '--unset', '--chdir'), 'command': (),
             'time': (), 'exec': (), 'nohup': (), 'setsid': (), 'netns-run': (), 'builtin': (),
             'nice': ('-n',), 'ionice': ('-c', '-n'), 'stdbuf': (), 'timeout': ('-s', '-k', '--signal', '--kill-after'),
-            'xargs': ('-I', '-n', '-P', '-L', '-d', '-a', '-E', '-s', '--max-args', '--max-procs', '--delimiter', '--arg-file')}
+            'watch': ('-n', '-d', '--interval'), 'parallel': ('-j', '--jobs'), 'xargs': ('-I', '-n', '-P', '-L', '-d', '-a', '-E', '-s', '--max-args', '--max-procs', '--delimiter', '--arg-file')}
 KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a command after these still runs
 
 
