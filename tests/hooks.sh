@@ -1744,9 +1744,13 @@ slj() { # [last_assistant_message] [stop_hook_active] [session] [cwd]: stop-lint
 if sys.argv[5]: d["last_assistant_message"]=sys.argv[5]
 print(json.dumps(d))' "$T/tr.jsonl" "${4:-$T}" "${2:-0}" "${3:-s-fc}" "${1:-}" | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 : > "$HOME/.claude/gh-watch-dirs.txt"
-hb=; for m in 'CI is running on the new head (932e25dc4), and nothing will notify me when it finishes.' 'Tell me when to re-check CI.' 'Ask me to check the run when you want it.' \
-             'I have not posted it yet. Tell me to check, or to post the reply now.' 'Do you want me to post it now that CI is green?'; do tr_file "$m"; hb="$hb $(slj)"; done
-check "BLOCK: the session's five hand-backs" " 2 2 2 2 2" "$hb"
+hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or telling me to open a PR from a fork instead, is your call.' \
+             'I split them across lines by hand.\n\nTell me when to re-check CI.' \
+             "I haven't opened one and haven't replied on the thread. Should I open the Telefunc PR and keep the workaround until it's released?" \
+             'Telefunc would need a change to accept a full `request.url`. Do you want me to open that Telefunc PR and post the reply?' \
+             'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
+             "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m"; hb="$hb $(slj)"; done
+check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
 tr_file 'README tidied.'
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.'
