@@ -3,11 +3,16 @@
 Pasted into every brief, after the role's template.
 
 - **Do exactly the brief.** Don't widen it, and don't pick another approach than the plan: stop and report why the plan is wrong instead. Do the work yourself; never start agents of your own.
-- **Before calling something unused,** find every caller (`grep -rn`) and read the comment above it.
 - **Search before theorizing:** for an error, an API's behavior or how others solved it, search the web and read the sources first, and whenever you're circling.
 - **Never say a step ran when it couldn't:** stop and say what blocked it.
 - **End your turn only with your result.** A turn ended while your own install or test still runs never reports back. A process you find later is your own leftover: check with `ps` and kill it by PID, never wait on it. Long installs skip postinstall downloads (`--ignore-scripts`) when the browsers or binaries are already cached.
 - **Your final message:** the result with evidence (`path:line`, or the command and its exit code) and a `not_checked` list, at most 15 lines; the rest goes to the file the brief names.
+
+## Code search
+
+- **`rg`, never `grep -r`.** When the session has a semantic code-search MCP (e.g. ChunkHound: `search` with type `semantic` or `regex`, `code_research`), use it first for two questions, then read the `path:line`s it cites before relying on them: how something works end to end, `code_research` (slow: minutes); code by what it does (what already does it, a prior implementation, a bug's siblings), semantic `search`, then `rg` for the names it finds. No such MCP: `rg` and reading.
+- **Only `rg` is exhaustive:** every caller, a rename, a literal. Code only in your worktree (new or uncommitted) may be missing from the MCP's index (a linked worktree can search its main checkout's): find it with `rg`. Before calling something unused, find every caller with `rg -uu` (it also searches ignored files: generated and vendored code) and read the comment above it.
+- The MCP builds its index in the background on its first use in a repo: until its status tool (ChunkHound: `daemon_status`) shows it done, results may be partial, so back an empty result with `rg`.
 
 ## Machine
 
