@@ -586,22 +586,33 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
-# a --pass dir has no daemon: its first poll of a list reads back a week, and /agent on a thread no one lists goes to it
+# a --pass dir has no daemon: its first round reads a list back a week, though a daemon polled it before, and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"
 got=$(py "$WHOLE"'
 import time
-m.PASS, m.HERE = True, os.path.join(WH, "pass")
+m.HERE = os.path.join(WH, "pass")
 it = lambda n, created, upd: {"id": 2000 + n, "number": n, "user": {"login": "them"}, "body": "", "title": f"t{n}", "html_url": f"<p{n}>",
                               "created_at": m.iso(time.time() - created * 86400), "updated_at": m.iso(time.time() - upd * 86400)}
 feed = [it(1, 1, 1), it(2, 30, 2), it(3, 30, 20)]
 m.request = lambda path, *a, **k: type("A", (), {"status": 200, "json": lambda self: feed if "/issues?" in path else {"body": ""}, "next": lambda self: None})()
 m.paged, m.react_eyes = (lambda *a, **k: []), (lambda *a: None)
-for _ in (1, 2): m.poll_feed("repos/p/q/issues?state=all", lambda i: "p/q", set(), 30)
+poll = lambda: m.poll_feed("repos/p/q/issues?state=all", lambda i: "p/q", set(), 30)
+poll()  # a daemon poll: the baseline, which reached no reader of the pass dir
+m.PASS = m.FIRST_PASS = True; poll(); m.FIRST_PASS = False; poll()
 m.agent_command("p/q", 5, "comment", {"id": 77, "body": "/agent fix it", "user": {"login": m.ME}, "html_url": "<c77>", "updated_at": m.iso(time.time())})
+for d in ("all", "other", "bare"): os.remove(os.path.join(WH, d, "gh-watch.pid"))  # no daemon runs: main_dir is the pass dir
+m.agent_command("u/v", 9, "comment", {"id": 78, "body": "/agent and this", "user": {"login": m.ME}, "html_url": "<c78>", "updated_at": m.iso(time.time())})
 print(" ".join(open(os.path.join(m.HERE, "threads.txt")).read().split()))
 ')
-check "a first --pass poll: a thread moved this week joins the pass dir, a new one is reported once, an older one not; /agent goes to the pass dir" \
-  "p/q 1 p/q 2 p/q 5|### NEW ISSUE p/q#1|### AGENT COMMAND p/q#5|" "$got|$(grep -o '^### [A-Z ]* p/q#[0-9]*' "$WH/pass/events.log" | tr '\n' '|')"
+check "a first --pass round: a thread moved this week joins the pass dir, a new one is reported once, an older one not; /agent goes to the pass dir" \
+  "p/q 1 p/q 2 p/q 5|### NEW ISSUE p/q#1|### AGENT COMMAND p/q#5|### UNROUTED /agent u/v#9|" "$got|$(grep -oE '^### [A-Z ]+(/agent )?[a-z/]+#[0-9]+' "$WH/pass/events.log" | tr '\n' '|')"
+got=$(py "$WHOLE"'
+m.PASS, m.HERE = True, os.path.join(WH, "pass")
+open(os.path.expanduser("~/.claude/gh-watch-dirs.txt"), "w").write("\n".join([m.HERE] + [os.path.join(WH, d) for d in ("all", "other", "bare")]) + "\n")
+print(" ".join(os.path.basename(d) for d in m.live_dirs()), os.path.basename(m.main_dir()))
+')
+check "a --pass dir comes after every live dir, though registered first, and a live dir stays main_dir" "all other bare pass all" "$got"
+printf '%s\n' "$WH/all" "$WH/other" "$WH/bare" "$WH/pass" > "$HOME/.claude/gh-watch-dirs.txt"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '

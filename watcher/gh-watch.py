@@ -36,6 +36,7 @@ THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
 PASS = '--pass' in sys.argv  # one round without a daemon (gh-watch-start --pass, mergeworthy:steward): it records what it reports, as a daemon's round does
 PASS_LOOKBACK = 7 * 86400  # a pass's first round reads back this far: no earlier round recorded where to start
+FIRST_PASS = False  # a pass in a dir with no state yet (main): its issue lists are read back PASS_LOOKBACK, whatever the shared baseline
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -577,7 +578,7 @@ def main_dir():
         m = ''
     if m and live(m):
         return m
-    return next((d for d in watch_dirs() if live(d)), None)
+    return next((d for d in watch_dirs() if live(d)), HERE if PASS else None)
 
 
 ERRORS = {}  # WATCH ERROR line -> when it was last printed
@@ -1031,28 +1032,25 @@ def poll_feed(url, repo_of, watched, size):
     """One issue list, most recently updated first, with its validator. A watched thread whose update time moved since the last poll is
     published as activity, and its repo is marked for discovery (see discover_agent_commands). The first poll of a list only records.
     More pages are read while the page just read still shows moved threads: it ends on one the last poll saw changed, newer than the oldest
-    it saw, and FEED_PAGES isn't reached. A pass's first poll reads back PASS_LOOKBACK instead: no daemon recorded the list before it."""
+    it saw, and FEED_PAGES isn't reached. A pass's first round reads back PASS_LOOKBACK instead: what moved before it reached no reader of its dir."""
     pending, before = {}, shared_read()['feeds'].get(url)
-    first_pass = before is None and PASS
     key = lambda i: f"{repo_of(i)}#{i['number']}"
     resp = request(url, store=shared_read()['etags'], pending=pending, newest_first=True)
     if resp.status == 304:
         return
     page = items = resp.json()
-    if first_pass:
-        before, oldest = {}, iso(time.time() - PASS_LOOKBACK)
-    else:
-        oldest = min(before.values()) if before else ''
+    oldest = iso(time.time() - PASS_LOOKBACK) if FIRST_PASS else min(before.values()) if before else ''
     pages = 1
-    while resp.next() and pages < FEED_PAGES and page and (before or first_pass) and page[-1]['updated_at'] > oldest and before.get(key(page[-1])) != page[-1]['updated_at']:
+    while resp.next() and pages < FEED_PAGES and page and (FIRST_PASS or before) and page[-1]['updated_at'] > oldest and (FIRST_PASS or before.get(key(page[-1])) != page[-1]['updated_at']):
         resp = request(resp.next())
         page = resp.json()
         items, pages = items + page, pages + 1
     seen = {key(i): i['updated_at'] for i in items}
-    moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u and (not first_pass or u >= oldest)}
+    moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
+    recent = {k for k, u in seen.items() if u >= oldest} if FIRST_PASS else set()
     for i in items:  # before the feed is recorded: a pass that ran out of calls finds them again, and claims keep each once
-        if key(i) in moved:
-            moved_thread(repo_of(i), i, key(i) not in before and (i.get('created_at') or '') >= oldest)
+        if key(i) in moved | recent:
+            moved_thread(repo_of(i), i, (FIRST_PASS or key(i) not in before) and (i.get('created_at') or '') >= oldest)
     now = time.time()
     def put(s):
         s['feeds'][url] = dict(list(seen.items())[:size])  # one page's worth: the next poll reads back to its oldest
@@ -1087,7 +1085,7 @@ def repo_feeds():
     """A shared job (shared_pass): once per poll interval for the whole machine, your own threads in all repos (one request) and the
     threads of others you watch, repo by repo. The notifications lag GitHub by 20-30 s and only name threads you are subscribed to;
     these name every watched thread at once, whoever wrote and whatever happened (a comment, a review, a push, a merge)."""
-    watched = set().union(*(listed_threads(d) for d in live_dirs() + [HERE]))
+    watched = set().union(*(listed_threads(d) for d in dict.fromkeys(live_dirs() + [HERE])))
     poll_feed(OWN_FEED, lambda i: i['repository']['full_name'], watched, 50)
     for repo in sorted(feed_repos()):
         poll_feed(f"repos/{repo}/issues?state=all&sort=updated&direction=desc&per_page=30", lambda i, repo=repo: repo, watched, 30)
@@ -1107,7 +1105,7 @@ def first_line(path):
 
 def live_dirs():
     """The watch dirs whose daemon runs, then a pass's own dir (--pass): it has no daemon, but its round is the one reading."""
-    return [d for d in dict.fromkeys(watch_dirs() + [HERE] * PASS) if live(d) or PASS and d == HERE]
+    return [d for d in dict.fromkeys(watch_dirs()) if live(d) and not (PASS and d == HERE)] + [HERE] * PASS
 
 
 def repo_lines(d):
@@ -1805,6 +1803,8 @@ def main():
         shared_pass(force=True)
         return
     if PASS:  # the shared jobs first: a thread that moved in a repo watched whole joins threads.txt, and the scan reads it
+        global FIRST_PASS
+        FIRST_PASS = not os.path.exists(STATE)
         steward_line()
         shared_pass(force=True)
         run_scan(everything=True)
