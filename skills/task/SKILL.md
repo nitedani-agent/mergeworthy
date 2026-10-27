@@ -79,6 +79,7 @@ The plugin's options (`/plugin` → mergeworthy → Configure options; an enviro
 
 Writes a missing project file from the repo's own record, every line quoted or linked:
 - **The base and the gates:** the base branch from `gh repo view --json defaultBranchRef`; the gates from the CI workflows and package scripts; running the app from the README and the contributing guide.
+- **What already guarantees things, the security surfaces:** one `code_research` per section (`delegate/agent.md` §Code search), else read the code.
 - **Who decides:** who merged the last 100 PRs and who wrote most of the code each area holds (`gh pr list --state merged --limit 100 --json number,author,mergedBy`; `git shortlog -sn origin/<base> -- <area>`).
 - **What they ask for:** every review and comment those people left on the last 30 merged or closed outside PRs (`gh api repos/<owner>/<repo>/pulls/<N>/comments`, `gh pr view <N> --comments`), and the commits they pushed onto our PRs (`gh pr list --author <our login> --state all`, then each PR's commits not ours), sorted into what they ask for, cut and rewrite, each with its link, into the project file's sections.
 - **The forms they merge:** the last 10 merged PR titles (`gh pr list --state merged --limit 10 --json title`) and the last 5 changesets or changelog entries, quoted, with the form each follows.
