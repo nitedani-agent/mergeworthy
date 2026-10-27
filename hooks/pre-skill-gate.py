@@ -19,7 +19,7 @@ ACTIONS = {
     'gh pr edit':            ('pull-request',) + WRITE,     # pull-request step 10
     'gh pr ready':           ('pull-request', 'merging'),   # merging step 3
     'gh pr merge':           ('merging',),                  # merging step 4
-    'git push':              ('task', 'pull-request', 'merging'),  # merging step 1, pull-request step 7
+    'git push':              ('merging',),                  # merging step 1; a collaboration push also needs scope.md (pre-bash-guard)
     'gh issue create':       ('task', 'open-issue') + WRITE,  # open-issue step 4
     'gh pr review':          ('review',) + WRITE,           # review step 4
     'a post in a thread':    WRITE,                         # comments, replies, body edits, gh api writes

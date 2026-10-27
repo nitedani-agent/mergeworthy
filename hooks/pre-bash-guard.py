@@ -59,9 +59,19 @@ def gated_file(p, has_cd, create=False):
         if os.path.exists(posted) and open(posted).read().strip() == sha:
             block(f"{p} was already posted: edit that post instead (PATCH / gh … edit)")
 
+def local_login():
+    """The account gh is logged in as, from its own config (no network); '' when gh can't say."""
+    try: return subprocess.run(['gh', 'config', 'get', '-h', 'github.com', 'user'], capture_output=True, text=True, timeout=20).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired): return ''
+
 def gh_login():
-    """[login, id] of the account gh pushes as, kept in ~/.claude/gh-user.txt for when gh can't answer; None when never read."""
-    cache = os.path.expanduser('~/.claude/gh-user.txt')
+    """[login, id] of the account gh pushes as: the id is read from GitHub once per login and kept in ~/.claude/gh-user.txt;
+    None when neither gh nor the cache can say."""
+    cache, login = os.path.expanduser('~/.claude/gh-user.txt'), local_login()
+    try: cached = open(cache).read().split()[:2]
+    except OSError: cached = []
+    if cached and cached[0] == (login or cached[0]):
+        return cached
     try:
         r = subprocess.run(['gh', 'api', 'user', '--jq', '.login + " " + (.id|tostring)'], capture_output=True, text=True, timeout=20)
         if r.returncode == 0 and len(r.stdout.split()) == 2:
@@ -69,15 +79,15 @@ def gh_login():
             return r.stdout.split()
     except (OSError, subprocess.TimeoutExpired):
         pass
-    try: return open(cache).read().split()[:2] or None
-    except OSError: return None
+    return None
 
 def check_commit_identity(overrides, git_dir):
-    """Commits are authored as the GitHub account that pushes them, never the global git identity (a user checkout's worktrees share its config)."""
+    """Commits are authored as the GitHub account that pushes them, never the global git identity (a user checkout's worktrees share its config).
+    While gh can't name the account (offline, never read), a commit passes: it stays local, and can be amended."""
     name = overrides.get('user.name') or subprocess.run(['git', '-C', git_dir, 'config', 'user.name'], capture_output=True, text=True).stdout.strip()
     who = gh_login()
     if not who:
-        block("gh can't say which account pushes (`gh auth status`), so the commit's author can't be checked: fix gh's login, then commit")
+        return
     login, uid = who
     email = overrides.get('user.email') or subprocess.run(['git', '-C', git_dir, 'config', 'user.email'], capture_output=True, text=True).stdout.strip()
     if name != login or email != f'{uid}+{login}@users.noreply.github.com':
@@ -354,20 +364,9 @@ push_urls = []  # where this command's pushes go (pushed()), for the watcher che
 def git_head(d):
     return subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
-def pr_state(d):
-    """'ready', 'draft' or 'none' for the PR of d's branch; gh failing any other way blocks: the push gates depend on it."""
-    try:
-        r = subprocess.run(['gh', 'pr', 'view', '--json', 'isDraft,state', '--jq', 'if .state != "OPEN" then "none" elif .isDraft then "draft" else "ready" end'],
-                           cwd=d, capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        r = subprocess.CompletedProcess([], 1, '', str(e))
-    if r.returncode == 0 and r.stdout.strip() in ('ready', 'draft', 'none'): return r.stdout.strip()
-    if 'no pull requests found' in r.stderr or 'known GitHub host' in r.stderr: return 'none'  # no PR, or a checkout of no GitHub repo
-    block(f"gh couldn't read this branch's PR ({r.stderr.strip()[:160]}), so its push gates can't be checked: retry once gh answers")
-
 def pushed(d, rest):
-    """The commits a `git push <rest>` from d publishes to a remote that isn't a local path; [] for a delete or tags only."""
-    if '--delete' in rest or '-d' in rest: return []
+    """(remote URL, [(commit, branch it updates)]) of a `git push <rest>` from d; no commits for a delete, tags only, or a local path."""
+    if '--delete' in rest or '-d' in rest: return '', []
     if {'--all', '--branches', '--mirror'} & set(rest):
         block("push one branch, named (`git push <remote URL> <branch>`): each pushed head's records are checked (mergeworthy:merging step 1)")
     pos, skip = [], False
@@ -375,23 +374,67 @@ def pushed(d, rest):
         if skip: skip = False
         elif x in ('-o', '--push-option', '--repo', '--receive-pack', '--exec'): skip = True
         elif not x.startswith('-'): pos.append(x)
-    git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True)
-    remote = pos[0] if pos else (git('rev-parse', '--abbrev-ref', '@{push}').stdout.strip().split('/')[0] or 'origin')
-    url = git('remote', 'get-url', remote).stdout.strip() or remote
+    run = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True)
+    git = lambda *a: run(*a).stdout.strip()
+    to = git('rev-parse', '--abbrev-ref', '@{push}').split('/', 1)  # where a bare `git push` goes: remote/branch
+    remote = pos[0] if pos else to[0] or 'origin'
+    url = git('remote', 'get-url', remote) or remote
     push_urls.append(url)
     if re.match(r'(?:file://|/|\.{1,2}/|~)', url) and not re.match(r'[\w.-]+@[\w.-]+:', url):
-        return []  # a local path publishes nothing a reviewer or CI sees
-    specs = pos[1:] or ([] if '--tags' in rest else ['HEAD'])
+        return url, []  # a local path publishes nothing a reviewer or CI sees
     out = []
-    for spec in specs:
-        src = spec.lstrip('+').split(':', 1)[0]
-        if not src or git('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0 or src.startswith('refs/tags/'):
+    for spec in pos[1:] or ([] if '--tags' in rest else ['HEAD']):
+        src, _, dst = spec.lstrip('+').partition(':')
+        if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
             continue  # a delete (:dst), or a tag
-        sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}').stdout.strip()
+        sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
         if not sha:
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
-        out.append(sha)
-    return out
+        branch = dst or (to[1] if not pos[1:] and len(to) > 1 else git('symbolic-ref', '--short', '-q', 'HEAD') if src == 'HEAD' else src)
+        out.append((sha, re.sub(r'^refs/heads/', '', branch)))
+    return url, out
+
+def collaboration(d, url, heads):
+    """([why this push is collaboration work], [{url, isDraft} of each open PR or MR it updates]): it updates an open PR's (MR's)
+    head, or goes to a repo the pushing account doesn't own. A push of its own (no PR, its own repo) has no why. When GitHub or
+    GitLab can't answer, a push to the account's own repo from a checkout of no one else's repo is its own; anything else blocks."""
+    m = work_folder.GITHUB.search(url) or re.search(r'(?:https://|git@|ssh://git@)([\w.-]*gitlab[\w.-]*)[:/](.+?)(?:\.git)?/?$', url)
+    if not (m and heads): return [], []
+    hub = 'github.com' in m[0]
+    host, repo = ('github.com', m[1]) if hub else (m[1], m[2])
+    owner = repo.rsplit('/', 1)[0]
+    cli = ['gh', 'config', 'get', '-h', host, 'user'] if hub else ['glab', 'config', 'get', 'user', '--host', host]
+    try: login = subprocess.run(cli, capture_output=True, text=True, timeout=20).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired): login = ''
+    def ask(args):
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, timeout=30)
+            return (json.loads(r.stdout) if r.returncode == 0 else None), r.stderr.strip()
+        except (OSError, subprocess.TimeoutExpired, ValueError) as e: return None, str(e)
+    if hub:
+        q = 'query($o:String!,$n:String!' + ''.join(f',$b{i}:String!' for i in range(len(heads))) + '){viewer{login} repository(owner:$o,name:$n){owner{login} ' + \
+            ' '.join(f'b{i}:ref(qualifiedName:$b{i}){{associatedPullRequests(states:OPEN,first:5){{nodes{{url isDraft}}}}}}' for i in range(len(heads))) + '}}'
+        data, err = ask(['gh', 'api', 'graphql', '-f', f'query={q}', '-f', f'o={owner}', '-f', f'n={repo.split("/")[1]}',
+                         *[x for i, (_, b) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
+        data = (data.get('data') or {}).get('repository') and data['data'] if isinstance(data, dict) else None
+    elif login and owner != login:
+        return [f"{repo} isn't {login}'s"], []
+    else:
+        import urllib.parse
+        answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b in heads]
+        data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
+        err = next((e for a, e in answers if not isinstance(a, list)), '')
+    if data is None:
+        others = {o for o in re.findall(r'(?:github\.com|gitlab[\w.-]*)[:/]([\w.-]+)/', subprocess.run(['git', '-C', d, 'remote', '-v'], capture_output=True, text=True).stdout) if o != login}
+        if login and login == owner and not others: return [], []
+        block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
+    if not hub:
+        mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft'))} for x in data if isinstance(x, dict)]
+        return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs), mrs
+    prs = [p for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
+    why = [f"it updates {', '.join(p['url'] for p in prs)}"] * bool(prs) + \
+          [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])
+    return why, prs
 
 def task_folder(top):
     """The task's work folder holding checkout top (task §Files): ~/.mergeworthy/work/<task>/, or an older ~/<name>-work/ holding it or beside it."""
@@ -414,14 +457,14 @@ def failing_jobs(urls):
         out.update({x.get('name'): u for x in rows if isinstance(x, dict) and x.get('bucket') in ('fail', 'cancel')})
     return out
 
-def check_workflow(what, d, commits):
-    """task steps 2-3 and pull-request steps 1 and 6 by their records, before every push of commits and every `gh pr create`,
-    draft or not, whichever skills the session opened: the checkout is in the task's work folder, its scope.md opens with the
-    Tier line and lists the asks as checkboxes, and each pushed head has a passing `pr-steps quick` (or `gates`) log whose
-    lines name every failing CI job of the PRs its open boxes link and of this branch's PR, so a CI fix is reproduced here first."""
+def check_workflow(what, d, commits, updates=()):
+    """task steps 2-3 and pull-request steps 1 and 6 by their records, before a collaboration push (collaboration()) and every
+    `gh pr create`, draft or not, whichever skills the session opened: the checkout is in the task's work folder, its scope.md
+    opens with the Tier line and lists the asks as checkboxes, and each pushed head has a passing `pr-steps quick` (or `gates`)
+    log whose lines name every failing CI job of the PRs its open boxes link and of the PRs it updates, so a CI fix is reproduced here first."""
     top = subprocess.run(['git', '-C', d, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
     if not top:
-        if what == 'this push': return  # outside a work tree git itself refuses the push
+        if what.startswith('this push'): return  # outside a work tree git itself refuses the push
         block(f"{what} runs from the PR branch's checkout (mergeworthy:pull-request step 7), so its records can be checked")
     wf = task_folder(top)
     if not wf:
@@ -430,11 +473,9 @@ def check_workflow(what, d, commits):
     text = open(scope, errors='replace').read() if os.path.isfile(scope) else ''
     if not re.match(r'\s*Tier:\s*[0SML]\b', text) or not re.search(r'^\s*[-*] \[[ xX]\] ', text, re.M):
         block(f"{scope} needs line 1 `Tier: <0|S|M|L>, because <signals>` and a checkbox per ask, with its link (mergeworthy:task steps 2-3), before {what}")
-    prs = sorted(set(re.findall(r'https://github\.com/[\w.-]+/[\w.-]+/pull/\d+', '\n'.join(re.findall(r'^\s*[-*] \[ \] .*$', text, re.M)))))
-    if what == 'this push' and pr_state(top) != 'none':
-        prs.append(subprocess.run(['gh', 'pr', 'view', '--json', 'url', '--jq', '.url'], cwd=top, capture_output=True, text=True, timeout=20).stdout.strip())
-    jobs = failing_jobs([u for u in dict.fromkeys(prs) if u])
-    if what == 'this push':  # the PR this push updates is answered by a watcher on its repo (task step 5): upstream, origin or the fork pushed to
+    prs = re.findall(r'https://github\.com/[\w.-]+/[\w.-]+/pull/\d+', '\n'.join(re.findall(r'^\s*[-*] \[ \] .*$', text, re.M))) + list(updates)
+    jobs = failing_jobs(dict.fromkeys(prs))
+    if what.startswith('this push'):  # the PR this push updates is answered by a watcher on its repo (task step 5): upstream, origin or the fork pushed to
         urls = subprocess.run(['git', '-C', top, 'remote', '-v'], capture_output=True, text=True).stdout + ' ' + ' '.join(push_urls)
         repos = sorted({m[0] or 'gitlab.com/' + m[1] for m in re.findall(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)|gitlab\.com[:/]([\w./-]+?)(?:\.git)?(?:\s|$)', urls)})
         if repos: need_watch(repos)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
@@ -492,10 +533,12 @@ def check(t, has_cd):
         repo, overrides, sub, rest = git_argv(t, run_dir)
         if sub in ('commit', 'push'):
             check_steward(repo)
-        if sub == 'commit':
+        if sub == 'commit' and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
             if why := no_preflight(repo):
                 block(why)
             check_commit_identity(overrides, repo)
+        if sub == 'push' and not os.path.isdir(repo) and '--help' not in rest:
+            block(f"can't tell which checkout this push runs in (a cd to {repo}), so what it publishes can't be checked: cd to an absolute path first")
         if sub == 'stash':
             first = rest[0] if rest else ''
             ok = first in ('list', 'show', 'apply', 'branch', 'create', 'store') or \
@@ -509,11 +552,12 @@ def check(t, has_cd):
                         or (x.startswith('+') and len(x) > 1) for x in rest)
             if force or any(not re.match(r'^--force-with-lease=\S+:\S+$', x) for x in leases):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
-            commits = pushed(repo, rest)
-            if commits:
-                check_workflow('this push', repo, commits)
+            url, heads = pushed(repo, rest)
+            why, prs = collaboration(repo, url, heads)
+            if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
+                check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
                 head, missing = missing_steps(repo)
-                if missing and pr_state(repo) == 'ready':
+                if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
     if p in ('curl', 'wget', 'http', 'https', 'xh') and any(re.search(r'\bapi\.github\.com\b|github\.com/api/', x) for x in a) and \
             any(re.fullmatch(r'-X|--request|-d|--data[\w-]*|-F|--form|--json|-T|--upload-file|--method|POST|PATCH|PUT|DELETE|-\w*[dXFT]', x) or re.match(r'--(?:request|method)=', x) for x in a):
@@ -631,8 +675,9 @@ def check(t, has_cd):
 
 segs, err = parse(cmd)
 if err and (m := GUARDED.search(cmd)):  # its words are still checked below, but what they don't show can't be
-    block(f"this command doesn't parse ({err}), so its `{' '.join(m.group(0).split()[:2])}` can't be checked: split it into simple commands, "
-          "a message or body in a file (`git commit -F <file>`, `--body-file`)")
+    verb = ' '.join(m.group(0).split()[:2])
+    block(f"{err}, so this command's `{verb}` can't be checked" if 'shell parser' in err else f"this command doesn't parse ({err}), so its `{verb}` "
+          "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
 if re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) and not d.get('tool_input', {}).get('run_in_background'):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
@@ -652,8 +697,6 @@ shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for th
 for s in segs:
     if s and all(re.match(r'^\w+=', x) for x in s):
         shell_vars.update(x.split('=', 1) for x in s)
-    if not os.path.isdir(run_dir) and GUARDED.search(' '.join(prog(s))):
-        block(f"can't tell which folder `{' '.join(prog(s)[:3])}` runs in (a cd to {run_dir}), so it can't be checked: cd to an absolute path first")
     check(s, has_cd)
     if prog(s)[:1] in (['cd'], ['pushd']):
         has_cd = True

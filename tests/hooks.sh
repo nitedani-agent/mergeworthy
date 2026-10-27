@@ -5,6 +5,7 @@
 # post-bash-register must see github.com URLs (those go only into the hook's stdin, never to this script's output).
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
+export MERGEWORTHY_PYDEPS=${MERGEWORTHY_PYDEPS:-$HOME/.mergeworthy/pydeps}  # the shell parser the hooks run, installed once outside the temp HOME
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -12,7 +13,8 @@ cat > "$T/bin/gh" <<'EOF'
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands
-[ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] && { echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
+[ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
+[ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
@@ -69,8 +71,10 @@ sleep 600 & SPID=$!
 WD="$T/work/x"; mkdir -p "$WD" "$T/work/x-2/sub" "$WD/sub"
 echo "$SPID" > "$WD/gh-watch.pid"
 echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
-tr_file() { # final assistant text
-  python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"tidy up the README"}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))' "$1" > "$T/tr.jsonl"
+tr_file() { # final assistant text [work: the session started an agent, so it does mergeworthy work]
+  python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"tidy up the README"}}))
+if sys.argv[2:] == ["work"]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"a1","input":{"prompt":"x"}}]}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))' "$@" > "$T/tr.jsonl"
 }
 stop() { # cwd (the other checks; the check-in has its own test)
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2]}))' "$T/tr.jsonl" "$1" \
@@ -80,7 +84,7 @@ checkin() { # stop_hook_active
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":sys.argv[3]=="1"}))' "$T/tr.jsonl" "$T" "$1" \
     | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?
 }
-tr_file "Loop A is done."
+tr_file "Loop A is done." work
 check "the first stop of a turn gets the check-in" 2 "$(checkin 0)"
 check "the next stop goes through" 0 "$(checkin 1)"
 check "no second check-in within 30 minutes of the last" 0 "$(checkin 0)"
@@ -996,14 +1000,16 @@ rl_tr() { # final-text then status events: status:<s> (a task_status read) | use
   python3 - "$T/tr.jsonl" "$@" <<'EOF'
 import json, sys
 f, text, *ev = sys.argv[1:]; out = open(f, 'w'); w = lambda o: out.write(json.dumps(o) + '\n'); n = [0]
-def res(name, st, title=''):
+def res(name, st, title='', tid='loop-a-1'):
     n[0] += 1; i = f'tu{n[0]}'
     w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": i, "name": f"mcp__t3-code__{name}", "input": {"title": title, "taskId": "x"}}]}})
-    w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i, "content": json.dumps({"taskId": "node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "status": st})}]}})
+    w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i, "content": json.dumps({"taskId": "node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3A" + tid, "status": st})}]}})
 w({"type": "user", "message": {"content": "run loop A"}}); res('delegate_task', 'running', 'Loop A')
 for e in ev:
     if e == 'user': w({"type": "user", "message": {"content": "status?"}})
     elif e == 'notice': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 reached a terminal state. Use task_status"}})
+    elif e == 'relaunch': res('delegate_task', 'running', 'Loop A', 'loop-a-2')
+    elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
@@ -1015,6 +1021,18 @@ rl_tr $'Done for now.\n\n**Running:**\n- loop-a-1, the bug hunt' user status:fai
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running; check "a Running list read live, its task still running, passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other; check "another task's T3 completion notice is not the user: a list read live before it passes" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running notice; check "BLOCK: a Running list naming the task whose completion notice came in" 2 "$(stop "$T")"
+rl_tr $'Started Loop A.
+
+Running:
+- Loop A on the head'; check "a task launched since the user's last message needs no read: its Running list passes (the vike-react-rsc handoff session, 305 blocks)" 0 "$(stop "$T")"
+rl_tr $'Done for now.
+
+Running:
+- Loop A on the head' user status:running feedback; check "a stop hook's feedback is not the user: a list read before it passes" 0 "$(stop "$T")"
+rl_tr $'Started Loop A again.
+
+Running:
+- Loop A on the new head' user notice relaunch; check "a title names its latest task: an earlier finished task of the same title isn't listed" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
@@ -1447,7 +1465,7 @@ check "BLOCK: gh pr merge without merging" 2 "$(sgb 'gh pr merge 5 --squash')"
 sg_tr "$T/sg.jsonl" typed:mergeworthy:merging skill:task skill:pull-request
 check "a skill the user typed as /mergeworthy:merging counts" 0 "$(sgb 'git push')"
 sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
-check "BLOCK: a push with merging but not task and pull-request (the deliverable's skill), naming both" "2 mergeworthy:pull-request mergeworthy:task" "$(sgb 'git push') $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "a push needs only merging here: a collaboration push waits for scope.md in pre-bash-guard" 0 "$(sgb 'git push')"
 sg_tr "$T/sg.jsonl" skill:other:merging
 check "BLOCK: another plugin's skill of the same name doesn't count" 2 "$(sgb 'git push')"
 for c in 'git status' 'git push --dry-run' 'gh pr view 5 --comments' 'gh pr list' 'gh issue view 3' 'gh api repos/o/r/pulls/5' \
@@ -1675,7 +1693,7 @@ PY
 check "parse: a commit message with trailers over several lines, and the push after it" '[["cd", "/r"], ["git", "commit", "-qam"], ["git", "push", "origin"], ["tail", "-3"]]' \
   "$(sp $'cd /r; git commit -qam "fix: pass \\`headers\\`\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:b 2>&1 | tail -3')"
 check "parse: gh pr create with a body typed inline over several lines" '[["gh", "pr", "create"]]' "$(sp $'gh pr create --repo v/v --draft --title "fix: x" --body "Fixes CI.\n\nIt\'s the headers."')"
-check "parse: a message from a heredoc inside \$( ), an apostrophe and a parenthesis in it" '[["git", "commit", "-m"], ["git", "push"], ["cat", "<<", "EOF"]]' \
+check "parse: a message from a heredoc inside \$( ), an apostrophe and a parenthesis in it" '[["git", "commit", "-m"], ["cat", "<<", "EOF"], ["git", "push"]]' \
   "$(sp $'git commit -m "$(cat <<\'EOF\'\nit\'s (one\nEOF\n)" && git push')"
 pushes() { python3 - "$R/hooks" "$1" <<'PY'
 import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
@@ -1690,6 +1708,10 @@ VK="$T/projects/vike"; git init -q -b fix-telefunc "$VK"; git -C "$VK" -c user.n
 git -C "$VK" remote add origin https://github.com/vikejs/vike.git; git -C "$VK" config user.name me; git -C "$VK" config user.email 42+me@users.noreply.github.com
 bg() { # command [cwd]: pre-bash-guard's exit code, its message in $T/err
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$VK}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+gql() { # viewer owner [PR URL]: GitHub's answer to whether a push updates a PR's head (pre-bash-guard's collaboration())
+  python3 -c 'import json,sys; v, o, u = (sys.argv[1:] + [""])[:3]
+print(json.dumps({"data": {"viewer": {"login": v}, "repository": {"owner": {"login": o}, "b0": {"associatedPullRequests": {"nodes": [{"url": u, "isDraft": True}] if u else []}}}}}))' "$@" > "$FX/graphql"; }
+gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675  # the session's pushes went to its draft PR's head
 echo 'me 42' > "$FX/user"
 C1="cd $VK; "$'git commit -qam "fix: pass \\`headers\\` to telefunc \\`serve()\\` (telefunc 0.3.0)\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:dependabot/npm_and_yarn/telefunc-0.3.0 2>&1 | tail -3'
 check "replay: the first commit and push (a multi-line message), with no preflight: blocked at the commit" "2 1" "$(bg "$C1") $(grep -c 'pr-steps preflight' "$T/err")"
@@ -1725,7 +1747,7 @@ check "BLOCK: a GitHub write through curl" 2 "$(bg 'curl -X POST -H "Authorizati
 check "BLOCK: a command that doesn't parse, holding a guarded verb, saying so; one without passes" "2 1 0" "$(bg 'git commit -m "oops') $(grep -c "doesn't parse" "$T/err") $(bg 'echo "oops')"
 check "BLOCK: a comment while gh can't read the thread (two in a row can't be checked)" "2 1" "$(GH_STUB_403=1 bg "gh issue comment 5 --repo o/r --body-file $D/new.md" "$T") $(grep -c "couldn't read o/r#5" "$T/err")"
 (cd "$TCO" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null); rm -f "$FX/user" "$HOME/.claude/gh-user.txt"
-check "BLOCK: a commit while gh can't say which account pushes, and nothing cached" "2 1" "$(bg 'git commit -m x' "$TCO") $(grep -c "gh can't say which account pushes" "$T/err")"
+check "a commit while gh can't say which account pushes (offline, nothing cached) passes: it stays local" 0 "$(bg 'git commit -m x' "$TCO")"
 echo 'me 42' > "$HOME/.claude/gh-user.txt"
 check "the account gh last named is the one checked while gh can't answer" "2 1" "$(bg 'git -c user.name=me -c user.email=me@example.com commit -m x' "$TCO") $(grep -c '42+me@users.noreply.github.com' "$T/err")"
 check "BLOCK: a hook that crashes (here on input it can't read) blocks, saying the check failed" "2 1" "$(printf 'not json' | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?) $(grep -c 'the check itself failed' "$T/err")"
@@ -1734,8 +1756,6 @@ check "hooks/run: a hook exiting with neither 0 nor 2, or past its time, blocks"
 TK3="$HOME/.mergeworthy/work/unscoped"; git init -q "$TK3/r"; (cd "$TK3/r" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
 check "BLOCK: an edit in a task's checkout before scope.md has its Tier line" "2" "$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$TK3/r/a.ts" "$TK3/r" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
 sg_tr "$T/sg.jsonl" skill:mergeworthy:task skill:mergeworthy:merging
-check "replay: pre-skill-gate on that first commit-and-push (merging opened, not pull-request): blocked" "2 mergeworthy:pull-request" \
-  "$(sg_in Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$C1")" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?) $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "replay: the inline-body draft PR waits for pull-request, post and writing" "2 mergeworthy:post mergeworthy:pull-request mergeworthy:writing" \
   "$(sg_in Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$C2")" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?) $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 # stop-lint: the final message from the hook's input, hand-backs, the PR states it claims, an unfinished task
@@ -1749,15 +1769,17 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              "I haven't opened one and haven't replied on the thread. Should I open the Telefunc PR and keep the workaround until it's released?" \
              'Telefunc would need a change to accept a full `request.url`. Do you want me to open that Telefunc PR and post the reply?' \
              'Nothing will notify me when they finish. Tell me to check, or to post the reply now.' \
-             "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m"; hb="$hb $(slj)"; done
+             "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
-tr_file 'README tidied.'
+tr_file 'README tidied.' work
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
-tr_file 'Ask me to check the run when you want it.'
+tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
-tr_file 'README tidied.'
+tr_file 'README tidied.' work
 ci() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>/dev/null; echo $?; }
 check "the check-in is per session: another session gets its own, the first not twice within 30 minutes" "2 2 0" "$(ci sess-a) $(ci sess-b) $(ci sess-a)"
+echo 1 > "$HOME/.claude/mergeworthy-stop-checkin"  # the stamp an older stop-lint shared between sessions
+check "the old shared check-in stamp file doesn't crash the per-session one" 2 "$(ci sess-c)"
 git init -q "$T/vkr"; git -C "$T/vkr" remote add origin https://github.com/vikejs/vike.git
 printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/vikejs/vike/pull/3675","head":{"sha":"abc"},"base":{"repo":{"full_name":"vikejs/vike"}}}' > "$FX/repos_vikejs_vike_pulls_3675"
 printf '{"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}' > "$FX/repos_vikejs_vike_commits_abc_check-runs_per_page_100"; cp "$FX/repos_vikejs_vike_commits_abc_check-runs_per_page_100" "$FX/repos_vikejs_vike_commits_abc_check-runs"
@@ -1797,7 +1819,7 @@ check "parse: a push after (( << )), in an unquoted heredoc's \$( ), in \${x:-\$
 check "parse: a heredoc with no end line says so; a quoted } in \${x:-\"a}b\"} parses" "yes no" "$(sp $'cat <<E\nno end' | grep -q ERR && echo yes || echo no) $(sp 'echo ${x:-"a}b"}; git push' | grep -q ERR && echo yes || echo no)"
 check "a cd to \$(git rev-parse --show-toplevel), or cd -P, is followed" "0 0" \
   "$(MERGEWORTHY_WATCHER=off bg 'cd "$(git rev-parse --show-toplevel)" && git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(MERGEWORTHY_WATCHER=off bg "cd -P $CK && git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc" "$T")"
-check "a push from a checkout of no GitHub repo (gh: no known GitHub host) has no PR to read" 0 "$(GH_STUB_NOHOST=1 MERGEWORTHY_WATCHER=off bg 'git push https://gitlab.com/ns/p.git HEAD:fix-telefunc' "$CK")"
+check "BLOCK: a push to GitLab while glab can't say whose repo it is or list its MRs" 2 "$(GH_STUB_NOHOST=1 MERGEWORTHY_WATCHER=off bg 'git push https://gitlab.com/ns/p.git HEAD:fix-telefunc' "$CK")"
 tr_cmd 'git stash push -u -m wip-tag'
 check "git stash push is no push: the session isn't a task's by it" 0 "$(slj)"
 tr_file 'README tidied.'
@@ -1807,5 +1829,49 @@ check "a state with no PR in its sentence, local checks, or an issue's state is 
   "$(slj 'Pushed the fix to o/r#12. Local checks are passing; CI is still running.') $(slj 'Fixes o/r#42 (the issue). The upstream fix is merged into main.') $(slj 'o/r#42 is merged.')"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Act as the review sub-agent for this task"}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"README tidied."}]}}))' > "$T/tr.jsonl"
 check "a tool result quoting the sub-agent line is no crash (and no child)" 0 "$(slj)"
+# Only collaboration pays the push gates: a push of its own (its own repo, no PR) is free, a PR's head or another owner's repo is not
+OWN="$T/own"; git init -q -b scratch "$OWN"; git -C "$OWN" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$OWN" remote add origin https://github.com/nitedani-agent/notes.git
+gql nitedani-agent nitedani-agent
+check "a push to its own repo's branch with no PR, from no work folder, passes; once that branch is a PR's head it is blocked, naming the PR" "0 2 1" \
+  "$(bg 'git push origin HEAD:scratch' "$OWN") $(gql nitedani-agent nitedani-agent https://github.com/nitedani-agent/notes/pull/1; bg 'git push origin HEAD:scratch' "$OWN") $(grep -c 'updates https://github.com/nitedani-agent/notes/pull/1' "$T/err")"
+gql nitedani-agent vikejs
+check "BLOCK: a push to another owner's repo, with no PR, naming why" "2 1" "$(bg 'git push https://github.com/vikejs/vike.git HEAD:scratch' "$OWN") $(grep -c "vikejs/vike isn't nitedani-agent's" "$T/err")"
+rm "$FX/graphql"; echo nitedani-agent > "$FX/login"
+check "gh can't answer: a push to its own repo passes from a checkout of no one else's repo, and blocks from a fork of another owner's" "0 2 1" \
+  "$(bg 'git push origin HEAD:scratch' "$OWN") $(git -C "$OWN" remote add upstream https://github.com/vikejs/vike.git; bg 'git push origin HEAD:scratch' "$OWN") $(grep -c "gh couldn't tell whether this push" "$T/err")"
+rm "$FX/login"
+check "a cd this hook can't follow doesn't block a local commit or a read; a push from there blocks, saying why" "0 0 2 1" \
+  "$(bg 'cd "$(mktemp -d)" && git init -q && git commit -q --allow-empty -m x' "$T") $(bg 'cd "$W" && gh pr view 5 -R o/r' "$T") $(bg 'cd "$W" && git push origin HEAD' "$T") $(grep -c "can't tell which checkout this push runs in" "$T/err")"
+PD="$T/pydeps"; mkdir -p "$PD"; echo 'its install failed (offline)' > "$PD/$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()[:16])' "$R/hooks/requirements.txt").failed"
+check "the parser can't be installed: a push blocks, saying why; a command with no guarded verb passes" "2 1 0" \
+  "$(MERGEWORTHY_PYDEPS=$PD bg 'git push origin HEAD' "$OWN") $(grep -c "shell parser.*its install failed (offline)" "$T/err") $(MERGEWORTHY_PYDEPS=$PD bg 'ls -la' "$OWN")"
+check "parse: mvdan/sh reads what tree-sitter-bash dropped: a commit after a sed with (a|b), the - of python3 - <<E" '1 [["python3", "-", "<<"]]' \
+  "$(sp $'grep -E x l | sed -E \'s/"o":(true|false)//\' | cut -c1-9\ngit add f\ngit commit -q -F - <<\'EOF\'\nmsg\nEOF' | grep -c '\["git", "commit", "-q"\]') $(sp $'python3 - <<E\nx\nE')"
+printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/o/r/pull/12","head":{"sha":"abc"},"base":{"repo":{"full_name":"o/r"}}}' > "$FX/repos_o_r_pulls_12"
+tr_file 'README tidied.'
+check "a PR-state claim is checked only with the PR as its subject: not my reply to it, a quote, inline code or a code block" "2 0 0 0 0" \
+  "$(slj 'o/r#12 is still a draft.') $(slj 'My reply to o/r#12 is a draft.') $(slj '> o/r#12 is still a draft') $(slj 'The lint flagged `o/r#12 is a draft`.') $(slj $'```\no/r#12 is a draft\n```')"
+# GitLab: a push to a group's repo is collaboration; one to the user's own namespace only while it is an open MR's source branch
+cat > "$T/bin/glab" <<'EOF'
+#!/usr/bin/env bash
+[ "$1 $2 $3" = "config get user" ] && { [ ! -f "$FX/gl_login" ] || cat "$FX/gl_login"; exit; }
+[ "$1" = api ] || exit 1
+f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
+[ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
+EOF
+GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
+echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"
+check "GitLab: a push to its own namespace with no MR passes; to a group's repo, or an open MR's branch, it is blocked, naming why" "0 2 1 2 1" \
+  "$(bg 'git push origin HEAD:scratch' "$GL") $(bg 'git push git@gitlab.com:acme/app.git HEAD:scratch' "$GL") $(grep -c "acme/app isn't me's" "$T/err") $(echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/4","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; bg 'git push origin HEAD:scratch' "$GL") $(grep -c 'updates https://gitlab.com/me/app/-/merge_requests/4' "$T/err")"
+# a plain question answered (no task, work folder, push, post, watcher or agent) is no mergeworthy work: no check-in, no hand-back check
+qa() { python3 -c 'import json,sys
+print(json.dumps({"type":"user","message":{"content":"can you access ssh the opensource machine?"}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"b1","input":{"command":"hostname"}}]}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":sys.argv[1]}]}}))' "$1" > "$T/tr.jsonl"; }
+QA1="No. This session runs on a different box, not opensource. T3 Code also runs on this machine, so I can give you a pairing link if you want to use it from a phone."
+QA2="opensource doesn't show up in this machine's Tailscale peer list. If the firewall note is out of date and you want me to test it, say so and I'll check port 22."
+check "a plain Q&A answer (the user's 'can you access ssh the opensource machine?' session) gets no check-in and no hand-back block" "0 0 0" "$(qa "$QA1"; ci qa-1) $(qa "$QA1"; slj) $(qa "$QA2"; slj)"
+tr_file "$QA2" work
+check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

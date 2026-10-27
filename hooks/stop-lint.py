@@ -12,7 +12,7 @@ d = json.load(sys.stdin)
 active = bool(d.get('stop_hook_active'))
 last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
-wakers, opened_task, acted = {}, False, False  # the background commands and Monitors this session started; whether it is a task's
+wakers, opened_task, acted, delegated = {}, False, False, False  # the background commands and Monitors this session started; whether it is a task's
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
 said = []  # every text the agent wrote, in order
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
@@ -82,6 +82,7 @@ for line in lines:
             if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''):
                 monitor_ids[x.get('id')] = 1
                 monitor_cmds.append(i.get('command', ''))
+            if x.get('name') in ('Agent', 'Task') or re.search(r'(delegate_task|t3_thread_launch)$', x.get('name', '')): delegated = True
             if x.get('name') == 'TaskStop': dead.add(i.get('task_id') or i.get('shell_id') or '')
         if isinstance(c, list):
             t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
@@ -92,8 +93,29 @@ if isinstance(fin, str) and fin.strip():
     if not said or said[-1].strip() != fin.strip(): said.append(fin)
     last = fin
 cwd_d = d.get('cwd') or ''
+import work_folder
+home = os.path.realpath(os.path.expanduser('~'))
+def task_dir(p):
+    p = os.path.realpath(os.path.expanduser(p))
+    if wf := work_folder.of(p): return wf
+    while p not in (home, '/'):
+        if os.path.dirname(p) == home and p.endswith('-work'): return p
+        p = os.path.dirname(p)
+def runs(rx):  # the simple commands of this session's commands that rx finds a word of: a push names git, a work folder's path names it
+    return [prog(t) for c in commands if re.search(rx, c) for t in segments(c)]
 acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
-                      for c in commands for t in map(prog, segments(c)))
+                      for t in runs(r'(?:git|gh)'))
+# the folders it works in: its cwd, and where its commands cd, write, run git or the step tools; one it only read isn't
+worked = [cwd_d]
+for t in runs(r'\.mergeworthy/work|-work'):
+    name = os.path.basename(t[0]) if t else ''
+    worked += [x for x in t[1:] if not x.startswith('-')] if name in (
+        'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
+    worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
+task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := task_dir(p))}
+# mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check and the check-in;
+# a plain question answered gets neither
+working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds)
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
 own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
@@ -101,7 +123,7 @@ OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|w
          r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|tell me (when|to|if|whether)|"
          r"ask me (to|when|if)|ping me|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
 offer = re.search(OFFER, own, re.I)
-if offer and 'GENUINE-FORK' not in last:
+if working and offer and 'GENUINE-FORK' not in last:
     print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
           "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
           "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
@@ -116,11 +138,11 @@ if not child and FORK(last) & asked:
           "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
           "options, or when the user asks about it (always-on: Do, don't offer).", file=sys.stderr)
     sys.exit(2)
-# A Running list in the reply is checked against T3 task status: it is read live (task_status) after the user's last
-# message, and names no task whose last read status is terminal.
+# A Running list in the reply is checked against T3 task status: each task it names was launched or read (task_status) after the
+# user's last message, and none has a terminal status.
 running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', last, re.M)  # a `Running:` label or heading
 if running and not child:
-    titles, status, launched, fresh = {}, {}, False, False
+    titles, status, launched, seen = {}, {}, False, set()
     for line in lines:
         try: e = json.loads(line)
         except ValueError: continue
@@ -129,7 +151,7 @@ if running and not child:
             # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
             n = re.match(r'Delegated task (\S+) reached a terminal state', c)
             if n: status[n.group(1)] = ('completed', status.get(n.group(1), ('', ''))[1])
-            elif not c.startswith('Skill /'): fresh = False
+            elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status)$', b.get('name', '')):
                 titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
@@ -142,13 +164,17 @@ if running and not child:
                     is_read, title = titles[b['tool_use_id']]
                     old = status.get(r['taskId'], ('', ''))
                     status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
-                    fresh = fresh or is_read
+                    seen.add(r['taskId'])
     text = running.group(1).lower()
-    done = [t or i for i, (st, t) in status.items() if re.match(r'(completed|failed|cancel+ed|interrupted|error)', st)
-            and ((t and t.lower() in text) or i.rsplit('%3A', 1)[-1].lower() in text)]
-    if launched and (done or not fresh):
+    # a task is named by its id (its link), else by its title: the last task of that title (an earlier "Memory refresh" is not this one)
+    named = {i: v for i, v in status.items() if i.rsplit('%3A', 1)[-1].lower() in text}
+    last_of = {t.lower(): i for i, (_, t) in status.items() if t}
+    named.update({i: status[i] for t, i in last_of.items() if t in text and all(v[1].lower() != t for v in named.values())})
+    done = [t or i for i, (st, t) in named.items() if re.match(r'(completed|failed|cancel+ed|interrupted|error)', st)]
+    stale = [t or i for i in named if i not in seen]
+    if launched and (done or stale):
         print(f"Your Running list names {', '.join(done)}, whose task status is terminal." if done else
-              "Your Running list wasn't read from T3 since the user's last message.", "Read task_status for each agent you list "
+              f"Your Running list names {', '.join(stale)}, not read from T3 since the user's last message.", "Read task_status for each agent you list "
               "and list only the ones still working (mergeworthy:writing §Reports to the user).", file=sys.stderr)
         sys.exit(2)
 # A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready)
@@ -183,14 +209,17 @@ if not child and re.search(DONE, own.strip()[:300], re.I):
         print("Your message opens by calling the work done, but these PRs/MRs it links aren't: " + '; '.join(unfinished) +
               ". Say what is left on each instead (the converge gates, green CI, ready), and do it (mergeworthy:merging, Ready).", file=sys.stderr)
         sys.exit(2)
-# A sentence stating a PR's state (a draft, ready, merged, CI green or red) is checked against GitHub now: the PR may have moved
-# since the agent last looked (a maintainer marks it ready, CI finishes), and the user acts on what the report says
-CLAIMS = [('a draft', r"\b(?:is|remains|stays|still)\s+(?:still\s+|now\s+)?(?:a\s+|in\s+)?draft\b"),  # "was a draft" tells history
-          ('ready for review', r"\b(?:is|are)\s+(?:now\s+)?(?:ready for review|out of draft|marked ready)\b|\bmarked (?:it )?ready\b"),
-          ('merged', r"\b(?:is|was|got|been)\s+(?:now\s+)?merged\b"),
-          ('green', r"\b(?:CI|checks?|jobs?)\b[^.\n]{0,30}?\b(?:is|are|now|went)\s+(?:now\s+|all\s+)?(?:green|passing)\b|\ball \d+ (?:CI )?(?:jobs|checks) pass|\bCI (?:is )?green\b"),
-          ('red', r"\b(?:CI|checks?)\b[^.\n]{0,30}?\b(?:is|are|still)\s+(?:still\s+)?(?:red|failing)\b")]
-REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)|(?<![\w/])(?:([\w.-]+/[\w.-]+))?#(\d+)\b')
+# A sentence whose subject is a PR (`#N`, `owner/repo#N`, its URL, `PR #N`, `CI on #N`) and that states its live state (a draft,
+# ready, merged, CI green or red) is checked against GitHub now: the PR may have moved since the agent last looked (a maintainer
+# marks it ready, CI finishes), and the user acts on what the report says. "My reply to #12 is a draft" has another subject.
+REF = r"(?:https://github\.com/(?P<r1>[\w.-]+/[\w.-]+)/pull/(?P<n1>\d+)|(?<![\w/])(?P<r2>[\w.-]+/[\w.-]+)?#(?P<n2>\d+)\b)"
+SUBJECT = r"(?:^[\s>*\-•\d.)]*|(?<=[,;:(])\s*|\b(?:and|but|so|now|PR|MR|pull request)\s+)(?:PR\s*)?\(?" + REF + \
+          r"\)?(?:\s*\([^()\n]{0,80}\))?(?:'s\s+(?:CI|checks?|jobs?))?\s+"
+CI_ON = r"\b(?:CI|checks?)\s+(?:on|for|of)\s+(?:PR\s*)?" + REF + r"\s+"
+CLAIMS = [(claim, re.compile(subject + rx, re.I)) for subject in (SUBJECT, CI_ON) for claim, rx in [
+    ('a draft', r"(?:is|remains|stays)\s+(?:still\s+|now\s+)?(?:a\s+|in\s+)?draft\b"), ('ready for review', r"is\s+(?:now\s+)?(?:ready for review|out of draft|marked ready)\b"),
+    ('merged', r"(?:is|was|got|has been)\s+(?:now\s+)?merged\b"), ('green', r"(?:is|are)\s+(?:now\s+|all\s+)?(?:green|passing)\b"),
+    ('red', r"(?:is|are)\s+(?:still\s+|now\s+)?(?:red|failing)\b")] if subject == SUBJECT or claim in ('green', 'red')]
 if not child and last.strip():
     import subprocess
     def gh(*a):
@@ -204,16 +233,11 @@ if not child and last.strip():
             u = subprocess.run(['git', '-C', d.get('cwd') or '.', 'remote', 'get-url', name], capture_output=True, text=True).stdout.strip()
             if m := re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', u): out.append(m[1])
         return out
-    url_repos = [m[0] for m in REF.findall(last) if m[0]]
-    states, ref, wrong = {}, None, []
+    url_repos = re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', last)
+    states, wrong = {}, []
     for sentence in re.split(r'(?<=[.!?])\s+|\n+', own):
-        found = [(m[1] or m[3], m[2] or m[4]) for m in REF.finditer(sentence)]
-        ref = found[-1] if found else None  # a claim names its PR in its own sentence
-        for claim, rx in CLAIMS:
-            m = re.search(rx, sentence, re.I)
-            if not m or not ref or re.search(r"\blocal(ly)?\b", sentence, re.I) or re.search(r"\b(?:once|when|after|until|if|before|unless|whether|will|would)\b", sentence[:m.start()], re.I):
-                continue
-            key = ref
+        for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I)]:
+            key = (m['r1'] or m['r2'], m['n1'] or m['n2'])
             if key not in states:
                 pr, why = None, ''
                 repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + remotes()))
@@ -352,23 +376,8 @@ if watcher_on and not paused and not child:
 # this session armed will wake it for the work (a live Monitor, a background command, an agent it launched) or with a
 # GENUINE-FORK the user must answer. A session that opened `task` or pushed or posted has a scope.md (task steps 2-3).
 if (opened_task or acted) and not child and not paused and not headless:
-    import work_folder, agent_jobs
-    home = os.path.realpath(os.path.expanduser('~'))
-    def task_dir(p):
-        p = os.path.realpath(os.path.expanduser(p))
-        if wf := work_folder.of(p): return wf
-        while p not in (home, '/'):
-            if os.path.dirname(p) == home and p.endswith('-work'): return p
-            p = os.path.dirname(p)
-    # the folders it works in: its cwd, its watch dirs, and where its commands cd, write, run git or the step tools; one it only read isn't
-    worked = [cwd_d]
-    for c in commands:
-        for t in map(prog, segments(c)):
-            name = os.path.basename(t[0]) if t else ''
-            worked += [x for x in t[1:] if not x.startswith('-')] if name in (
-                'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
-            worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
-    folders = set(own_dirs) | {t for p in worked if p.startswith(('/', '~')) and (t := task_dir(p))}
+    import agent_jobs
+    folders = set(own_dirs) | task_dirs
     scopes = {f: open(os.path.join(f, 'scope.md'), errors='replace').read() for f in folders if os.path.isfile(os.path.join(f, 'scope.md'))}
     scopes = {f: t for f, t in scopes.items() if re.match(r'\s*Tier:', t)}
     if not scopes:
@@ -444,7 +453,7 @@ if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.p
 def checkin_due():
     import time
     key = re.sub(r'[^\w-]', '', d.get('session_id') or '') or hashlib.sha256(str(d.get('transcript_path')).encode()).hexdigest()[:16]
-    f = os.path.expanduser(f'~/.claude/mergeworthy-stop-checkin/{key}')  # per session: another session's check-in doesn't skip this one
+    f = os.path.expanduser(f'~/.claude/mergeworthy-stop-checkins/{key}')  # per session (the single file mergeworthy-stop-checkin was shared)
     try:
         last = float(open(f).read().strip())
     except (OSError, ValueError):
@@ -454,7 +463,7 @@ def checkin_due():
     os.makedirs(os.path.dirname(f), exist_ok=True)
     open(f, 'w').write(str(time.time()))
     return True
-if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child and not active and checkin_due():
+if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and working and not child and not active and checkin_due():
     print("Before you stop, check once: did the user ask you to stop or pause? Then stop. Otherwise: is there work you said "
           "is next, or that the critical path needs, that you could start now? Is anything waiting on you (a reply owed, "
           "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now, or brief a subagent for it. If nothing is, stop.",

@@ -1,8 +1,9 @@
 """Shell command parsing shared by the Bash hooks (pre-bash-guard, pre-skill-gate, post-bash-register, stop-lint).
-It fails closed: parse() lexes the whole command as bash does (quotes and heredocs spanning lines, $( ) and backticks, chains,
-env prefixes, wrappers, `bash -c`, `eval`), and a command it can't lex still yields its words, split roughly, with the error,
+parse() reads a command with mvdan/sh, bash's syntax as shfmt parses it (hooks/requirements.txt, installed on first use into
+~/.mergeworthy/pydeps): every simple command it runs, in substitutions, heredocs a shell reads, `bash -c` and `eval` too. A
+command that doesn't parse, or a parser that can't be installed, yields the command's words split roughly, with the error,
 so a hook checks what it can and blocks a guarded verb it can't check."""
-import hashlib, os, re, subprocess
+import hashlib, json, os, re, subprocess, sys
 
 
 def branch_record(d, kind):
@@ -30,175 +31,101 @@ def no_preflight(d):
 
 
 SHELLS = ('bash', 'sh', 'zsh', 'dash', 'ksh')
+REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requirements.txt')
 
 
-def _dq(s, j, subs):
-    """s[j] is a double quote: (its text with $( ) and backticks kept as written, index after the closing quote)."""
-    buf, j, n = [], j + 1, len(s)
-    while True:
-        if j >= n:
-            raise ValueError('unterminated double quote')
-        c = s[j]
-        if c == '"':
-            return ''.join(buf), j + 1
-        if c == '\\' and j + 1 < n:
-            buf.append('' if s[j + 1] == '\n' else s[j + 1] if s[j + 1] in '$`"\\' else s[j:j + 2]); j += 2
-        elif s.startswith('$(', j) or c == '`':
-            k = _sub(s, j, subs); buf.append(s[j:k]); j = k
-        elif s.startswith('${', j):
-            k = _brace(s, j + 1, subs); buf.append(s[j:k]); j = k
+def _deps():
+    """The folder holding the pinned parser, installed on first use with uv, else pip, one install at a time. After a failed
+    install its error is raised again at once for 5 minutes, then the install is retried."""
+    import fcntl, shutil, tempfile, time
+    base = os.environ.get('MERGEWORTHY_PYDEPS') or os.path.expanduser('~/.mergeworthy/pydeps')
+    target = os.path.join(base, hashlib.sha256(open(REQUIREMENTS, 'rb').read()).hexdigest()[:16])
+    if os.path.isdir(target):
+        return target
+    os.makedirs(base, exist_ok=True)
+    with open(os.path.join(base, '.lock'), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        failed = target + '.failed'
+        if os.path.isdir(target):
+            return target
+        if os.path.exists(failed) and time.time() - os.path.getmtime(failed) < 300:
+            raise RuntimeError(open(failed).read())
+        uv = shutil.which('uv') or next((p for p in map(os.path.expanduser, ('~/.local/bin/uv', '~/.cargo/bin/uv')) if os.access(p, os.X_OK)), None)
+        tmp = tempfile.mkdtemp(dir=base)
+        cmd = ([uv, 'pip', 'install', '--python', sys.executable] if uv else [sys.executable, '-m', 'pip', 'install']) + \
+              ['--quiet', '--only-binary', ':all:', '--require-hashes', '--target', tmp, '-r', REQUIREMENTS]
+        try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+        except (OSError, subprocess.TimeoutExpired) as e: r = subprocess.CompletedProcess(cmd, 1, '', str(e))
+        if r.returncode:
+            shutil.rmtree(tmp, ignore_errors=True)
+            open(failed, 'w').write(f"its install failed ({(r.stderr or r.stdout).strip()[-300:]}); install uv (https://docs.astral.sh/uv/) "
+                                    f"or pip, or run `{' '.join(cmd).replace(tmp, target)}`, then retry")
+            raise RuntimeError(open(failed).read())
+        os.rename(tmp, target)
+    return target
+
+
+def _src(n, src):
+    return src[n['Pos']['Offset']:n['End']['Offset']].decode(errors='replace')
+
+
+def _word(w, src):
+    """A word as bash passes it: quotes and escapes removed; expansions and substitutions as written."""
+    out = []
+    for p in w.get('Parts') or []:
+        t, v = p.get('Type'), p.get('Value', '')
+        if t == 'Lit':
+            out.append(re.sub(r'\\(.)', r'\1', v.replace('\\\n', ''), flags=re.S))
+        elif t == 'SglQuoted':
+            out.append(re.sub(r'\\(.)', lambda m: {'n': '\n', 't': '\t'}.get(m[1], m[1]), v, flags=re.S) if p.get('Dollar') else v)
+        elif t == 'DblQuoted':
+            out.append(''.join(re.sub(r'\\([$`"\\])', r'\1', x.get('Value', '').replace('\\\n', '')) if x.get('Type') == 'Lit' else _src(x, src)
+                               for x in p.get('Parts') or []))
         else:
-            buf.append(c); j += 1
+            out.append(_src(p, src))
+    return ''.join(out)
 
 
-def _brace(s, j, subs):
-    """s[j] is the { of ${...}: index after its }; a command substitution in it (`${x:-$(cmd)}`) goes into subs."""
-    depth, n = 0, len(s)
-    while j < n:
-        if s[j] == '\\': j += 2; continue
-        if s[j] == "'":
-            k = s.find("'", j + 1)
-            if k < 0: raise ValueError('unterminated single quote')
-            j = k + 1; continue
-        if s[j] == '"':
-            j = _dq(s, j, subs)[1]; continue
-        if s.startswith('$(', j) or s[j] == '`':
-            j = _sub(s, j, subs); continue
-        if s[j] == '{': depth += 1
-        elif s[j] == '}':
-            depth -= 1
-            if depth == 0: return j + 1
-        j += 1
-    raise ValueError('unterminated ${')
+def _assign(a, src):
+    if a.get('Naked'):
+        return a['Name']['Value'] if a.get('Name') else _word(a['Value'], src)
+    return a['Name']['Value'] + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
 
 
-def _inner(text, subs):
-    """The command substitutions in text that isn't a command (arithmetic, an unquoted heredoc's body) go into subs."""
-    j = 0
-    while j < len(text):
-        if text[j] == '\\': j += 2
-        elif text.startswith('$(', j) or text[j] == '`': j = _sub(text, j, subs)
-        else: j += 1
+def _calls(node, src):
+    """(the argv of every simple command under node, in order; the statements each heredoc of them is read by: (redirect, top statement))."""
+    segs, docs, stack = [], [], [(node, None)]
+    while stack:
+        x, top = stack.pop()
+        if isinstance(x, list):
+            stack += [(y, top) for y in reversed(x)]
+            continue
+        if not isinstance(x, dict):
+            continue
+        cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
+        words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
+        if cmd.get('Type') == 'CallExpr':
+            segs.append([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words)
+        elif cmd.get('Type') == 'DeclClause':
+            segs.append([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words)
+        docs += [(r, top or x) for r in redirs if r.get('Hdoc')]
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top)  # each statement of a list is a top statement
+                  for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
+    return segs, docs
 
 
-def _arith(s, j):
-    """s[j:] starts (( : index after its matching ))."""
-    depth, k = 0, j
-    while k < len(s):
-        depth += {'(': 1, ')': -1}.get(s[k], 0)
-        if depth == 0: return k + 1
-        k += 1
-    raise ValueError('unterminated ((')
-
-
-def _sub(s, j, subs):
-    """s[j:] starts a $( ), $(( )) or `...`: lexes a command substitution's commands into subs; index after it."""
-    if s[j] == '`':
-        k = j + 1
-        while k < len(s) and s[k] != '`':
-            k += 2 if s[k] == '\\' else 1
-        if k >= len(s):
-            raise ValueError('unterminated backtick')
-        subs.extend(_lex(s[j + 1:k].replace('\\`', '`'), 0, subs)[0])
-        return k + 1
-    if s.startswith('$((', j):  # arithmetic: only a substitution inside it runs a command
-        k = _arith(s, j + 1)
-        _inner(s[j + 3:k - 2], subs)
-        return k
-    segs, k = _lex(s, j + 2, subs, closer=')')
-    subs.extend(segs)
-    return k + 1
-
-
-def _lex(s, i, subs, closer=None):
-    """(segments, index): the simple commands of s from i, as word lists; with closer=')', up to the unmatched ) and its index.
-    Command substitutions go into subs. A heredoc's body is a file's text, except where a shell reads it as its script."""
-    segs, cur, word, inword = [], [], [], False
-    pending, line_start, depth, case, n = [], 0, 0, 0, len(s)
-
-    def end_word():
-        nonlocal word, inword, case
-        if inword:
-            cur.append(''.join(word))
-            case += {'case': 1, 'esac': -1}.get(cur[-1], 0) if len(cur) == 1 or cur[-1] == 'esac' else 0  # its patterns' ) close nothing
-        word, inword = [], False
-
-    def end_seg():
-        nonlocal cur
-        end_word()
-        if cur: segs.append(cur)
-        cur = []
-
-    while i < n:
-        c = s[i]
-        if c == '\\':
-            if s[i + 1:i + 2] != '\n':
-                word.append(s[i + 1:i + 2]); inword = True
-            i += 2
-        elif c == "'":
-            k = s.find("'", i + 1)
-            if k < 0: raise ValueError('unterminated single quote')
-            word.append(s[i + 1:k]); inword = True; i = k + 1
-        elif s.startswith("$'", i):
-            k, buf = i + 2, []
-            while k < n and s[k] != "'":
-                if s[k] == '\\' and k + 1 < n:
-                    buf.append({'n': '\n', 't': '\t'}.get(s[k + 1], s[k + 1])); k += 2
-                else:
-                    buf.append(s[k]); k += 1
-            if k >= n: raise ValueError("unterminated $'")
-            word.append(''.join(buf)); inword = True; i = k + 1
-        elif c == '"':
-            text, i = _dq(s, i, subs); word.append(text); inword = True
-        elif s.startswith('$(', i) or c == '`':
-            k = _sub(s, i, subs); word.append(s[i:k]); inword = True; i = k
-        elif s.startswith('${', i):
-            k = _brace(s, i + 1, subs); word.append(s[i:k]); inword = True; i = k
-        elif s.startswith('((', i) and not inword and not cur:  # (( arithmetic )): its << is a shift, no heredoc
-            k = _arith(s, i); _inner(s[i + 2:k - 2], subs); cur.append(s[i:k]); i = k
-        elif c == '#' and not inword:
-            k = s.find('\n', i); i = n if k < 0 else k
-        elif c in ' \t\r':
-            end_word(); i += 1
-        elif c in '<>' or s.startswith('&>', i):
-            fd = ''.join(word) if inword and ''.join(word).isdigit() else ''  # 2>, 2>&1: the fd belongs to the operator
-            if fd: word, inword = [], False
-            else: end_word()
-            op = re.match(r'&>>?|<<<|<<-?|<>|<&|>&|>>|>\||<|>', s[i:]).group(0); i += len(op)
-            cur.append(fd + op)
-            if op in ('<<', '<<-'):
-                m = re.match(r'[ \t]*(\\?)([\'"]?)([^\s;&|<>()\'"]+)\2', s[i:])
-                if not m: raise ValueError('heredoc without a delimiter')
-                pending.append((m.group(3), not (m.group(1) or m.group(2)))); cur.append(m.group(3)); i += len(m.group(0))
-        elif c == ')' and closer and not depth and (end_word() or not case):
-            end_seg()
-            return segs, i
-        elif c == '\n':
-            end_seg(); i += 1
-            for delim, expands in pending:  # the bodies follow this line, in order
-                body, ended = [], False
-                while i < n:
-                    k = s.find('\n', i); line = s[i:] if k < 0 else s[i:k]; i = n if k < 0 else k + 1
-                    if line.strip() == delim: ended = True; break
-                    body.append(line)
-                if not ended:  # it would swallow every line after it
-                    raise ValueError(f'heredoc {delim} has no end line')
-                if expands:  # an unquoted delimiter: bash runs the body's $( ) and backticks
-                    _inner('\n'.join(body), subs)
-                # `bash <<EOF`, `cat <<EOF | sh`: a shell with no script or -c reads the body as its commands
-                if any(prog(x)[:1] and os.path.basename(prog(x)[0]) in SHELLS and not [a for a in operands(prog(x)[1:]) if not a.startswith('-')]
-                       for x in segs[line_start:]):
-                    segs.extend(_lex('\n'.join(body), 0, subs)[0])
-            pending, line_start = [], len(segs)
-        elif c in ';&|()':
-            depth += {'(': 1, ')': 0 if case and not depth else -1}.get(c, 0) if closer else 0
-            end_seg(); i += 1
+def _segments(tree, src, depth):
+    """(every simple command the tree runs, with each heredoc's commands: its substitutions, or all of it when a shell
+    without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
+    (segs, docs), err = _calls(tree, src), ''
+    for r, top in docs:
+        if any(prog(a)[:1] and os.path.basename(prog(a)[0]) in SHELLS and not [x for x in operands(prog(a)[1:]) if not x.startswith('-')]
+               for a in _calls(top, src)[0]) and depth < 4:
+            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1)
         else:
-            word.append(c); inword = True; i += 1
-    if closer:
-        raise ValueError('unterminated $(')
-    end_seg()
-    return segs, i
+            s, e = _segments(r['Hdoc'], src, depth)
+        segs, err = segs + s, err or e
+    return segs, err
 
 
 REDIR = re.compile(r'\d*(?:&>>?|<<<|<<-?|<>|<&|>&|>>|>\||<|>)')
@@ -215,7 +142,7 @@ def operands(a):
 
 
 def _rough(cmd):
-    """Words of a command that doesn't lex: quotes dropped, split at every separator; a guarded verb still shows."""
+    """Words of a command that doesn't parse: quotes dropped, split at every separator; a guarded verb still shows."""
     return [p.split() for p in re.split(r'[;&|()\n]+', re.sub(r'[\'"`\\]', ' ', cmd)) if p.split()]
 
 
@@ -235,14 +162,17 @@ def _nested(t):
 
 
 def parse(cmd, depth=0):
-    """(segments, error): the token lists of every simple command cmd runs, command substitutions and the scripts of
-    `bash -c` and `eval` included; error is '' when it lexed, else why not (the segments are then _rough's)."""
+    """(segments, error): the argv of every simple command cmd runs, command substitutions and the scripts of `bash -c` and
+    `eval` included; error is '' when it parsed, else why not (the segments are then _rough's)."""
     try:
-        subs = []
-        segs = _lex(cmd, 0, subs)[0] + subs
-        err = ''
-    except ValueError as e:
+        r = subprocess.run([os.path.join(_deps(), 'bin', 'shfmt'), '--to-json', '-ln', 'bash'], input=cmd.encode(), capture_output=True, timeout=60)
+        if r.returncode:
+            raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
+        segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
+    except ValueError as e:  # also a JSON error
         segs, err = _rough(cmd), str(e)
+    except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
+        segs, err = _rough(cmd), f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
     for s in list(segs):
         script = _nested(s) if depth < 4 else None
         if script:
@@ -258,7 +188,7 @@ def segments(cmd):
 
 
 # The verbs the hooks check: a command holding one that doesn't parse is blocked (pre-bash-guard), never let through unchecked
-GUARDED = re.compile(r'\b(?:git\b.*?\b(?:push|commit)|gh\s+(?:pr|issue|api|release)|glab\s+(?:issue|mr))\b', re.S)
+GUARDED = re.compile(r'\b(?:git\b.*?\b(?:push|commit)|gh\s+(?:pr|issue|api|release)|glab\s+(?:issue|mr)|(?:curl|wget|xh|https?)\b.*?\bapi\.github\.com)\b', re.S)
 
 # Wrappers that run the command after them, with the options each takes a value for (`timeout 200`, `nice -n 19`, `env -u X`)
 WRAPPERS = {'sudo': ('-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U'), 'env': ('-u', '-C', '--unset', '--chdir'), 'command': (),
@@ -285,6 +215,17 @@ def prog(t):
     return t
 
 
+_git_builtins = None
+
+
+def _builtins():
+    """git's own commands, which no alias can replace (git ignores one that would)."""
+    global _git_builtins
+    if _git_builtins is None:
+        _git_builtins = set(subprocess.run(['git', '--list-cmds=builtins'], capture_output=True, text=True).stdout.split())
+    return _git_builtins
+
+
 def git_argv(t, cwd):
     """(git dir, -c overrides, subcommand, its arguments) of a git argv, past its global options; a configured alias
     (`git config alias.p push`, or `-c alias.p=push`) is expanded, so `git p` is checked as the push it runs."""
@@ -297,8 +238,7 @@ def git_argv(t, cwd):
     if not a:
         return git_dir, overrides, '', []
     sub, rest = a[0], a[1:]
-    alias = overrides.get(f'alias.{sub}') or subprocess.run(['git', '-C', git_dir, 'config', '--get', f'alias.{sub}'],
-                                                            capture_output=True, text=True).stdout.strip()
+    alias = '' if sub in _builtins() else overrides.get(f'alias.{sub}') or         subprocess.run(['git', '-C', git_dir, 'config', '--get', f'alias.{sub}'], capture_output=True, text=True).stdout.strip()
     if alias and not alias.startswith('!'):
         words = alias.split()
         sub, rest = words[0], words[1:] + rest
