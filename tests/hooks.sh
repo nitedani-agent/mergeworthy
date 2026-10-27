@@ -953,6 +953,14 @@ check "BLOCK: stop-lint while the launching session's finished job is open, nami
 touch -d '30 minutes ago' "$JD/tool.jsonl"; python3 "$R/bin/agent-job" done "$T/jobs/quiet-ticket.md" >/dev/null
 check "a released job is never reported again; a tool call quiet past ten minutes counts as finished" "0 1" "$(done_events > "$T/ev3"; grep -c quiet-ticket "$T/ev3") $(grep -c tool-ticket "$T/ev3")"
 python3 "$R/bin/agent-job" done "$T/jobs/tool-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/busy-ticket.md" >/dev/null
+# an agent waiting for an agent it launched itself (a T3 child and its reviewer) hasn't finished until that one has
+reg "Execute $T/jobs/parent-ticket.md exactly"; child_log "$JD/parent.jsonl" "Execute $T/jobs/parent-ticket.md exactly" 5 text
+python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"parent","transcript_path":sys.argv[2],"tool_input":{"task":sys.argv[1],"title":"grandchild"}}))' "Execute $T/jobs/grand-ticket.md exactly" "$JD/parent.jsonl" | python3 "$R/hooks/pre-agent-dedupe.py" register
+child_log "$JD/grand.jsonl" "Execute $T/jobs/grand-ticket.md exactly" 0 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "-ticket.md" in open(f).read()]'
+done_events > "$T/ev4"; touch -d '5 minutes ago' "$JD/grand.jsonl"; done_events > "$T/ev5"
+check "a quiet agent whose own agent still runs is not done; it is once that one is" "0 1" "$(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev4") $(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev5")"
+python3 "$R/bin/agent-job" done "$T/jobs/parent-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/grand-ticket.md" >/dev/null
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done

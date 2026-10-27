@@ -91,12 +91,17 @@ def pending(path):
                 return o['type'] == 'assistant' and any(isinstance(b, dict) and b.get('type') == 'tool_use' for b in c or [] if not isinstance(c, str))
     return False
 
-def finished(job, now=None):
-    """(transcript, its mtime) when the job's agent has finished, else None."""
+def finished(job, now=None, _seen=()):
+    """(transcript, its mtime) when the job's agent has finished, else None. An agent that launched agents of its own (a T3
+    child waiting for its reviewer) has finished only once each of its open jobs has."""
     p = transcript(job)
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
-    return (p, m) if quiet >= LONG or (quiet >= QUIET and not pending(p)) else None
+    if not (quiet >= LONG or (quiet >= QUIET and not pending(p))): return None
+    sid = os.path.basename(p)[:-len('.jsonl')]
+    if sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
+        return None
+    return (p, m)
 
 def reported(f, mtime):
     return os.path.exists(os.path.join(REPORTED, f'{f}-{int(mtime)}'))
