@@ -491,9 +491,16 @@ check "gh-watch-start on a dir whose watcher retired removes its retired file" "
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
 # --pass (the steward skill): one round of gh-watch.py --pass into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
-out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r all < /dev/null 2>&1)
-check "gh-watch-start --pass runs one round into events.log, starts no daemon, marks the dir passed" "pass: 1 new lines|### stub round --pass|o/r all|no pid|passed" \
-  "$(echo "$out" | grep -o '^pass: [0-9]* new lines')|$(cat "$T/passwatch/events.log")|$(cat "$T/passwatch/repos.txt")|$([ -e "$T/passwatch/gh-watch.pid" ] && echo pid || echo no pid)|$([ -e "$T/passwatch/passed" ] && echo passed)"
+out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r all < /dev/null 2>&1)
+check "gh-watch-start --pass runs one round into events.log, starts no daemon, marks the dir passed by its session" "pass: 1 new lines|### stub round --pass|o/r all|no pid|sess-p" \
+  "$(echo "$out" | grep -o '^pass: [0-9]* new lines')|$(cat "$T/passwatch/events.log")|$(cat "$T/passwatch/repos.txt")|$([ -e "$T/passwatch/gh-watch.pid" ] && echo pid || echo no pid)|$(cat "$T/passwatch/passed")"
+printf 'import sys\nsys.exit(3)\n' > "$GI/watcher/gh-watch.py"; rm "$T/passwatch/passed"
+PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r all < /dev/null > /dev/null 2>&1
+check "gh-watch-start --pass exits with a failed round's status and doesn't mark the dir passed" "3 not passed" "$? $([ -e "$T/passwatch/passed" ] && echo passed || echo not passed)"
+bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$T/passwatch/gh-watch.pid"; echo sess-d > "$T/passwatch/session"
+PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" x/y all < /dev/null > /dev/null 2>&1
+check "gh-watch-start --pass refuses a dir whose daemon runs, leaving its session and repos as they were" "1 sess-d o/r all" "$? $(cat "$T/passwatch/session") $(echo $(cat "$T/passwatch/repos.txt"))"
+kill "$(cat "$T/passwatch/gh-watch.pid")"; rm "$T/passwatch/gh-watch.pid"
 got=$(py '
 m.PASS = True
 m.STATE = os.path.join(m.HERE, "no-state-yet.json")
