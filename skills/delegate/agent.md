@@ -2,6 +2,7 @@
 
 Pasted into every brief, after the role's template.
 
+- **Read the instructions of each repo you change first, where they exist:** its `AGENTS.md` and `CLAUDE.md` at the repo root (`git -C <checkout> rev-parse --show-toplevel`), the files `CLAUDE.md` imports with `@`, and any `AGENTS.md` or `CLAUDE.md` in the folders you edit. Follow them within the brief's scope, and report any that would widen it. A session that starts outside the checkout and its parent folders doesn't load them on its own (vikejs/vike#3672 added a test that the repo's `AGENTS.md` rules out).
 - **Do exactly the brief.** Don't widen it, and don't pick another approach than the plan: stop and report why the plan is wrong instead. Do the work yourself; never start agents of your own.
 - **Before calling something unused,** find every caller (`grep -rn`) and read the comment above it.
 - **Search before theorizing:** for an error, an API's behavior or how others solved it, search the web and read the sources first, and whenever you're circling.
