@@ -87,6 +87,17 @@ echo %s
 ' "'[{\"repository\":{\"nameWithOwner\":\"o/r\"},\"number\":5},{\"repository\":{\"nameWithOwner\":\"x/y\"},\"number\":9}]'" > "$T/bin/gh"
 PATH="$T/bin:$PATH" python3 "$SB/steward" round "$S"
 check "round: one watcher round on the folder, the mergeworthy repo whole and each open PR" "--pass $(readlink -f "$S") nitedani/mergeworthy all o/r 5 x/y 9" "$(cat "$T/args")"
+# hooks/run logs each block once a day per hook and message start; `steward fired` reads that log
+HR="$T/hooksrun"; mkdir -p "$HR"; cp "$R/hooks/run" "$HR/"
+printf 'import sys\nsys.stdin.read()\nprint("no gate record for x: run post-lint and the review first", file=sys.stderr)\nsys.exit(2)\n' > "$HR/block.py"; printf 'import sys\nsys.exit(0)\n' > "$HR/ok.py"
+echo '{}' | bash "$HR/run" block.py 2>/dev/null; echo '{}' | bash "$HR/run" block.py 2>"$T/err"; rc=$?; echo '{}' | bash "$HR/run" ok.py
+check "hooks/run: a block keeps its exit code and message and is logged once a day; a pass isn't logged" "2|1|$(date -u +%F) block.py no gate record for x: run post-lint and" \
+  "$rc|$(grep -c 'no gate record' "$T/err")|$(cat "$HOME/.mergeworthy/hooks-fired.log")"
+check "fired: a log younger than 60 days names no candidate" 1 "$(python3 "$R/bin/steward" fired | grep -c '^# no removal candidate yet')"
+echo '2026-01-01 pre-bash-guard.py BLOCK an old one' >> "$HOME/.mergeworthy/hooks-fired.log"
+out=$(python3 "$R/bin/steward" fired)
+check "fired: each check with its last day and days blocked; once the log is 60 days old, a hook with no block since is a candidate, one that blocked isn't" "1 1 1 0" \
+  "$(echo "$out" | grep -c $'\t1 days\tblock.py\tno gate record') $(echo "$out" | grep -c '^# removal candidates, no block in 60 days: .*pre-bash-guard.py') $(echo "$out" | grep -c '^# the log starts 2026-01-01') $(echo "$out" | grep -c 'candidates.*block.py: no gate')"
 echo "failures: $fails"
 rm -rf "$T"
 [ "$fails" -eq 0 ]

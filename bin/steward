@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""steward round <folder> | owed | sessions [<folder>] [--since ISO] | metrics <folder> [--since ISO] [--author LOGIN]... | done <folder> <summary>:
+"""steward round <folder> | owed | fired [--days N] | sessions [<folder>] [--since ISO] | metrics <folder> [--since ISO] [--author LOGIN]... | done <folder> <summary>:
 the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <folder> being the steward's. Reads only, except
 that `metrics` appends its records to <folder>/metrics.jsonl and `done` appends `<UTC time> <summary>` to <folder>/passes.txt.
 
+- fired [--days N]: the hook checks hooks/run logged as blocking, each with its last day, and the hooks with no block in N days
+  (default 60): the removal candidates.
 - round: `gh-watch-start --pass <folder> nitedani/mergeworthy all` plus every open PR of yours: one watcher round, no daemon.
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
   lines not done, FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
@@ -249,6 +251,27 @@ def metrics(folder, since, authors):
         print(f"| {r['pr']} | {r['outcome']} | {r['review_rounds']} | {r['change_requests']} | {r['commits_after_review']} | {r['hours_to_merge'] if r['hours_to_merge'] is not None else '-'} | {r['tokens'] if r['tokens'] is not None else 'unknown'} |")
 
 
+def fired(days):
+    """The hook checks that blocked, from hooks/run's log: each one's last day and on how many days it blocked; then the removal
+    candidates, once the log is at least `days` old: each hook, and each logged check, with no block in that window."""
+    rows = {}
+    for l in read(os.path.join(HOME, '.mergeworthy', 'hooks-fired.log')).splitlines():
+        day, hook, *msg = l.split(' ')
+        r = rows.setdefault((hook, ' '.join(msg)), [day, day, 0])
+        r[0], r[1], r[2] = min(r[0], day), max(r[1], day), r[2] + 1
+    start = min((r[0] for r in rows.values()), default=None)
+    print(f"# the log starts {start or 'today: nothing logged yet'}")
+    for (hook, msg), (_, last, n) in sorted(rows.items(), key=lambda x: x[1][1], reverse=True):
+        print(f"{last}\t{n} days\t{hook}\t{msg}")
+    cutoff = iso(NOW - days * 86400)[:10]
+    if not start or start > cutoff:
+        return print(f"# no removal candidate yet: the log covers less than {days} days")
+    hooks = sorted(set(re.findall(r'hooks/run ([\w.-]+)', read(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks', 'hooks.json')))))
+    quiet = [h for h in hooks if not any(k[0] == h and r[1] >= cutoff for k, r in rows.items())]
+    quiet += [f"{h}: {m}" for (h, m), r in rows.items() if r[1] < cutoff and h not in quiet]
+    print(f"# removal candidates, no block in {days} days: {'; '.join(quiet) or 'none'}")
+
+
 def last_pass(folder):
     lines = [l for l in read(os.path.join(folder, 'passes.txt')).splitlines() if l.strip()]
     try:
@@ -272,6 +295,8 @@ def main(a):
         threads = [x for p in prs for x in (p['repository']['nameWithOwner'], str(p['number']))]
         start = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'gh-watch-start')
         sys.exit(subprocess.run([start, '--pass', folder, 'nitedani/mergeworthy', 'all', *threads]).returncode)
+    if a[:1] == ['fired']:
+        return fired(int((opt('--days') or ['60'])[-1]))
     if a[:1] == ['done'] and folder and a[2:3]:
         with open(os.path.join(folder, 'passes.txt'), 'a') as f:  # the next pass's window starts here
             f.write(f"{iso(NOW)} {' '.join(a[2:])}\n")
