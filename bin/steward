@@ -23,6 +23,7 @@ CORRECTION = re.compile(r"\b(why (?:did|didn't|are|aren't|is|isn't|not|do)|not g
 PR_URL = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)')
 EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?:, #\d+)*): (\S+) by .*$', re.M)  # one commit can touch several PRs: o/r#5, #6
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
+SHA = re.compile(r'[0-9a-f]{7,40}')
 
 
 def iso(t):
@@ -59,7 +60,7 @@ def verdicts(d):
 
 def sorted_as(key, done):
     """The verdict of a FOLLOW-UP or review key: an exact line, or a sha prefix of 7+ characters either way."""
-    return next((v for k, v in done.items() if k == key or len(k) >= 7 and key[:7] == k[:7] and (k.startswith(key) or key.startswith(k))), None)
+    return next((v for k, v in done.items() if k == key or SHA.fullmatch(k) and SHA.fullmatch(key) and (k.startswith(key) or key.startswith(k))), None)
 
 
 def idle(d):
