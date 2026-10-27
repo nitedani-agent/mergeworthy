@@ -9,7 +9,7 @@ What is true of every diff. The implementer reads this before writing; whoever j
 
 ### Before writing
 
-- Read the repo's `AGENTS.md` / `CLAUDE.md` on the target branch, and three sibling files: note sentence length, comment density, naming and platform wording.
+- Read three sibling files: note sentence length, comment density, naming and platform wording.
 - **Find what already does it.** Grep the constants, literals and imports the new code will use; reuse the existing function, and when it needs a fix to be reused, that fix is part of this diff. Never claim something is missing without linking the code. In a program of PRs, search the sibling PRs too, open and merged: when one already enforces a rule, extend that layer, never add a second check.
 - **Behavior before removal.** Before removing or rewriting behavior, inventory what exists (triggers, paths, gates) and run `git log -S` on it. Keep all of it unless the task says otherwise. After a move or rename, grep the repo and sibling PRs for the old name.
 - **Read the contract first.** The feature's docs page, JSDoc and README say what it promises; the change keeps every sentence, or changes one per §Docs are a claim.
