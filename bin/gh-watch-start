@@ -11,8 +11,11 @@
 # - Removes <dir>/retired, which the watcher writes when it retires (disk-sweep's w-done rule).
 # - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply).
+# - --pass: no daemon: one round of the watcher appends to events.log, recording what it reported, and touches <dir>/passed
+#   (mergeworthy:steward); a thread another live dir watches is skipped with a note. Refused while the dir's daemon runs.
 set -e
 main=; [ "${1:-}" = --main ] && { main=1; shift; }
+pass=; [ "${1:-}" = --pass ] && { pass=1; shift; }
 [ -n "$1" ] || { sed -n '2,10p' "$0"; exit 1; }
 dir=$(realpath -m "$1"); shift
 [ -n "$main" ] && { mkdir -p ~/.mergeworthy; echo "$dir" > ~/.mergeworthy/main-watch; }
@@ -28,13 +31,14 @@ while [ $# -gt 0 ]; do
   elif [ "${1:-}" = all ]; then line="$repo all"; file=repos.txt; shift; else line=$repo; file=repos.txt; fi
   # One watcher per thread: a second would report the same comment to a second session
   if [ "$file" = threads.txt ]; then
+    taken=
     while read -r other; do
       [ "$other" != "$dir" ] && [ -f "$other/threads.txt" ] && grep -qxF "$line" "$other/threads.txt" || continue
       opid=$(cat "$other/gh-watch.pid" 2>/dev/null || true)
-      if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then
-        echo "$line is already watched by $other: use that work folder, or remove the line there first" >&2; exit 1
-      fi
+      if [ -n "$opid" ] && ps -p "$opid" -o command= 2>/dev/null | grep -q gh-watch-daemon; then taken=$other; fi
     done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
+    if [ -n "$taken" ] && [ -n "$pass" ]; then echo "skipped $line: $taken watches it" >&2; continue; fi
+    [ -z "$taken" ] || { echo "$line is already watched by $taken: use that work folder, or remove the line there first" >&2; exit 1; }
   fi
   grep -qxF "$line" "$dir/$file" || echo "$line" >> "$dir/$file"
   # the thread covers its repo now: its bare repo line says nothing more
@@ -53,6 +57,14 @@ fi
 # systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
 printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
 daemon_alive() { local p; p=$(cat "$dir/gh-watch.pid" 2>/dev/null || true); [ -n "$p" ] && ps -p "$p" -o command= 2>/dev/null | grep -q gh-watch-daemon; }
+if [ -n "$pass" ]; then
+  daemon_alive && { echo "a daemon watches $dir: read its events.log past events.cursor instead" >&2; exit 1; }
+  n=$(wc -l < "$dir/events.log")
+  (cd "$dir" && GH_WATCH_EYES=$(cat eyes 2>/dev/null) python3 -u gh-watch.py --pass >> events.log 2>&1) || echo "WATCH ERROR gh-watch.py --pass exited $?" >> "$dir/events.log"
+  touch "$dir/passed"; rm -f "$dir/retired"
+  echo "pass: $(( $(wc -l < "$dir/events.log") - n )) new lines in $dir/events.log; read it past events.cursor (mergeworthy:reply)"
+  exit 0
+fi
 if [ "$(uname)" = Linux ] && systemctl --user show-environment >/dev/null 2>&1; then
   unit=~/.config/systemd/user/gh-watch@.service
   mkdir -p "$(dirname "$unit")"

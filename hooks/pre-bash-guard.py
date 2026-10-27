@@ -88,7 +88,10 @@ def need_watch(repo):
     if setting('WATCHER', 'on') != 'on' or not repo: return
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
-    covering = [d for d in watch_dirs() if any(l.split()[:1] == [repo] for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
+    import time  # a dir a steward pass read in the last day covers too (gh-watch-start --pass): its next pass reads the thread
+    reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
+    passed =[d for d in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if os.path.exists(os.path.join(d, 'passed')) and time.time() - os.path.getmtime(os.path.join(d, 'passed')) < 86400]
+    covering = [d for d in watch_dirs() + passed if any(l.split()[:1] == [repo] for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
     if not covering:
         block(f"no running watcher covers {repo}: `gh-watch-start <your work folder> {repo}`, arm the Monitor it prints, then open it")
 

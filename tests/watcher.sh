@@ -489,6 +489,19 @@ chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/cro
 PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
+# --pass (the steward skill): one round of gh-watch.py --pass into events.log, no supervisor, no daemon, a passed mark
+printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
+out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r all < /dev/null 2>&1)
+check "gh-watch-start --pass runs one round into events.log, starts no daemon, marks the dir passed" "pass: 1 new lines|### stub round --pass|o/r all|no pid|passed" \
+  "$(echo "$out" | grep -o '^pass: [0-9]* new lines')|$(cat "$T/passwatch/events.log")|$(cat "$T/passwatch/repos.txt")|$([ -e "$T/passwatch/gh-watch.pid" ] && echo pid || echo no pid)|$([ -e "$T/passwatch/passed" ] && echo passed)"
+got=$(py '
+m.PASS = True
+m.STATE = os.path.join(m.HERE, "no-state-yet.json")
+import datetime
+age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(m.load_state()["since"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+print(round(age.total_seconds() / 86400))
+')
+check "a first --pass round looks back a week" 7 "$got"
 
 # `owner/repo all` in repos.txt: a moved thread of the repo joins that dir (unless another dir lists it), a new one is reported unless
 # it carries the badge, and /agent at the start of a new body is an agent command (routed to the dir watching the repo whole, else main_dir)

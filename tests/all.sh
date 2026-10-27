@@ -15,6 +15,7 @@ run bash tests/hooks.sh .
 run bash tests/word-budget .
 run python3 tests/pointers.py .
 run bash tests/watcher.sh .
+run bash tests/steward.sh .
 run python3 tests/watch-budget.py .
 run python3 tests/watch-cadence.py .
 run bash tests/loc-breakdown.sh .

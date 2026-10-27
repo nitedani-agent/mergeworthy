@@ -103,7 +103,8 @@ def live(dr):
         return True
     except (IndexError, OSError, ValueError):
         return False
-live_dirs = [dr for dr in dirs if live(dr)]
+# a dir a steward pass read in the last day (gh-watch-start --pass) counts: its next pass reads the thread
+live_dirs = [dr for dr in dirs if live(dr) or os.path.exists(os.path.join(dr, 'passed')) and time.time() - os.path.getmtime(os.path.join(dr, 'passed')) < 86400]
 # The posting session's own dirs come first (gh-watch-start records the session): its Monitor tails only those, and an
 # older dir can stay live after its session ended, kept by a forgotten repos.txt line
 own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]

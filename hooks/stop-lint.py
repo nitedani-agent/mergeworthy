@@ -154,7 +154,7 @@ for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     home_wd = wd.replace(os.path.expanduser('~'), '~', 1)
     def mentions(c): return wd in c or home_wd in c
     if wd and (cwd_d == wd or cwd_d.startswith(wd.rstrip('/') + '/') or any(map(mentions, monitor_cmds))
-               or any(re.search(r'\b(gh-watch-start|gate-pass)\s+(--main\s+)?(\S*/)?(' + re.escape(wd) + '|' + re.escape(home_wd) + r')(/\S*)?(\s|$)', c) for c in commands)): own_dirs.add(wd)  # started or posted from there, not merely mentioned
+               or any(re.search(r'\b(gh-watch-start|gate-pass|steward round)\s+(--main\s+|--pass\s+)?(\S*/)?(' + re.escape(wd) + '|' + re.escape(home_wd) + r')(/\S*)?(\s|$)', c) for c in commands)): own_dirs.add(wd)  # started or posted from there, not merely mentioned
 _env = os.path.expanduser('~/.mergeworthy/settings.env')
 # MERGEWORTHY_WATCHER in the environment wins over the plugin option, as for every script
 watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WATCHER=off' in (open(_env).read() if os.path.exists(_env) else '') else 'on')) != 'off'
@@ -162,7 +162,10 @@ watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WA
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 # The user paused the work: nothing is to be watched or answered until they resume
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
-if posted and watcher_on and not headless and not paused and not (monitors - dead):
+# A steward pass (gh-watch-start --pass or steward round, mergeworthy:steward) leaves nothing running: the next pass reads the replies, and
+# its dir's owed lines hold the turn as a live watcher's do
+pass_dirs = {os.path.realpath(os.path.expanduser(p)) for c in commands for p in re.findall(r'\b(?:gh-watch-start\s+--pass|steward\s+round)\s+(\S+)', c)}
+if posted and watcher_on and not headless and not paused and not pass_dirs and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
           "nothing else answers them. Run `gh-watch-start <your work folder> <owner/repo> <N>` and arm the Monitor it "
           "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:reply step 1).", file=sys.stderr)
@@ -174,7 +177,7 @@ if watcher_on and not paused and not child:
         try:
             os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
         except (OSError, ValueError):
-            continue  # no live daemon in this dir
+            if wd not in pass_dirs: continue  # no live daemon in this dir
         f = os.path.join(wd, 'replies-owed.md')
         owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
         import datetime

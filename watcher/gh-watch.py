@@ -34,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
 THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
+PASS = '--pass' in sys.argv  # one round without a daemon (gh-watch-start --pass, mergeworthy:steward): it records what it reports, as a daemon's round does
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -117,7 +118,7 @@ def lease():
     f = open(shared_path('shared-watch.lease'), 'a')
     try:
         try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(f, fcntl.LOCK_EX | (0 if PASS else fcntl.LOCK_NB))  # a pass waits its turn: it runs the shared jobs once
         except OSError:
             yield False
             return
@@ -377,7 +378,7 @@ def load_state():
         s.setdefault('etag', {})
         return s
     except Exception:
-        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=168 if PASS else 1)  # a first pass looks back a week
         return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}, 'etag': {}}
 
 
@@ -1060,7 +1061,7 @@ def moved_thread(repo, i, new):
     watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
     comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's."""
     num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
-    key, dirs = f"{repo}#{num}", live_dirs()
+    key, dirs = f"{repo}#{num}", live_dirs() + [HERE] * PASS  # a pass's dir has no daemon, but its round is the one reading
     if new and AGENT_CMD.match(body) and user.get('login') == ME:
         return agent_command(repo, num, 'body', i)
     d = next((d for d in dirs if repo_lines(d).get(repo)), None)
@@ -1791,6 +1792,12 @@ def main():
     if ONCE:
         run_scan(everything=True)
         shared_pass(force=True)
+        return
+    if PASS:  # the shared jobs first: a thread that moved in a repo watched whole joins threads.txt, and the scan reads it
+        steward_line()
+        shared_pass(force=True)
+        run_scan(everything=True)
+        scan_gitlab()
         return
     global DAEMON
     DAEMON = True

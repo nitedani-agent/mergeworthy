@@ -49,6 +49,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 | `docs` | docs, READMEs and JSDoc that read as the project's own |
 | `delegate` | briefing subagents and checking their work; `skills/delegate/*.md` holds one brief template per role |
 | `rules` | a named failure, editing the skills, the steward's follow-ups |
+| `steward` | on request: one pass over what GitHub owes, this machine's sessions and the PR metrics, rule changes from the evidence, a report; nothing left running |
 | `post`, `converge`, `merging`, `evidence`, `finality` | the procedures a step calls: posting through the review, the passes a PR runs until nothing worth changing is left, push to merge, screenshots and videos, rework of drifted code |
 | `writing`, `code` | the standards every post and every diff is written to, and checked against (`~/.mergeworthy/voice.md` replaces the writing voice) |
 
@@ -64,7 +65,7 @@ Run `npx mergeworthy` again to change the options or add an agent; `npx mergewor
 always-on.md        the always-on rules and the index, in every session
 skills/<name>/      one skill per task, procedure or standard; skills/delegate/ also holds the brief templates
 hooks/              hooks.json and the scripts it runs
-bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start
+bin/                commands on the Bash PATH: gate-pass, post-lint, pr-steps, gh-watch-start, steward
 watcher/            the GitHub watcher daemon gh-watch-start runs
 cli/                the npx mergeworthy installer
 docs/               graphs.md (generated from the skills), build-graphs.py, mechanisms.md

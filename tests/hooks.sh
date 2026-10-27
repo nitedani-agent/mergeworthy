@@ -133,6 +133,18 @@ tr_cmd "gh api graphql -f query='query(\$n:Int!){repository(owner:\"o\",name:\"r
 check "a GraphQL query is a read, not a post" 0 "$(stop "$T/work")"
 tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
+# a steward pass (gh-watch-start --pass) leaves no Monitor: posting is fine, and its dir's owed replies hold the turn
+PD="$T/passdir"; mkdir -p "$PD"; echo "$PD" >> "$HOME/.claude/gh-watch-dirs.txt"
+tr_pass() { python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"steward"}})); [print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"t%d" % i,"input":{"command":c}}]}})) for i, c in enumerate(sys.argv[1:])]; print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' "$@" > "$T/tr.jsonl"; }
+tr_pass "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
+check "BLOCK: a post with no Monitor and no pass" 2 "$(stop "$T")"
+tr_pass "gh-watch-start --pass $PD nitedani/mergeworthy all" "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
+check "a post in a session that ran a steward pass needs no Monitor" 0 "$(stop "$T")"
+tr_pass "steward round $PD" "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
+check "steward round counts as the pass" 0 "$(stop "$T")"
+echo "o/r 5 comment 77 by someone" > "$PD/replies-owed.md"
+check "BLOCK: the pass dir's owed reply holds the turn though no daemon runs there" 2 "$(stop "$T")"
+rm "$PD/replies-owed.md"
 tr_cmd "gh issue comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post with no Monitor on the watcher" 2 "$(stop "$T/work")"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
