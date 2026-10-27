@@ -613,6 +613,19 @@ print(" ".join(os.path.basename(d) for d in m.live_dirs()), os.path.basename(m.m
 ')
 check "a --pass dir comes after every live dir, though registered first, and a live dir stays main_dir" "all other bare pass all" "$got"
 printf '%s\n' "$WH/all" "$WH/other" "$WH/bare" "$WH/pass" > "$HOME/.claude/gh-watch-dirs.txt"
+got=$(py '
+m.PASS = True
+m.STATE, m.THREADS = os.path.join(m.HERE, "erred-state.json"), os.path.join(m.HERE, "erred-threads.txt")
+open(m.THREADS, "w").write("o/r 1\n")
+m.steward_line = m.shared_pass = m.scan_gitlab = m.scan_reactions = lambda *a, **k: None
+def run(fetch):
+    m.fetch_thread, m.ERRED = fetch, False
+    try: m.main()
+    except SystemExit as e: return e.code
+def boom(*a, **k): raise RuntimeError("HTTP 500")
+with contextlib.redirect_stdout(io.StringIO()): print(run(boom), run(lambda *a, **k: (False, "x", [], None, None, None, {}, True, None)), file=sys.stderr)
+' 2>&1 | tail -1)
+check "a --pass round whose call failed exits 1 (gh-watch-start then writes no passed); a round that read everything exits 0" "1 0" "$got"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '

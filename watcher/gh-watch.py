@@ -343,6 +343,8 @@ def run_gh(argv):
 
 def fail(what, e):
     """`WATCH ERROR` for a failed call, except when the pause stopped it: that is announced once (announce_pause)."""
+    global ERRED
+    ERRED = True
     if not isinstance(e, Budget):
         emit(f"WATCH ERROR {what}: {e}")
 
@@ -582,10 +584,13 @@ def main_dir():
 
 
 ERRORS = {}  # WATCH ERROR line -> when it was last printed
+ERRED = False  # a call failed: a pass exits 1, so gh-watch-start --pass doesn't mark its dir passed
 
 
 def emit(line):
+    global ERRED
     if line.startswith('WATCH ERROR'):  # the same error, every pass, is printed once an hour
+        ERRED = True
         if time.time() - ERRORS.get(line, 0) < 3600: return
         ERRORS[line] = time.time()
     print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:reply)
@@ -1809,7 +1814,7 @@ def main():
         shared_pass(force=True)
         run_scan(everything=True)
         scan_gitlab()
-        return
+        sys.exit(1 if ERRED else 0)
     global DAEMON
     DAEMON = True
     while True:
