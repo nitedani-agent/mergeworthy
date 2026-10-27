@@ -226,8 +226,9 @@ def metrics(folder, since, authors):
     cost = {}
     for p in logs(windows[0] - 86400):
         s = session(p)
-        if s['prs']:  # a session counts for the PR it names most: an orchestrator naming many PRs isn't each one's cost
-            c = cost.setdefault(max(s['prs'], key=s['prs'].get), [0, 0, 0.0])
+        most = [pr for pr, n in s['prs'].items() if n == max(s['prs'].values())]
+        if len(most) == 1:  # a session counts for the PR it names more than any other: an orchestrator naming many PRs isn't each one's cost
+            c = cost.setdefault(most[0], [0, 0, 0.0])
             c[0] += s['tokens']; c[1] += s['turns']; c[2] += s['hours'] or 0
     rows = []
     for i in items:

@@ -70,7 +70,9 @@ S="$HOME/.mergeworthy/work/steward"; mkdir -p "$S"; echo "$(iso '-5 days') first
 echo '### FOLLOW-UP o/r#5, #6: 1234567abc by carol changes lines from your PR  at 2026-10-01T00:00:00Z' >> "$W/events.log"
 check "owed: a follow-up naming two PRs is listed once, with both" 1 "$(python3 "$R/bin/steward" owed | grep -c $'\tsort\to/r#5, #6 1234567abc')"
 echo '1234567 MISS https://x' >> "$W/followups-sorted.txt"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"review https://github.com/o/r/pull/5 and https://github.com/o/r/pull/6"}}' '{"type":"assistant","message":{"usage":{"input_tokens":1000,"output_tokens":0}}}' > "$HOME/.claude/projects/p/tie.jsonl"
 out=$(PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S"); rc=$?
+rm "$HOME/.claude/projects/p/tie.jsonl"  # naming #5 and #6 once each, it is neither one's cost
 rec() { python3 -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; p=[x for x in r if x["pr"]==sys.argv[2]][-1]; print(*(p[k] for k in sys.argv[3:]))' "$S/metrics.jsonl" "$@"; }
 check "metrics: exits 0 and records the three badge PRs, not the user's own" "0 3" "$rc $(wc -l < "$S/metrics.jsonl")"
 check "metrics: a merge with only an approval is first-pass; its tokens (no cache reads) come from the session naming it; its TASTE and the MISS of a follow-up naming it and #6 counted" "merged True 0 0 24.0 150 this 2" "$(rec o/r#5 outcome first_pass change_requests commits_after_review hours_to_merge tokens window followup_miss_taste)"
