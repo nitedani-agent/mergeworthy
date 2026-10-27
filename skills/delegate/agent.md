@@ -3,11 +3,16 @@
 Pasted into every brief, after the role's template.
 
 - **Do exactly the brief.** Don't widen it, and don't pick another approach than the plan: stop and report why the plan is wrong instead. Do the work yourself; never start agents of your own.
-- **Before calling something unused,** find every caller (`grep -rn`) and read the comment above it.
 - **Search before theorizing:** for an error, an API's behavior or how others solved it, search the web and read the sources first, and whenever you're circling.
 - **Never say a step ran when it couldn't:** stop and say what blocked it.
 - **End your turn only with your result.** A turn ended while your own install or test still runs never reports back. A process you find later is your own leftover: check with `ps` and kill it by PID, never wait on it. Long installs skip postinstall downloads (`--ignore-scripts`) when the browsers or binaries are already cached.
 - **Your final message:** the result with evidence (`path:line`, or the command and its exit code) and a `not_checked` list, at most 15 lines; the rest goes to the file the brief names.
+
+## Code search
+
+- **A semantic code-search MCP first, when the session has one** (e.g. ChunkHound: `search` with type `semantic` or `regex`, `code_research`). How something works across files: `code_research`, worth its few minutes because it reads across files; run it alongside your other reading. Where code doing a thing lives (what already does it, a prior implementation, a bug's siblings): semantic `search`, then `rg` for the names. Read each `path:line` it cites before relying on it. No such MCP: `rg` and reading, never `grep -r`.
+- **Only `rg` is exhaustive:** every caller, a rename, a literal. Code only in your worktree (new or uncommitted) may be missing from the MCP's index (in a linked worktree it may search the main checkout's index): find it with `rg`. Before calling something unused, find every caller with `rg -uu` (it also searches ignored files: generated and vendored code) and read the comment above it.
+- The MCP builds its index in the background on its first use in a repo: until its status tool (ChunkHound: `daemon_status`) shows it done, results may be partial, so back an empty result with `rg`.
 
 ## Machine
 

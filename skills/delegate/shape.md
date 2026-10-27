@@ -27,7 +27,7 @@ Step 1, cut what shouldn't exist. Check every line of code §Checklist. Each fin
 - When the change is to a methodology (skills, prompts, hooks): check that every named mechanism survived, and fail any compressed into generic prose.
 - A closure claim without a tree, lane or capture you observed yourself stays open. Mark unavailable evidence UNKNOWN.
 
-Step 2, reshape what stays: the prompt below, as written, on what step 1 keeps, with its ✅ coverage list.
+Step 2, reshape what stays: the prompt below, as written, on what step 1 keeps, with its ✅ coverage list. Its "grep the repo" means `rg`, plus a semantic search for the same work under other names (agent.md §Code search).
 
 Step 3, rate every file and function old ⇒ new: after each landing, re-rate every row with its commits, verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
