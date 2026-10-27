@@ -36,7 +36,7 @@ THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
 PASS = '--pass' in sys.argv  # one round without a daemon (gh-watch-start --pass, mergeworthy:steward): it records what it reports, as a daemon's round does
 PASS_LOOKBACK = 7 * 86400  # a pass's first round reads back this far: no earlier round recorded where to start
-FIRST_PASS = False  # a pass in a dir with no state yet (main): its issue lists are read back PASS_LOOKBACK, whatever the shared baseline
+PASS_SINCE = None  # a pass reads the issue lists' threads updated since its dir's last complete pass (main), whatever other readers saw
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -880,7 +880,7 @@ def plan(state, threads, lvl=OK, everything=False):
         if s is None and key in state['since_by']:
             t = iso_epoch(state['since_by'][key])
             s = sched[key] = {'full': t, 'act': 0, 'next': t + spread(key, CHECK[thread_kind(state, key, now)])}  # act 0: what was published since that scan is unread
-        if s and now < s.get('retry', 0):
+        if s and now < s.get('retry', 0) and not PASS:  # a pass is one requested round: it reads what failed before too
             continue
         if s is None and (lvl <= RESERVE or a) or s and a > s.get('act', 0):
             out.append((repo, num, 'full', a))
@@ -1037,25 +1037,25 @@ def poll_feed(url, repo_of, watched, size):
     """One issue list, most recently updated first, with its validator. A watched thread whose update time moved since the last poll is
     published as activity, and its repo is marked for discovery (see discover_agent_commands). The first poll of a list only records.
     More pages are read while the page just read still shows moved threads: it ends on one the last poll saw changed, newer than the oldest
-    it saw, and FEED_PAGES isn't reached. A pass's first round reads back PASS_LOOKBACK instead: what moved before it reached no reader of its dir."""
+    it saw, and FEED_PAGES isn't reached. A pass reads the list itself back to PASS_SINCE instead: what moved since reached no reader of its dir."""
     pending, before = {}, shared_read()['feeds'].get(url)
     key = lambda i: f"{repo_of(i)}#{i['number']}"
-    resp = request(url, store=shared_read()['etags'], pending=pending, newest_first=True)
+    resp = request(url, store=shared_read()['etags'], pending=pending, fresh=PASS, newest_first=True)
     if resp.status == 304:
         return
     page = items = resp.json()
-    oldest = iso(time.time() - PASS_LOOKBACK) if FIRST_PASS else min(before.values()) if before else ''
+    oldest = PASS_SINCE or (min(before.values()) if before else '')
     pages = 1
-    while resp.next() and pages < FEED_PAGES and page and (FIRST_PASS or before) and page[-1]['updated_at'] > oldest and (FIRST_PASS or before.get(key(page[-1])) != page[-1]['updated_at']):
+    while resp.next() and pages < FEED_PAGES and page and (PASS_SINCE or before) and page[-1]['updated_at'] > oldest and (PASS_SINCE or before.get(key(page[-1])) != page[-1]['updated_at']):
         resp = request(resp.next())
         page = resp.json()
         items, pages = items + page, pages + 1
     seen = {key(i): i['updated_at'] for i in items}
     moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
-    recent = {k for k, u in seen.items() if u >= oldest} if FIRST_PASS else set()
+    recent = {k for k, u in seen.items() if u >= oldest} if PASS_SINCE else set()
     for i in items:  # before the feed is recorded: a pass that ran out of calls finds them again, and claims keep each once
         if key(i) in moved | recent:
-            moved_thread(repo_of(i), i, (FIRST_PASS or key(i) not in before) and (i.get('created_at') or '') >= oldest)
+            moved_thread(repo_of(i), i, (PASS_SINCE or key(i) not in before) and (i.get('created_at') or '') >= oldest)
     now = time.time()
     def put(s):
         s['feeds'][url] = dict(list(seen.items())[:size])  # one page's worth: the next poll reads back to its oldest
@@ -1808,12 +1808,21 @@ def main():
         shared_pass(force=True)
         return
     if PASS:  # the shared jobs first: a thread that moved in a repo watched whole joins threads.txt, and the scan reads it
-        global FIRST_PASS
-        FIRST_PASS = not os.path.exists(STATE)
+        global PASS_SINCE
+        started = time.time()
+        with locked():
+            PASS_SINCE = load_state().get('pass_since') or iso(started - PASS_LOOKBACK)
         steward_line()
         shared_pass(force=True)
         run_scan(everything=True)
         scan_gitlab()
+        if shared_read()['pause_until'] > time.time():
+            emit(f"WATCH ERROR API budget: paused until {iso(shared_read()['pause_until'])}, so this pass didn't read everything")
+        if not ERRED:  # only a complete pass moves its position: a failed one is read again from the same point
+            with locked():
+                state = load_state()
+                state['pass_since'] = iso(started - 600)  # overlaps by 10 minutes, as discovery does
+                save_state(state)
         sys.exit(1 if ERRED else 0)
     global DAEMON
     DAEMON = True

@@ -586,26 +586,36 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
-# a --pass dir has no daemon: its first round reads a list back a week, though a daemon polled it before, and /agent on a thread no one lists goes to it
+# a --pass dir has no daemon: each pass reads a list itself back to its last complete pass (a week the first time), though a daemon
+# polled it between (its validator, its baseline), and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"
 got=$(py "$WHOLE"'
 import time
 m.HERE = os.path.join(WH, "pass")
 it = lambda n, created, upd: {"id": 2000 + n, "number": n, "user": {"login": "them"}, "body": "", "title": f"t{n}", "html_url": f"<p{n}>",
                               "created_at": m.iso(time.time() - created * 86400), "updated_at": m.iso(time.time() - upd * 86400)}
-feed = [it(1, 1, 1), it(2, 30, 2), it(3, 30, 20)]
-m.request = lambda path, *a, **k: type("A", (), {"status": 200, "json": lambda self: feed if "/issues?" in path else {"body": ""}, "next": lambda self: None})()
-m.paged, m.react_eyes = (lambda *a, **k: []), (lambda *a: None)
+feed, served = [it(1, 1, 1), it(2, 30, 2), it(3, 30, 20)], {}
+def fake_request(path, *a, **k):  # GitHub answers 304 to a validator for an unchanged list
+    if "/issues?" not in path:
+        return type("A", (), {"status": 200, "json": lambda self: {"body": ""}, "next": lambda self: None})()
+    unchanged = not k.get("fresh") and served.get(path) == len(feed)
+    served[path] = len(feed)
+    return type("A", (), {"status": 304 if unchanged else 200, "json": lambda self: list(feed), "next": lambda self: None})()
+m.request, m.paged, m.react_eyes = fake_request, (lambda *a, **k: []), (lambda *a: None)
 poll = lambda: m.poll_feed("repos/p/q/issues?state=all", lambda i: "p/q", set(), 30)
-poll()  # a daemon poll: the baseline, which reached no reader of the pass dir
-m.PASS = m.FIRST_PASS = True; poll(); m.FIRST_PASS = False; poll()
+daemon = lambda: (setattr(m, "PASS", False), setattr(m, "PASS_SINCE", None), poll())
+first = m.iso(time.time())
+daemon()  # the baseline, which reached no reader of the pass dir
+m.PASS, m.PASS_SINCE = True, m.iso(time.time() - 7 * 86400); poll()
+feed.insert(0, it(4, 0, 0)); daemon(); daemon()  # a new issue: a daemon polls it, then gets a 304
+m.PASS, m.PASS_SINCE = True, first; poll()
 m.agent_command("p/q", 5, "comment", {"id": 77, "body": "/agent fix it", "user": {"login": m.ME}, "html_url": "<c77>", "updated_at": m.iso(time.time())})
 for d in ("all", "other", "bare"): os.remove(os.path.join(WH, d, "gh-watch.pid"))  # no daemon runs: main_dir is the pass dir
 m.agent_command("u/v", 9, "comment", {"id": 78, "body": "/agent and this", "user": {"login": m.ME}, "html_url": "<c78>", "updated_at": m.iso(time.time())})
 print(" ".join(open(os.path.join(m.HERE, "threads.txt")).read().split()))
 ')
-check "a first --pass round: a thread moved this week joins the pass dir, a new one is reported once, an older one not; /agent goes to the pass dir" \
-  "p/q 1 p/q 2 p/q 5|### NEW ISSUE p/q#1|### AGENT COMMAND p/q#5|### UNROUTED /agent u/v#9|" "$got|$(grep -oE '^### [A-Z ]+(/agent )?[a-z/]+#[0-9]+' "$WH/pass/events.log" | tr '\n' '|')"
+check "--pass rounds: a thread moved since the last pass joins the pass dir, a new one is reported once, an older one not, whatever a daemon polled; /agent goes to the pass dir" \
+  "p/q 1 p/q 2 p/q 4 p/q 5|### NEW ISSUE p/q#1|### NEW ISSUE p/q#4|### AGENT COMMAND p/q#5|### UNROUTED /agent u/v#9|" "$got|$(grep -oE '^### [A-Z ]+(/agent )?[a-z/]+#[0-9]+' "$WH/pass/events.log" | tr '\n' '|')"
 got=$(py "$WHOLE"'
 m.PASS, m.HERE = True, os.path.join(WH, "pass")
 open(os.path.expanduser("~/.claude/gh-watch-dirs.txt"), "w").write("\n".join([m.HERE] + [os.path.join(WH, d) for d in ("all", "other", "bare")]) + "\n")
@@ -618,14 +628,21 @@ m.PASS = True
 m.STATE, m.THREADS = os.path.join(m.HERE, "erred-state.json"), os.path.join(m.HERE, "erred-threads.txt")
 open(m.THREADS, "w").write("o/r 1\n")
 m.steward_line = m.shared_pass = m.scan_gitlab = m.scan_reactions = lambda *a, **k: None
+reads = []
 def run(fetch):
     m.fetch_thread, m.ERRED = fetch, False
     try: m.main()
-    except SystemExit as e: return e.code
+    except SystemExit as e: return e.code, "pass_since" in json.load(open(m.STATE))
 def boom(*a, **k): raise RuntimeError("HTTP 500")
-with contextlib.redirect_stdout(io.StringIO()): print(run(boom), run(lambda *a, **k: (False, "x", [], None, None, None, {}, True, None)), file=sys.stderr)
+ok = lambda *a, **k: (reads.append(1), (False, "x", [], None, None, None, {}, True, None))[1]
+with contextlib.redirect_stdout(io.StringIO()):
+    out = [run(boom), run(ok)]
+    m.shared_update(lambda s: s.__setitem__("pause_until", m.time.time() + 3600)); out.append(run(ok))
+    m.shared_update(lambda s: s.__setitem__("pause_until", 0))
+print(out, len(reads), file=sys.stderr)
 ' 2>&1 | tail -1)
-check "a --pass round whose call failed exits 1 (gh-watch-start then writes no passed); a round that read everything exits 0" "1 0" "$got"
+check "a --pass round whose call failed, or that a rate-limit pause cut short, exits 1 and keeps its position; a retry reads the failed thread at once" \
+  "[(1, False), (0, True), (1, True)] 2" "$got"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '
