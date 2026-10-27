@@ -1878,7 +1878,25 @@ check "a condition or a plan names no state: once, until, if, will" "0 0 0" \
   "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.')"
 check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
   "$(slj 'o/r#12: CI is green.') $(slj 'CI is green on o/r#12.') $(slj 'All 12 checks pass on o/r#12.') $(slj 'o/r#12 is green.')"
+check "the condition words count only in the claim's own clause: an earlier clause doesn't hide it" "2 2 2" \
+  "$(slj 'After the rebase, o/r#12 is green.') $(slj 'Fixed the test that failed when run in parallel; o/r#12 is green now.') $(slj 'No need to wait: o/r#12 is green.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
+# the second bug hunt: where git really pushes (-c, GIT_CONFIG_*, every -C, pushDefault), --git-dir and GIT_DIR, a name that is no remote
+OTH="$T/oth"; git clone -q "$OWN" "$OTH"; git -C "$OTH" remote set-url origin https://github.com/vikejs/vike.git
+bp=; for c in 'git -c remote.x.url=https://github.com/vikejs/vike.git push x HEAD:s' 'git push nosuch HEAD:s' \
+             'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.pushurl GIT_CONFIG_VALUE_0=https://github.com/vikejs/vike.git git push origin HEAD:s' \
+             "GIT_DIR=$OTH/.git git push origin HEAD:s" "git --git-dir=$OTH/.git push origin HEAD:s" "git -C /tmp -C $OTH push origin HEAD:s"; do
+  bp="$bp $(bg "$c" "$OWN2")"; done
+git -C "$OWN2" remote add upstream https://github.com/vikejs/vike.git; git -C "$OWN2" config remote.pushDefault upstream; git -C "$OWN2" checkout -q -b fresh
+check "BLOCK: a push redirected by -c, GIT_CONFIG_*, a later -C, --git-dir or GIT_DIR, to a name that is no remote, or by remote.pushDefault" " 2 2 2 2 2 2 2" "$bp $(bg 'git push' "$OWN2")"
+git -C "$OWN2" checkout -q scratch; git -C "$OWN2" config --unset remote.pushDefault
+fp=; for c in '"$(npm bin)/vitest" run tests/git-push.test.ts' '$PYTHON -m pytest -k "git push"' '"$VENV/bin/pytest" -k git-commit' \
+             '${PNPM:-pnpm} test && git log --oneline | grep -i commit' '"$CLAUDE" -p "summarize the last git commit"'; do fp="$fp $(bg "$c" "$OWN2")"; done
+check "a command named by an expansion that only mentions git (a test name, a prompt) passes" " 0 0 0 0 0" "$fp"
+check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
+  "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
+    'direnv exec . git push' 'flock /tmp/l git push' 'taskset 0x1 git push' 'chronic git push' "su -c 'git push' me" "script -qc 'git push' /dev/null" "fish -c 'git push'" 'parallel -k git push ::: x'; do printf '%s ' "$(pushes "$c")"; done | xargs)"
+check "BLOCK: a shell running a computed script that holds a guarded verb" 2 "$(bg 'sh -c "$(printf "git push x")"' "$OWN2")"
 # GitLab: a push to a group's repo is collaboration; one to the user's own namespace only while it is an open MR's source branch
 cat > "$T/bin/glab" <<'EOF'
 #!/usr/bin/env bash

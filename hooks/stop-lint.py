@@ -228,7 +228,7 @@ CLAIMS = [(c, re.compile(rx, re.I)) for c, rx in [(c, SUBJECT + x) for c, x in S
     (c, r"\b(?:CI|checks?)" + ON + r"\s+" + STATE[c]) for c in ('green', 'red')] + [
     (c, r"\b(?:CI|checks?|jobs?)\s+" + STATE[c] + ON) for c in ('green', 'red')] + [('green', r"\ball\s+\d+\s+(?:CI\s+)?(?:checks|jobs)\s+pass(?:ed)?" + ON)]]
 # a condition, a plan or a wait is no claim about now
-LATER = re.compile(r"\b(?:once|when|after|until|if|before|unless|whether|will|would|waiting|wait|expect)\b", re.I)
+LATER = re.compile(r"\b(?:once|when|after|until|if|before|unless|whether|will|would|waiting|wait|expect|next|tomorrow|soon|later)\b", re.I)
 if not child and last.strip():
     import subprocess
     def gh(*a):
@@ -245,7 +245,7 @@ if not child and last.strip():
     url_repos = re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', last)
     states, wrong = {}, []
     for sentence in re.split(r'(?<=[.!?])\s+|\n+', own):
-        for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I) and not LATER.search(sentence[:m.end()])]:
+        for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I) and not LATER.search(re.split(r'[,;:]', sentence[:m.start()])[-1] + sentence[m.start():])]:
             key = (m['r1'] or m['r2'], m['n1'] or m['n2'])
             if key not in states:
                 pr, why = None, ''

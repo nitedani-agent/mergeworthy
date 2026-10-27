@@ -30,7 +30,7 @@ def no_preflight(d):
             "or `pr-steps preflight 'none, because <why there is no UI or browser-run code>'`")
 
 
-SHELLS = ('bash', 'sh', 'zsh', 'dash', 'ksh')
+SHELLS = ('bash', 'sh', 'zsh', 'dash', 'ksh', 'fish')
 REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requirements.txt')
 
 
@@ -162,8 +162,10 @@ def _nested(t):
     """The script a segment runs as a further command: `bash -c '<script>'`, `eval <words>`; else None."""
     t = prog(t)
     name, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
-    if name == 'eval':
-        return ' '.join(a)
+    if name == 'eval' or t[:1] and ' ' in t[0]:  # eval's words, or a script handed to a wrapper as one word
+        return ' '.join(t if ' ' in t[0] else a)
+    if name in ('su', 'runuser', 'script'):  # -c <command>, also in a flag group (`script -qc`)
+        return next((a[i + 1] for i in range(len(a) - 1) if re.fullmatch(r'-[a-zA-Z]*c|--command', a[i])), None)
     if name in SHELLS:
         i, c = 0, False
         while i < len(a) and a[i][:1] in '-+' and a[i] != '-':
@@ -212,6 +214,9 @@ WRAPPERS = {'sudo': ('-u', '-g', '-h', '-p', '-C', '-D', '-r', '-t', '-U'), 'env
             'time': (), 'exec': (), 'nohup': (), 'setsid': (), 'netns-run': (), 'builtin': (),
             'nice': ('-n',), 'ionice': ('-c', '-n'), 'stdbuf': (), 'timeout': ('-s', '-k', '--signal', '--kill-after'),
             'watch': ('-n', '-d', '--interval'), 'parallel': ('-j', '--jobs'), 'xargs': ('-I', '-n', '-P', '-L', '-d', '-a', '-E', '-s', '--max-args', '--max-procs', '--delimiter', '--arg-file')}
+WRAPPERS.update({'npx': (), 'pnpx': (), 'bunx': (), 'chronic': (), 'taskset': (), 'flock': ('-w', '-E'), 'direnv': (), 'runuser': ('-u', '-g')})
+POSITIONAL = {'timeout': 1, 'taskset': 1, 'flock': 1, 'direnv': 2}  # `timeout 20`, `taskset 0x1`, `flock <file>`, `direnv exec <dir>`
+RUNNERS = {'pnpm': ('exec', 'dlx'), 'npm': ('exec',), 'yarn': ('exec', 'dlx'), 'bun': ('x',), 'uv': ('run',), 'uvx': ()}  # `pnpm exec git ...`
 KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a command after these still runs
 
 
@@ -222,13 +227,16 @@ def prog(t):
             t = t[1:]
             continue
         w = os.path.basename(t[0])
+        if w in RUNNERS and (not RUNNERS[w] or t[1:2] and t[1] in RUNNERS[w]):
+            t = t[1 + bool(RUNNERS[w]):]
+            while t and t[0].startswith('-'): t = t[1:]
+            continue
         if w not in WRAPPERS:
             return t
         t = t[1:]
         while t and t[0].startswith('-'):
             t = t[2:] if t[0] in WRAPPERS[w] else t[1:]
-        if w == 'timeout' and t:
-            t = t[1:]
+        t = t[POSITIONAL.get(w, 0):]
     return t
 
 
@@ -243,19 +251,29 @@ def _builtins():
     return _git_builtins
 
 
-def git_argv(t, cwd):
-    """(git dir, -c overrides, subcommand, its arguments) of a git argv, past its global options; a configured alias
-    (`git config alias.p push`, or `-c alias.p=push`) is expanded, so `git p` is checked as the push it runs."""
-    a = t[1:]
-    overrides = dict(a[i + 1].split('=', 1) for i in range(len(a) - 1) if a[i] == '-c' and '=' in a[i + 1])
-    git_dir = next((a[i + 1] for i in range(len(a) - 1) if a[i] == '-C'), '.')
-    git_dir = os.path.join(cwd, os.path.expanduser(git_dir))
+def git_globals(t):
+    """The global options of a git argv, before its subcommand (-C dir, -c k=v, --git-dir ...)."""
+    a, out = t[1:], []
     while a and a[0].startswith('-'):
-        a = a[2:] if a[0] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace') else a[1:]
+        n = 2 if a[0] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env') else 1
+        out, a = out + a[:n], a[n:]
+    return out
+
+
+def git_argv(t, cwd):
+    """(git dir, -c overrides, subcommand, its arguments) of a git argv, past its global options (each -C applies in turn); a
+    configured alias (`git config alias.p push`, or `-c alias.p=push`) is expanded, so `git p` is checked as the push it runs."""
+    g = git_globals(t)
+    overrides = dict(g[i + 1].split('=', 1) for i in range(len(g) - 1) if g[i] == '-c' and '=' in g[i + 1])
+    git_dir = cwd
+    for i in range(len(g) - 1):
+        if g[i] == '-C': git_dir = os.path.join(git_dir, os.path.expanduser(g[i + 1]))
+    a = t[1 + len(g):]
     if not a:
         return git_dir, overrides, '', []
     sub, rest = a[0], a[1:]
-    alias = '' if sub in _builtins() else overrides.get(f'alias.{sub}') or         subprocess.run(['git', '-C', git_dir, 'config', '--get', f'alias.{sub}'], capture_output=True, text=True).stdout.strip()
+    alias = '' if sub in _builtins() else overrides.get(f'alias.{sub}') or \
+        subprocess.run(['git', '-C', git_dir, 'config', '--get', f'alias.{sub}'], capture_output=True, text=True).stdout.strip()
     if alias and not alias.startswith('!'):
         words = alias.split()
         sub, rest = words[0], words[1:] + rest

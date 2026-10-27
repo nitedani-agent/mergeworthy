@@ -6,7 +6,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, git_argv, operands, unquoted, GUARDED
+from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, git_argv, git_globals, operands, unquoted, GUARDED, _nested
 import steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -377,9 +377,10 @@ def repo_of(url):
         except (OSError, subprocess.TimeoutExpired, TypeError): pass
     return host, m[2]
 
-def pushed(d, rest):
-    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` from d: the remote's push URLs (pushurl, pushInsteadOf),
-    or the URL given; no commits for a delete, tags only, or a local path."""
+def pushed(git_cmd, env, rest):
+    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run as git_cmd (git and the command's own global options,
+    in run_dir, with env): the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
+    a local path."""
     if '--delete' in rest or '-d' in rest: return [], []
     if {'--all', '--branches', '--mirror'} & set(rest):
         block("push one branch, named (`git push <remote URL> <branch>`): each pushed head's records are checked (mergeworthy:merging step 1)")
@@ -388,10 +389,13 @@ def pushed(d, rest):
         if skip: skip = False
         elif x in ('-o', '--push-option', '--repo', '--receive-pack', '--exec'): skip = True
         elif not x.startswith('-'): pos.append(x)
-    run = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True)
+    run = lambda *a: subprocess.run([*git_cmd, *a], cwd=run_dir, env=env, capture_output=True, text=True)
     git = lambda *a: run(*a).stdout.strip()
     to = git('rev-parse', '--abbrev-ref', '@{push}').split('/', 1)  # where a bare `git push` goes: remote/branch
-    remote = pos[0] if pos else (opt(rest, ['--repo']) or [to[0] or 'origin'])[-1]
+    head = git('symbolic-ref', '--short', '-q', 'HEAD')
+    if len(to) < 2:  # a branch with no upstream yet: the remote git picks, the branch of the same name
+        to = [next((r for r in (git('config', f'branch.{head}.pushRemote'), git('config', 'remote.pushDefault'), git('config', f'branch.{head}.remote')) if r), 'origin'), head]
+    remote = pos[0] if pos else (opt(rest, ['--repo']) or [to[0]])[-1]
     if re.search(r'[$`]', remote):
         block(f"where this push goes ({remote}) is computed when it runs, so it can't be checked: push to a remote name or URL written out")
     urls = git('remote', 'get-url', '--push', '--all', remote).split()
@@ -399,6 +403,8 @@ def pushed(d, rest):
         rules = [l.split(' ', 1) for l in git('config', '--get-regexp', r'^url\..*\.(push)?insteadof$').splitlines() if ' ' in l]
         best = max((r for r in rules if remote.startswith(r[1])), key=lambda r: (r[0].endswith('pushinsteadof'), len(r[1])), default=None)
         urls = [best[0][4:best[0].rindex('.')] + remote[len(best[1]):] if best else remote]
+        if not best and not re.search(r'[/:]', remote) and not os.path.exists(os.path.join(run_dir, remote)):  # a bare name git can't resolve
+            block(f"`{remote}` is neither a remote of this checkout nor a URL or path, so where this push goes can't be told")
     push_urls.extend(urls)
     if all(repo_of(u) is None for u in urls):
         return urls, []  # a local path publishes nothing a reviewer or CI sees
@@ -410,7 +416,7 @@ def pushed(d, rest):
         sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
         if not sha:
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
-        branch = dst or (to[1] if not pos[1:] and len(to) > 1 else git('symbolic-ref', '--short', '-q', 'HEAD') if src == 'HEAD' else src)
+        branch = dst or (to[1] if not pos[1:] else head if src == 'HEAD' else src)
         out.append((sha, re.sub(r'^refs/heads/', '', branch)))
     return urls, out
 
@@ -574,7 +580,9 @@ def check(t, has_cd):
                         or (x.startswith('+') and len(x) > 1) for x in rest)
             if force or any(not re.match(r'^--force-with-lease=\S+:\S+$', x) for x in leases):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
-            urls, heads = pushed(repo, rest)
+            if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
+                block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
+            urls, heads = pushed(['git', *git_globals(t)], {**os.environ, **env}, rest)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
@@ -717,9 +725,14 @@ has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 for s in segs:
-    # a command named by an expansion (`"${a[@]}"`, `$GIT push`) runs what this hook can't see: one holding a guarded verb no command shows blocks
-    if prog(s)[:1] and prog(s)[0][:1] in '$`' and (m := GUARDED.search(unquoted(cmd))) and not any(GUARDED.search(' '.join(prog(x))) for x in segs if prog(x)[:1] and prog(x)[0][:1] not in '$`'):
-        block(f"`{prog(s)[0]}` runs a command named only when it runs, and this command holds `{' '.join(m.group(0).split()[:2])}`: write the command out")
+    # a command named by an expansion (`"${a[@]}"`, `$GIT push`), or a shell running a computed script (`sh -c "$(...)"`), runs what this
+    # hook can't see: it blocks when its arguments, or the variables it names, hold a guarded verb
+    named = prog(s)[0] if prog(s)[:1] and prog(s)[0][:1] in '$`' else (_nested(s) or '') if (_nested(s) or '')[:1] in '$`' else ''
+    if named:
+        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', shell_vars.get(v, ''))]
+        w = {x.lower() for x in words}
+        if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
+            block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
     if s and all(re.match(r'^\w+=', x) for x in s):
         shell_vars.update(x.split('=', 1) for x in s)
     check(s, has_cd)
