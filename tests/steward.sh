@@ -36,12 +36,12 @@ with open(os.path.join(home, '.claude/projects/p/s1.jsonl'), 'w') as f:
         f.write(json.dumps(e) + '\n')
 with open(os.path.join(home, '.codex/sessions/2026/c1.jsonl'), 'w') as f:
     for e in [{'timestamp': t0, 'type': 'event_msg', 'payload': {'type': 'user_message', 'message': 'nem jó, revert it'}},
-              {'timestamp': t1, 'type': 'event_msg', 'payload': {'type': 'token_count', 'info': {'total_token_usage': {'total_tokens': 4000}}}}]:
+              {'timestamp': t1, 'type': 'event_msg', 'payload': {'type': 'token_count', 'info': {'total_token_usage': {'input_tokens': 5000, 'cached_input_tokens': 2000, 'output_tokens': 1000, 'reasoning_output_tokens': 300, 'total_tokens': 6000}}}}]:
         f.write(json.dumps(e) + '\n')
 EOF
 out=$(python3 "$R/bin/steward" sessions --since "$(iso '-1 day')")
 check "sessions: the Claude log's hours, turns, tokens and PR; a tool result is no turn" "1" "$(echo "$out" | grep -c $'^~/.claude/projects/p/s1.jsonl\t.*\t1.0h\t2 turns\t150 tokens\to/r#5$')"
-check "sessions: the correction, with its line; the Codex log's tokens and correction" "1 1 1" "$(echo "$out" | grep -c 's1.jsonl:4'$'\t''why did you skip') $(echo "$out" | grep -c $'\t1 turns\t4000 tokens') $(echo "$out" | grep -c 'c1.jsonl:1')"
+check "sessions: the correction, with its line; the Codex log's tokens (cache reads left out) and correction" "1 1 1" "$(echo "$out" | grep -c 's1.jsonl:4'$'\t''why did you skip') $(echo "$out" | grep -c $'\t1 turns\t4000 tokens') $(echo "$out" | grep -c 'c1.jsonl:1')"
 check "sessions: a log older than --since is left out" 0 "$(python3 "$R/bin/steward" sessions --since "$(iso '+1 hour')" | grep -c jsonl)"
 
 # ---------- metrics: two PRs of the window (one merged first pass, one reworked), one of the window before, one without a badge ----------
