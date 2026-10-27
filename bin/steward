@@ -21,7 +21,7 @@ HOME = os.path.expanduser('~')
 NOW = time.time()
 CORRECTION = re.compile(r"\b(why (?:did|didn't|are|aren't|is|isn't|not|do)|not good|that's wrong|wrong|you (?:forgot|missed|skipped)|stop|revert|undo|again\?|nem jó|miért|rossz|állj|megint)\b", re.I)
 PR_URL = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)')
-EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+): (\S+) by .*$', re.M)
+EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?:, #\d+)*): (\S+) by .*$', re.M)  # one commit can touch several PRs: o/r#5, #6
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
 
 
@@ -190,8 +190,9 @@ def followups():
         done = verdicts(d)
         for key, ref in dict.fromkeys(EVENT.findall(read(os.path.join(d, 'events.log')))):
             v = sorted_as(ref, done)
-            if v:
-                out.setdefault(key, []).append(v)
+            repo = key.split('#', 1)[0]
+            for num in re.findall(r'#(\d+)', key) if v else ():
+                out.setdefault(f"{repo}#{num}", []).append(v)
     return out
 
 

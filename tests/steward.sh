@@ -65,11 +65,13 @@ esac
 EOF
 chmod +x "$T/bin/gh"
 S="$HOME/.mergeworthy/work/steward"; mkdir -p "$S"; echo "$(iso '-5 days') first pass" > "$S/passes.txt"
-echo '### FOLLOW-UP o/r#6: 1234567abc by carol touches  at 2026-10-01T00:00:00Z' >> "$W/events.log"; echo '1234567 MISS https://x' >> "$W/followups-sorted.txt"
+echo '### FOLLOW-UP o/r#5, #6: 1234567abc by carol changes lines from your PR  at 2026-10-01T00:00:00Z' >> "$W/events.log"
+check "owed: a follow-up naming two PRs is listed once, with both" 1 "$(python3 "$R/bin/steward" owed | grep -c $'\tsort\to/r#5, #6 1234567abc')"
+echo '1234567 MISS https://x' >> "$W/followups-sorted.txt"
 out=$(PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S"); rc=$?
 rec() { python3 -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; p=[x for x in r if x["pr"]==sys.argv[2]][-1]; print(*(p[k] for k in sys.argv[3:]))' "$S/metrics.jsonl" "$@"; }
 check "metrics: exits 0 and records the three badge PRs, not the user's own" "0 3" "$rc $(wc -l < "$S/metrics.jsonl")"
-check "metrics: a merge with only an approval is first-pass; its tokens (no cache reads) come from the session naming it" "merged True 0 0 24.0 150 this" "$(rec o/r#5 outcome first_pass change_requests commits_after_review hours_to_merge tokens window)"
+check "metrics: a merge with only an approval is first-pass; its tokens (no cache reads) come from the session naming it; its TASTE and the MISS of a follow-up naming it and #6 counted" "merged True 0 0 24.0 150 this 2" "$(rec o/r#5 outcome first_pass change_requests commits_after_review hours_to_merge tokens window followup_miss_taste)"
 check "metrics: a change request and a commit after it: not first-pass; the author's own review isn't a maintainer's; its MISS counted" "False 1 1 1 3 None 1" "$(rec o/r#6 first_pass review_rounds change_requests commits_after_review review_comments tokens followup_miss_taste)"
 check "metrics: a PR created before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
 check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 1/2 (50%) |" "$(echo "$out" | grep 'north star')"
