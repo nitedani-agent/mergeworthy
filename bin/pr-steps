@@ -3,6 +3,7 @@
 # Steps, in pipeline order (mergeworthy:converge): verify (Loop A), shape (Loop B: the review and the shape pass),
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
+# quick: the quick gates' exit codes on a head (code §Gates), which every push and `gh pr create` need on the pushed head.
 set -euo pipefail
 # The first sentence of each code/SKILL.md section a checker's brief names: its file copies them under '## Standards read', proof it read them
 standards() { python3 - "$(dirname "$(realpath "$0")")/../skills/code/SKILL.md" <<'EOF'
@@ -19,9 +20,9 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|small|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in preflight|approach|small|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, small, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
+case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
@@ -111,7 +112,7 @@ carries() {
   changed=$(delta "$full")
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
-if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
@@ -180,8 +181,11 @@ EOF
       changed=$(delta "$full")
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
-  gates)
+  gates|quick)
     grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ tests?\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    # a gate that can't run here is installed or run another way: CI is never where a change is first checked
+    unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
+    ! grep -Eiq "$unrun" "$out" || { echo "$out says a gate didn't run ($(grep -Eio "$unrun" "$out" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
     # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)'
     bad=$(grep -E ' -> exit [0-9]+' "$out" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) tests?\)$' | head -n3 || true)

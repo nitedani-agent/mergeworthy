@@ -206,7 +206,8 @@ def verify(path, target, parent):
         return f'{path} is older than the comment it answers ({parent}): run `{cmd}` again and re-read it'
     if target:
         t = load(*parse_ref(target)) if parse_ref(target) else None
-        lh = latest_human(t) if t else None
+        if not t: return f"gh couldn't read {target}, so whether {path} records its latest comment can't be checked: retry once gh answers"
+        lh = latest_human(t)
         if lh and (lh[0], lh[1]) > rec:
             return f'{path} records the latest comment of {target} as {rec[0]} (id {rec[1]}), but the thread has {lh[2]} ({lh[0]}): run `{cmd}`, read what is new, and re-draft'
     return ''

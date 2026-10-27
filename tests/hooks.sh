@@ -9,15 +9,34 @@ T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin" "$T/fx"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
-# ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref
-if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; exit 1; fi
+# ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
+# ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported")
+# A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands
+[ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] && { echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
+if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
+if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
-[ -f "$f" ] && cat "$f" || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+[ -f "$f" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+q=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; shift; done
+python3 -c 'import json, re, sys
+raw = open(sys.argv[1]).read(); q = sys.argv[2]
+try: v = json.loads(raw)
+except ValueError: v = None
+if isinstance(v, dict) and re.fullmatch(r"(\.\w+)+", q):
+    for k in q.split(".")[1:]: v = v.get(k) if isinstance(v, dict) else None
+    print("" if v is None else v if isinstance(v, str) else json.dumps(v))
+else: sys.stdout.write(raw)' "$f" "$q"
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
 fails=0
+TASKW="$HOME/.mergeworthy/work/t"; TCO="$TASKW/repo"; mkdir -p "$TASKW"
+printf 'Tier: S, because one bounded fix\n\n- [ ] fix the thing https://github.com/o/r/issues/1\n' > "$TASKW/scope.md"
+git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
+  local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
+quick "$TCO"
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
@@ -154,7 +173,7 @@ gate a2 "Agent comment two."
 gate new "Agent answer."
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ); old=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); hour=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
 comments() { # body1 body2 created2 [author2]
-  echo 2 > "$FX/repos_o_r_issues_5"
+  echo '{"number":5,"comments":2}' > "$FX/repos_o_r_issues_5"
   python3 -c 'import json,sys; print(json.dumps([{"body":sys.argv[1],"created":sys.argv[3],"url":"https://example.invalid/c1","user":"nitedani"},{"body":sys.argv[2],"created":sys.argv[3],"url":"https://example.invalid/c2","user":sys.argv[4]}]))' \
     "$1" "$2" "$3" "${4:-nitedani}" > "$FX/repos_o_r_issues_5_comments_per_page_100_page_1"
 }
@@ -333,7 +352,7 @@ kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
 AR="$T/art"; mkdir -p "$AR/drafts/r1" "$AR/maps"; ctx "$AR/drafts/r1" o/r#9
-rm -f "$HOME/.claude/proposal-rounds.txt"
+rm -f "$HOME/.claude/proposal-rounds.txt"; echo '{"number":9,"comments":0}' > "$FX/repos_o_r_issues_9"
 prop() { # n: a gated proposal draft, as gate-pass leaves it
   printf 'Proposal %s\n' "$1" > "$AR/drafts/r1/p$1.md"; sha256sum "$AR/drafts/r1/p$1.md" | cut -d' ' -f1 > "$AR/drafts/r1/p$1.md.gate"; tcbind "$AR/drafts/r1/p$1.md"
   echo "--kind proposal --repo o/r --parent none" > "$AR/drafts/r1/p$1.md.lint"
@@ -541,7 +560,7 @@ check "gate-pass replays --draft from the .lint record (without it the State lin
 touch -d '+2 minutes' "$T/dsd/pr.md"
 check "BLOCK: gate-pass on a draft edited after its review (a trim to the ceiling), naming post steps 2 and 3" "1 1" "$(bash "$R/bin/gate-pass" "$T/dsd/pr.md" "$T/dsd/review.out" >"$T/dsd/gp.out" 2>&1; echo $?) $(grep -c 'changed after its review.*post step 2.*post step 3' "$T/dsd/gp.out")"
 dguard() { # body file -> exit code of the guard on `gh pr create --draft`
-  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo o/r --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" \
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo o/r --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?
 }
 printf '%s\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' "$B" > "$T/dg.md"; sha256sum "$T/dg.md" | cut -d' ' -f1 > "$T/dg.md.gate"
@@ -587,7 +606,7 @@ printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
 check "BLOCK: under Language: hu, an English State line and a decision without its Hungarian pick" "1 1 1" "$(sed -i 's/^\*\*Állapot: piszkozat\*\*/**State: draft**/; s/^Az (a) lehetőséget választottam/I picked (a)/' "$T/hu.md"; hulint) $(grep -c 'Állapot: piszkozat' "$T/hu.out") $(grep -c 'választottam' "$T/hu.out")"
 printf '%s\nA feltöltés elakad nagy fájloknál. Ez az MR darabokban küldi a fájlt.\n\n### Amit látni fogsz\n\n**1.** Egy 50 MB-os fájl feltöltése:\n\n```\nPOST /upload -> 201\n```\n' "$B" > "$T/hus.md"
 check "a ready Hungarian body's evidence heading passes under Language: hu, not without it" "0 1" "$(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/hu --parent none 2>&1 | grep -c 'pull-request §Body') $(python3 "$R/bin/post-lint" "$T/hus.md" --kind pr --repo acme/en --parent none 2>&1 | grep -c 'pull-request §Body')"
-hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" \
+hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
@@ -1177,7 +1196,7 @@ seq 1 5 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit 
 r1=$(prss "$T/sr1.md"); echo t > "$GS/test/a.test.ts"; seq 1 300 > "$GS/README.md"; git -C "$GS" add -A; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm c
 r2=$(prss "$T/sr0.md")
 check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with findings, records with both (docs not counted)" "1 1 0" "$r1 $r2 $(prss "$T/sr2.md")"
-check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
+check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
@@ -1185,7 +1204,7 @@ check "BLOCK: pr-steps small past 60 lines outside tests and docs" "1 1" "$(prss
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }
-ready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
+ready() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
 check "BLOCK: gh pr ready with no step recorded" 2 "$(ready)"
 printf 'slice 1: no bug that counts\n' > "$T/v0.md"
 check "BLOCK: a Loop A output without NO BUGS" 1 "$(prs2 verify "$T/v0.md")"
@@ -1222,9 +1241,11 @@ check "BLOCK: setting a draft's file time (touch -d / -r, also after a cd into d
 check "BLOCK: gate-pass and a post in one command (a pipe hid its refusal); gate-pass alone passes" "2 2 0" "$(glab "gate-pass /w/drafts/19/body.md /w/drafts/19/body.review.out | tail -1 && gh issue edit 19 --body-file /w/drafts/19/body.md") $(glab "gate-pass /w/d/r.md /w/d/r.review.out; gh api repos/o/r/issues/5/comments -F body=@/w/d/r.md") $(glab "gate-pass /w/drafts/19/body.md /w/drafts/19/body.review.out")"
 check "BLOCK: a playwright install into the shared cache; into a private folder passes" "2 2 0" "$(glab "pnpm exec playwright install chromium") $(glab "cd repo && npx playwright install --with-deps") $(glab "PLAYWRIGHT_BROWSERS_PATH=/w/.pw npx playwright install chromium")"
 # pre-bash-guard: a PR title is drafted in a file, never typed inline
+echo '[]' > "$FX/repos_o_r_issues_5_timeline_per_page_100"
 guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2],"agent_id":sys.argv[3]}))' "$1" "$T" "${2:-}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
-check "BLOCK: a PR title typed inline (create, edit, -t), naming the title file; a title from its file passes" "2 1 2 2 0 0" "$(guard "gh pr create --draft --title 'Fix the thing' --body-file $T/b.md") $(grep -c 'drafts/title.md.*last 10 merged titles.*pull-request step 7' "$T/err") $(guard "gh pr edit 5 --title 'Fix it'") $(guard 'gh pr edit 5 -t Fix') $(guard 'gh pr edit 5 --title "$(cat /w/drafts/title.md)"') $(guard 'gh pr create --draft --title "$(cat /w/drafts/title.md)" --body-file /w/b.md' >/dev/null; grep -c 'typed inline' "$T/err")"
+check "BLOCK: a PR title typed inline (create, edit, -t), naming the title file; a title from its file passes" "2 1 2 2 0 0" "$(guard "gh pr create --draft --title 'Fix the thing' --body-file $T/b.md") $(grep -c 'drafts/title.md.*last 10 merged titles.*pull-request step 7' "$T/err") $(guard "gh pr edit 5 --title 'Fix it'") $(guard 'gh pr edit 5 -t Fix') $(GH_WATCH_ME=me guard 'gh pr edit 5 -R o/r --title "$(cat /w/drafts/title.md)"') $(guard 'gh pr create --draft --title "$(cat /w/drafts/title.md)" --body-file /w/b.md' >/dev/null; grep -c 'typed inline' "$T/err")"
 printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z","rename":{"from":"a","to":"b"}}]' > "$FX/repos_o_r_issues_7_timeline_per_page_100"
+echo '[]' > "$FX/repos_o_r_issues_9_timeline_per_page_100"
 printf '[{"event":"renamed","actor":{"login":"brillout"},"created_at":"2026-10-14T21:50:52Z"},{"event":"renamed","actor":{"login":"me"},"created_at":"2026-10-14T22:00:00Z"}]' > "$FX/repos_o_r_issues_8_timeline_per_page_100"
 check "BLOCK: retitling a PR whose title a maintainer set, naming him; our own last title, or no rename, passes" "2 1 0 0" "$(GH_WATCH_ME=me guard 'gh pr edit 7 -R o/r --title "$(cat /w/drafts/title.md)"') $(grep -c 'brillout set this PR.s title' "$T/err") $(GH_WATCH_ME=me guard 'gh pr edit 8 -R o/r --title "$(cat /w/drafts/title.md)"') $(GH_WATCH_ME=me guard 'gh pr edit 9 -R o/r --title "$(cat /w/drafts/title.md)"')"
 printf 'fix: deprecate `vike/fetch` (closes #3608)\n' > "$T/title.md"; printf 'fix: two\nlines.\n' > "$T/title2.md"
@@ -1239,8 +1260,8 @@ check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and in
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
-check "glab mr create --draft passes" 0 "$(glab 'glab mr create --draft --title x')"
-check "glab mr create --wip passes" 0 "$(glab 'glab mr create --wip --title x')"
+check "glab mr create --draft passes" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --draft --title x')"
+check "glab mr create --wip passes" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --wip --title x')"
 check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)"
 check "glab mr update --ready passes there too" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
@@ -1250,12 +1271,13 @@ check "a big maintainer commit carries them too: the pipeline waits for their go
 git -C "$G2" reset -q --hard HEAD~1
 printf 'y\n' > "$G2/g"; git -C "$G2" add g; git -c user.name=t -c user.email=t@t -C "$G2" commit -q -m c -m 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'
 check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 "$(ready)"
-check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
+check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
 H=$(git -C "$G2" rev-parse HEAD); for k in verify loopb refactor reverify fresh gates; do echo "$k /x/$k.md 2026-10-13T00:00:00Z" >> "$HOME/.claude/pr-steps/$H"; done
 check "a head recorded before the shape pass (loopb and refactor) counts as shaped" 0 "$(ready)"
 # ---------- pre-bash-guard: a maintainer's refactor ask (the watcher's refactor-asks.txt) is answered by a pass recorded after it ----------
 # The guard reads the record only, on the PR's head or any commit it lists; whether a post shows that pass's result is the post review's.
 sguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; }
+echo '{"number":7,"comments":0}' > "$FX/repos_o_r_issues_7"  # the thread a comment goes to: no comments yet
 pr7() { python3 -c 'import json,sys; print(json.dumps({"head":{"sha":sys.argv[1]},"body":sys.argv[2]}))' "$1" "$2" > "$FX/repos_o_r_pulls_7"; }
 gated() { printf '%s\n' "$2" > "$T/$1.md"; sha256sum "$T/$1.md" | cut -d' ' -f1 > "$T/$1.md.gate"; echo "$T/$1.md"; }
 printf '| # | File / function | Old ⇒ new | Reason |\n|---|---|---|---|\n| 1 | `src/load.ts` / `load()` | 6 ⇒ 7 | one owner |\n✅ load()\nCLEAN\n' > "$T/sp-old.md"
@@ -1299,7 +1321,7 @@ PL="PROMISED o/r#7: the refactor pass's result by 15:00 UTC (sp-hold-r.md)"
 check "the session's open PROMISED line for the PR's refactor result lets a comment through; another PR's, or a cleared one, doesn't" "0 1 1" "$(hold "$PL") $(hold "PROMISED o/r#8: the refactor pass's result (x.md)") $(hold "DONE https://example.invalid/c PROMISED o/r#7: the refactor pass's result (sp-hold-r.md)")"
 check "BLOCK: with that PROMISED line, gh pr ready and a body edit (gh pr edit, gh api PATCH) still wait for the pass, saying so" "1 1 1 1" "$(hold "$PL" 'gh pr ready 7 -R o/r') $(hold "$PL" "gh pr edit 7 -R o/r --body-file $DONE") $(hold "$PL" "gh api -X PATCH repos/o/r/pulls/7 -F body=@$DONE") $(grep -c 'gh pr ready` and a body edit wait for the recorded pass' "$T/err")"
 rm -rf "$WR"; sed -i "\#^$WR\$#d" "$HOME/.claude/gh-watch-dirs.txt"
-rm -f "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
+rm -f "$FX/repos_o_r_issues_7" "$FX/repos_o_r_pulls_7" "$FX/repos_o_r_pulls_7_commits_per_page_100" "$HOME/.claude/pr-steps/$AH" "$HOME/.claude/refactor-asks.txt"
 # ---------- preflight: no code in a repo and branch until the app was loaded in browser control ----------
 P="$T/pf"; mkdir -p "$P"; git -C "$P" init -q -b feat
 pf() { (cd "$P" && bash "$R/bin/pr-steps" preflight "$@" >/dev/null 2>&1; echo $?); }
@@ -1406,24 +1428,26 @@ sg() { sg_in "$@" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?;
 sgb() { sg Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$1")"; }
 sg_tr "$T/sg.jsonl" text
 check "BLOCK: gh pr create without its skills opened" 2 "$(sgb "gh pr create --draft --body-file $T/b.md")"
-check "the block names exactly post, pull-request and writing" "mergeworthy:post mergeworthy:pull-request mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the block names exactly post, pull-request, task and writing" "mergeworthy:post mergeworthy:pull-request mergeworthy:task mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "the block gives the reason from the always-on row" 1 "$(grep -c '^- mergeworthy:writing, for gh pr create: Before writing any words a person reads' "$T/sg.err")"
-sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request text skill:writing skill:post
+sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request text skill:writing skill:post skill:task
 check "gh pr create passes once its skills were opened (plugin-qualified or bare)" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
 sg_tr "$T/sg.jsonl" skill:mergeworthy:pull-request skill:mergeworthy:writing skill:mergeworthy:post compact text
 check "BLOCK: skills opened before the last compaction don't count" 2 "$(sgb "gh pr create --draft --body-file $T/b.md")"
 check "the compact summary's text doesn't open merging either" 2 "$(sgb 'git push')"
-sg_tr "$T/sg.jsonl" skill:mergeworthy:writing compact skill:mergeworthy:pull-request skill:mergeworthy:writing skill:mergeworthy:post
+sg_tr "$T/sg.jsonl" skill:mergeworthy:writing compact skill:mergeworthy:pull-request skill:mergeworthy:writing skill:mergeworthy:post skill:mergeworthy:task
 check "opened again after the compaction: passes" 0 "$(sgb "gh pr create --draft --body-file $T/b.md")"
-sg_tr "$T/sg.jsonl" compact attached:mergeworthy:pull-request,mergeworthy:writing cut:mergeworthy:post
+sg_tr "$T/sg.jsonl" compact attached:mergeworthy:pull-request,mergeworthy:writing,mergeworthy:task cut:mergeworthy:post
 check "skills the harness re-attached whole after the compaction count; one cut short doesn't" "2 mergeworthy:post" "$(sgb "gh pr create --draft --body-file $T/b.md") $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "BLOCK: gh pr ready also needs merging" 2 "$(sgb 'gh pr ready 5')"
 check "the ready block names only merging" "mergeworthy:merging" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
 check "gh pr ready --undo, back to draft, never waits" 0 "$(sgb 'gh pr ready 5 --undo')"
 check "BLOCK: git push without merging" 2 "$(sgb 'cd /x && git -C /x push origin HEAD')"
 check "BLOCK: gh pr merge without merging" 2 "$(sgb 'gh pr merge 5 --squash')"
-sg_tr "$T/sg.jsonl" typed:mergeworthy:merging
+sg_tr "$T/sg.jsonl" typed:mergeworthy:merging skill:task skill:pull-request
 check "a skill the user typed as /mergeworthy:merging counts" 0 "$(sgb 'git push')"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
+check "BLOCK: a push with merging but not task and pull-request (the deliverable's skill), naming both" "2 mergeworthy:pull-request mergeworthy:task" "$(sgb 'git push') $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 sg_tr "$T/sg.jsonl" skill:other:merging
 check "BLOCK: another plugin's skill of the same name doesn't count" 2 "$(sgb 'git push')"
 for c in 'git status' 'git push --dry-run' 'gh pr view 5 --comments' 'gh pr list' 'gh issue view 3' 'gh api repos/o/r/pulls/5' \
@@ -1444,7 +1468,7 @@ check "the review block names review, post and writing" "mergeworthy:post mergew
 check "BLOCK: gh issue edit of the body" 2 "$(sgb "gh issue edit 5 --body-file $T/d.md")"
 check "a label-only issue edit posts nothing" 0 "$(sgb 'gh issue edit 5 --add-label bug')"
 check "BLOCK: gh issue create" 2 "$(sgb "gh issue create --title x --body-file $T/d.md")"
-check "the issue block names open-issue, post and writing" "mergeworthy:open-issue mergeworthy:post mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+check "the issue block names open-issue, post, task and writing" "mergeworthy:open-issue mergeworthy:post mergeworthy:task mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 check "BLOCK: post-lint without writing" 2 "$(sgb "post-lint $T/d.md --kind reply")"
 check "a reply's lint names reply, post and writing" "mergeworthy:post mergeworthy:reply mergeworthy:writing" "$(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
 sgb "post-lint $T/d.md --kind=proposal" >/dev/null
@@ -1473,11 +1497,11 @@ check "an ordinary edit passes" 0 "$(sg Edit '{"file_path":"/r/src/debrief.ts"}'
 sg_tr "$T/sg.jsonl" skill:mergeworthy:delegate skill:mergeworthy:rules
 check "the Agent tool passes once delegate was opened" 0 "$(sg Agent '{"prompt":"x"}')"
 check "editing a skill passes once rules was opened" 0 "$(sg Edit '{"file_path":"/r/skills/writing/SKILL.md"}')"
-mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging
+mkdir -p "$T/s1/subagents"; sg_tr "$T/s1/subagents/agent-a1.jsonl" skill:mergeworthy:merging skill:mergeworthy:task skill:mergeworthy:pull-request
 check "a subagent's own Skill calls count for it" 0 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 sg_tr "$T/s1/subagents/agent-a1.jsonl" text; sg_tr "$T/sg.jsonl" skill:mergeworthy:merging
 check "BLOCK: the parent's skills aren't in a subagent's context" 2 "$(sg_in Bash '{"command":"git push"}' "$T/sg.jsonl" a1 | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
-check "no transcript to read: nothing to check" 0 "$(sg Bash '{"command":"git push"}' "$T/none.jsonl")"
+check "BLOCK: a gated action whose transcript can't be read, saying so; a read-only one passes" "2 1 0" "$(sg Bash '{"command":"git push"}' "$T/none.jsonl") $(grep -c "transcript.*can't be read" "$T/sg.err") $(sg Bash '{"command":"git status"}' "$T/none.jsonl")"
 old_tr() { # <transcript>: a session that opened the old catalog's core, github-threads, writing and delegating
   sg_tr "$1" skill:mergeworthy:core skill:mergeworthy:github-threads skill:mergeworthy:writing skill:mergeworthy:delegating; }
 olds() { # <session id>: the four actions an old-catalog session takes, each 0 when its old skills count
@@ -1497,7 +1521,7 @@ ss s-v1 resume "$R"; check "BLOCK: resumed on the skill graph, the old names no 
 ss s-new startup "$R"; check "BLOCK: a session started on the skill graph gets no transition" "2 2 2 2" "$(olds s-new)"
 R2="$T/reinstall"; mkdir -p "$R2/skills/task"; touch "$R2/skills/task/SKILL.md" "$R2/always-on.md"
 ss s-new compact "$R2"; check "BLOCK: a reinstall of the skill graph keeps it on the new names" "2 2 2 2" "$(olds s-new)"
-check "no transcript: nothing to check, whatever the record" 0 "$(sg_in Bash '{"command":"gh-watch-start /w o/r"}' "$T/none.jsonl" | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
+check "BLOCK: no transcript, whatever the record" 2 "$(sg_in Bash '{"command":"gh-watch-start /w o/r"}' "$T/none.jsonl" | python3 "$R/hooks/pre-skill-gate.py" 2>/dev/null; echo $?)"
 check "the gate's table and always-on.md's rows agree" ok "$(python3 - "$R" <<'EOF'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location('sg', sys.argv[1] + '/hooks/pre-skill-gate.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -1533,7 +1557,7 @@ check "BLOCK: compose up publishing a fixed host port" 2 "$(dc_guard "DC_FX=$T/f
 check "BLOCK: compose up with a container_name" 2 "$(dc_guard "DC_FX=$T/named.json docker compose -p x up -d")"
 check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/assigned.json docker compose -p x up -d")"
 check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
-check "compose up whose config fails passes" 0 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
+check "BLOCK: compose up whose config fails (its ports can't be checked)" 2 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
@@ -1552,10 +1576,10 @@ EOF2
 sg() { # command session cwd
   python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"session_id":sys.argv[2],"cwd":sys.argv[3]}))' "$@" \
     | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
-check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "git -C $T/mwc push origin HEAD:main" other-session "$T")"
+check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 echo "$SW steward-thread" > "$HOME/.mergeworthy/steward"
-check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push origin HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
-check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push origin HEAD:main" child-session "$T") $(sg "git -C $T/mwc push origin HEAD:main" x "$SW") $(sg "git -C $T/gr push origin HEAD:main" other-session "$T")"
+check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
+check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" child-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" x "$SW") $(sg "git -C $T/gr push $T/elsewhere.git HEAD:main" other-session "$T")"
 python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
 import sqlite3, sys
 c = sqlite3.connect(sys.argv[1])
@@ -1563,9 +1587,9 @@ c.execute("""insert into orchestration_v2_projection_provider_threads values ('p
 c.execute("insert into orchestration_v2_projection_subagents values ('s2', 'steward-thread', 'thread:spaced')"); c.commit()
 EOF2
 echo steward-session > "$SW/session"
-check "the steward's agent is found in JSON written with spaces" 0 "$(sg "git -C $T/mwc push origin HEAD:main" spaced-session "$T")"
+check "the steward's agent is found in JSON written with spaces" 0 "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" spaced-session "$T")"
 mv "$HOME/.t3/userdata/statev2.sqlite" "$T/state.bak"
-check "without T3's database, the session its watch dir's session file names is the steward; another isn't" "0 2" "$(sg "git -C $T/mwc push origin HEAD:main" steward-session "$T") $(sg "git -C $T/mwc push origin HEAD:main" other-session "$T")"
+check "without T3's database, the session its watch dir's session file names is the steward; another isn't" "0 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" steward-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
 printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
@@ -1639,5 +1663,145 @@ check "a later commit of the same push with the trailer covers them" 0 "$(crpush
 echo four > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: four' -m "Cold-read: $T/coldread.md"
 echo five > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: five'
 check "BLOCK: on a pushed branch, a skill commit after the last trailer, naming only it" "1 0 1" "$(crpush) $(grep -c 'skill: four' "$T/cr.out") $(grep -c 'skill: five' "$T/cr.out")"
+# ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
+# shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
+# line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped
+sp() { python3 - "$R/hooks" "$1" <<'PY'
+import json, sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+segs, err = s.parse(sys.argv[2])
+print(json.dumps([s.prog(x)[:3] for x in segs]) + (' ERR' if err else ''))
+PY
+}
+check "parse: a commit message with trailers over several lines, and the push after it" '[["cd", "/r"], ["git", "commit", "-qam"], ["git", "push", "origin"], ["tail", "-3"]]' \
+  "$(sp $'cd /r; git commit -qam "fix: pass \\`headers\\`\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:b 2>&1 | tail -3')"
+check "parse: gh pr create with a body typed inline over several lines" '[["gh", "pr", "create"]]' "$(sp $'gh pr create --repo v/v --draft --title "fix: x" --body "Fixes CI.\n\nIt\'s the headers."')"
+check "parse: a message from a heredoc inside \$( ), an apostrophe and a parenthesis in it" '[["git", "commit", "-m"], ["git", "push"], ["cat", "<<", "EOF"]]' \
+  "$(sp $'git commit -m "$(cat <<\'EOF\'\nit\'s (one\nEOF\n)" && git push')"
+pushes() { python3 - "$R/hooks" "$1" <<'PY'
+import sys; sys.path.insert(0, sys.argv[1]); import shellcmd as s
+print('yes' if any(s.prog(x)[:2] == ['git', 'push'] for x in s.parse(sys.argv[2])[0]) else 'no')
+PY
+}
+check "parse: a push in bash -c, if/then, sudo -u, a heredoc a shell reads, eval, a subshell in \$( ); none in a heredoc python reads" "yes yes yes yes yes yes no" \
+  "$(pushes 'bash -lc "cd x && git push"') $(pushes 'if true; then git push; fi') $(pushes 'sudo -u bob git push') $(pushes $'cat <<EOF | bash\ngit push\nEOF') $(pushes 'eval "git push"') $(pushes 'x=$( (cd a; git push) )') $(pushes $'python3 - <<\'E\'\ns = "git push"\nE')"
+check "parse: an unterminated quote says so, its words still showing the command" '[["git", "commit", "-m"]] ERR' "$(sp 'git commit -m "oops')"
+# the session's checkout, outside any work folder, as /home/collab/projects/vike was
+VK="$T/projects/vike"; git init -q -b fix-telefunc "$VK"; git -C "$VK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+git -C "$VK" remote add origin https://github.com/vikejs/vike.git; git -C "$VK" config user.name me; git -C "$VK" config user.email 42+me@users.noreply.github.com
+bg() { # command [cwd]: pre-bash-guard's exit code, its message in $T/err
+  python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$VK}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
+echo 'me 42' > "$FX/user"
+C1="cd $VK; "$'git commit -qam "fix: pass \\`headers\\` to telefunc \\`serve()\\` (telefunc 0.3.0)\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:dependabot/npm_and_yarn/telefunc-0.3.0 2>&1 | tail -3'
+check "replay: the first commit and push (a multi-line message), with no preflight: blocked at the commit" "2 1" "$(bg "$C1") $(grep -c 'pr-steps preflight' "$T/err")"
+(cd "$VK" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+check "replay: with a preflight, the push from a checkout in no task's work folder is blocked" "2 1" "$(bg "$C1") $(grep -c "isn't in a task's work folder" "$T/err")"
+check "replay: the push through a git alias, or bash -c, is the same push" "2 2" "$(bg 'git -c alias.p=push p origin HEAD:b') $(bg 'bash -c "git push origin HEAD:b"')"
+C2="cd $VK; "$'gh pr create --repo vikejs/vike --base dependabot/npm_and_yarn/telefunc-0.3.0 --head nitedani-agent:fix-telefunc --draft --title "fix: pass \\`headers\\` to telefunc \\`serve()\\`" --body "Fixes CI of #3671.\n\nPasses \\`headers\\` at the three \\`serve()\\` call sites."'
+check "replay: the draft PR with its title and body typed inline, multi-line: blocked (the title)" "2 1" "$(bg "$C2") $(grep -c 'typed inline' "$T/err")"
+check "replay: an inline multi-line body, from a scoped and gated checkout: blocked (post from a draft file)" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg $'gh pr create --repo o/r --draft --title "$(cat /w/drafts/title.md)" --body "Fixes CI.\n\nIt\'s the headers."' "$TCO") $(grep -c 'post from a draft file' "$T/err")"
+git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'style: format'
+check "replay: a push to a draft PR's branch whose head ran no gates ('I'll push and let CI verify'): blocked, naming pr-steps quick" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$TCO") $(grep -c 'pr-steps quick' "$T/err")"
+printf 'pnpm test -> exit 0 (3 tests)\nTypeScript: types not installed here, let CI verify -> exit 0\n' > "$T/q-ci.log"
+check "pr-steps quick refuses a log whose gate didn't run ('not installed', 'let CI verify')" "1 1" "$(cd "$TCO" && bash "$R/bin/pr-steps" quick "$T/q-ci.log" 2>"$T/err" >/dev/null; echo $?) $(grep -c "says a gate didn't run" "$T/err")"
+TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
+printf 'Tier: S, because one CI fix in one repo\n\n- [ ] Fix CI https://github.com/vikejs/vike/pull/3671\n' > "$TK2/scope.md"
+git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK" remote add upstream https://github.com/vikejs/vike.git
+printf '[{"name":"TypeScript","bucket":"fail"},{"name":"Examples Vue/Others (ubuntu-latest)","bucket":"fail"},{"name":"Lint","bucket":"pass"}]' > "$FX/pr_checks_https___github.com_vikejs_vike_pull_3671"
+quick "$CK"
+check "replay: a CI fix whose gate log doesn't run the failing jobs: blocked, naming each failing one" "2 1 1 0" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c '"TypeScript"' "$T/err") $(grep -c '"Examples Vue/Others (ubuntu-latest)"' "$T/err") $(grep -c '"Lint"' "$T/err")"
+git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b
+quick "$CK" $'TypeScript: pnpm exec tsc --noEmit -> exit 0\nExamples Vue/Others (ubuntu-latest): pnpm -C examples/vue test -> exit 0 (12 tests)\n'
+check "the same push passes once its head's log runs each failing job" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+echo "$T/nowatch" > "$HOME/.claude/gh-watch-dirs.txt"
+check "replay: the same push with no watcher on vikejs/vike (or the fork): blocked, naming the repos" "2 1" "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(grep -c 'no running watcher covers nitedani-agent/vike or vikejs/vike' "$T/err")"
+bash -c 'exec -a gh-watch-daemon sleep 600' & FPID=$!; FW="$T/fw"; mkdir -p "$FW"; echo "$FPID" > "$FW/gh-watch.pid"; echo vikejs/vike > "$FW/repos.txt"; echo "$FW" > "$HOME/.claude/gh-watch-dirs.txt"
+check "a watcher on the upstream repo covers it" 0 "$(bg 'git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK")"
+kill "$FPID"
+check "BLOCK: a shell write of a step record, and a Write of one" "2 2" "$(bg 'echo "quick /x 2026-10-27T00:00:00Z" >> ~/.claude/pr-steps/$(git rev-parse HEAD)') $(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$HOME/.claude/pr-steps/abc" "$T" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
+check "BLOCK: a GitHub write through curl" 2 "$(bg 'curl -X POST -H "Authorization: token x" https://api.github.com/repos/o/r/issues/5/comments -d @body.json')"
+check "BLOCK: a command that doesn't parse, holding a guarded verb, saying so; one without passes" "2 1 0" "$(bg 'git commit -m "oops') $(grep -c "doesn't parse" "$T/err") $(bg 'echo "oops')"
+check "BLOCK: a comment while gh can't read the thread (two in a row can't be checked)" "2 1" "$(GH_STUB_403=1 bg "gh issue comment 5 --repo o/r --body-file $D/new.md" "$T") $(grep -c "couldn't read o/r#5" "$T/err")"
+(cd "$TCO" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null); rm -f "$FX/user" "$HOME/.claude/gh-user.txt"
+check "BLOCK: a commit while gh can't say which account pushes, and nothing cached" "2 1" "$(bg 'git commit -m x' "$TCO") $(grep -c "gh can't say which account pushes" "$T/err")"
+echo 'me 42' > "$HOME/.claude/gh-user.txt"
+check "the account gh last named is the one checked while gh can't answer" "2 1" "$(bg 'git -c user.name=me -c user.email=me@example.com commit -m x' "$TCO") $(grep -c '42+me@users.noreply.github.com' "$T/err")"
+check "BLOCK: a hook that crashes (here on input it can't read) blocks, saying the check failed" "2 1" "$(printf 'not json' | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?) $(grep -c 'the check itself failed' "$T/err")"
+mkdir -p "$T/hk"; cp "$R/hooks/run" "$T/hk/run"; printf 'import sys; sys.exit(3)\n' > "$T/hk/bad.py"; printf 'import time; time.sleep(5)\n' > "$T/hk/slow.py"
+check "hooks/run: a hook exiting with neither 0 nor 2, or past its time, blocks" "2 2 1" "$(bash "$T/hk/run" bad.py </dev/null 2>/dev/null; echo $?) $(MERGEWORTHY_HOOK_SECONDS=1 bash "$T/hk/run" slow.py </dev/null 2>"$T/err"; echo $?) $(grep -c 'after 1s' "$T/err")"
+TK3="$HOME/.mergeworthy/work/unscoped"; git init -q "$TK3/r"; (cd "$TK3/r" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+check "BLOCK: an edit in a task's checkout before scope.md has its Tier line" "2" "$(python3 -c 'import json,sys; print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":sys.argv[1]},"cwd":sys.argv[2]}))' "$TK3/r/a.ts" "$TK3/r" | python3 "$R/hooks/pre-design-gate.py" 2>/dev/null; echo $?)"
+sg_tr "$T/sg.jsonl" skill:mergeworthy:task skill:mergeworthy:merging
+check "replay: pre-skill-gate on that first commit-and-push (merging opened, not pull-request): blocked" "2 mergeworthy:pull-request" \
+  "$(sg_in Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$C1")" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?) $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | xargs)"
+check "replay: the inline-body draft PR waits for pull-request, post and writing" "2 mergeworthy:post mergeworthy:pull-request mergeworthy:writing" \
+  "$(sg_in Bash "$(python3 -c 'import json,sys; print(json.dumps({"command":sys.argv[1]}))' "$C2")" | python3 "$R/hooks/pre-skill-gate.py" 2>"$T/sg.err"; echo $?) $(grep -o '^- mergeworthy:[a-z-]*' "$T/sg.err" | cut -c3- | sort | xargs)"
+# stop-lint: the final message from the hook's input, hand-backs, the PR states it claims, an unfinished task
+slj() { # [last_assistant_message] [stop_hook_active] [session] [cwd]: stop-lint on $T/tr.jsonl
+  python3 -c 'import json,sys; d={"transcript_path":sys.argv[1],"cwd":sys.argv[2],"stop_hook_active":sys.argv[3]=="1","session_id":sys.argv[4]}
+if sys.argv[5]: d["last_assistant_message"]=sys.argv[5]
+print(json.dumps(d))' "$T/tr.jsonl" "${4:-$T}" "${2:-0}" "${3:-s-fc}" "${1:-}" | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
+: > "$HOME/.claude/gh-watch-dirs.txt"
+hb=; for m in 'CI is running on the new head (932e25dc4), and nothing will notify me when it finishes.' 'Tell me when to re-check CI.' 'Ask me to check the run when you want it.' \
+             'I have not posted it yet. Tell me to check, or to post the reply now.' 'Do you want me to post it now that CI is green?'; do tr_file "$m"; hb="$hb $(slj)"; done
+check "BLOCK: the session's five hand-backs" " 2 2 2 2 2" "$hb"
+tr_file 'README tidied.'
+check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
+tr_file 'Ask me to check the run when you want it.'
+check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
+tr_file 'README tidied.'
+ci() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>/dev/null; echo $?; }
+check "the check-in is per session: another session gets its own, the first not twice within 30 minutes" "2 2 0" "$(ci sess-a) $(ci sess-b) $(ci sess-a)"
+git init -q "$T/vkr"; git -C "$T/vkr" remote add origin https://github.com/vikejs/vike.git
+printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/vikejs/vike/pull/3675","head":{"sha":"abc"},"base":{"repo":{"full_name":"vikejs/vike"}}}' > "$FX/repos_vikejs_vike_pulls_3675"
+printf '{"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}' > "$FX/repos_vikejs_vike_commits_abc_check-runs_per_page_100"; cp "$FX/repos_vikejs_vike_commits_abc_check-runs_per_page_100" "$FX/repos_vikejs_vike_commits_abc_check-runs"
+tr_file 'x'
+check "replay: 'PR #3675 is still a draft' while the maintainer had marked it ready: blocked, saying what GitHub says (the repo from the checkout's remote)" "2 1" \
+  "$(slj "I'm watching #3675 for replies. PR #3675 is still a draft with CI green. It waits on brillout." 0 s-fc "$T/vkr") $(grep -c 'is a draft, you say.*ready for review' "$T/err")"
+check "a PR state that matches GitHub passes; a conditional is no claim" "0 0" "$(slj 'https://github.com/vikejs/vike/pull/3675 is ready for review, and its CI is green.') $(slj 'Once vikejs/vike#3675 is merged, I will update the docs.')"
+check "BLOCK: a PR state claimed about a PR gh can't read" "2 1" "$(slj 'PR o/r#99 is still a draft.') $(grep -c "gh couldn't read that PR" "$T/err")"
+check "BLOCK: a done message linking a PR gh can't read" "2 1" "$(slj 'All done: https://github.com/o/r/pull/404 has the fix.') $(grep -c "couldn't read it" "$T/err")"
+TK4="$HOME/.mergeworthy/work/fc-task"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix CI https://github.com/o/r/pull/71\n' > "$TK4/scope.md"
+uf() { python3 - "$T/tr.jsonl" "$@" <<'PY'
+import json, sys
+out = open(sys.argv[1], 'w'); w = lambda e: out.write(json.dumps(e) + '\n')
+w({"type": "user", "message": {"content": "Fix CI https://github.com/o/r/pull/71"}})
+w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "s1", "name": "Skill", "input": {"skill": "mergeworthy:task"}}]}})
+for ev in sys.argv[2:-1]:
+    k, _, v = ev.partition(':')
+    if k == 'monitor':
+        w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "m-" + v, "name": "Monitor", "input": {"command": "gh run watch 1"}}]}})
+        w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "m-" + v, "content": f"Monitor started (task {v}, expires in 30m unless the source ends first)"}]}})
+    elif k == 'ended':
+        w({"type": "user", "message": {"content": f"<task-notification>\n<task-id>{v}</task-id>\n<status>completed</status>\n</task-notification>"}})
+w({"type": "assistant", "message": {"content": [{"type": "text", "text": sys.argv[-1]}]}})
+PY
+}
+check "BLOCK: a task's turn ending with a scope.md box open and nothing armed to wake it, naming the item" "2 1" "$(uf 'I pushed the fix; CI runs on the new head.'; slj '' 0 s-uf "$TK4") $(grep -c 'Fix CI https://github.com/o/r/pull/71' "$T/err")"
+check "a Monitor it armed lets the turn end; once that Monitor ended, it doesn't" "0 2" "$(uf monitor:m1 'Waiting on CI.'; slj '' 0 s-uf "$TK4") $(uf monitor:m1 ended:m1 'Waiting on CI.'; slj '' 0 s-uf "$TK4")"
+check "a GENUINE-FORK the user must answer ends it; every box ticked ends it" "0 0" "$(uf $'Two ways remain.\n\nGENUINE-FORK: a or b; I recommend a.'; slj '' 0 s-uf "$TK4") $(sed -i 's/- \[ \]/- [x]/' "$TK4/scope.md"; uf 'Done.'; slj '' 0 s-uf "$TK4")"
+check "replay: the session's first turn (task opened, no scope.md anywhere): blocked, naming task steps 2-3" "2 1" "$(uf 'I could not push the fix.'; slj '' 0 s-uf "$VK") $(grep -c 'task steps 2-3' "$T/err")"
+WD2="$T/deadw"; mkdir -p "$WD2"; echo 999999 > "$WD2/gh-watch.pid"; echo 'o/r 5 comment 42 by maint' > "$WD2/replies-owed.md"; echo "$WD2" > "$HOME/.claude/gh-watch-dirs.txt"
+tr_file 'README tidied.'
+check "BLOCK: a dead watcher's open owed line; a retired watcher's passes" "2 0" "$(slj '' 0 s-fc "$WD2") $(touch "$WD2/retired"; slj '' 0 s-fc "$WD2")"
+: > "$HOME/.claude/gh-watch-dirs.txt"
+# the verifier's round on this change: each case it reproduced
+check "parse: a push after (( << )), in an unquoted heredoc's \$( ), in \${x:-\$( )}, in \$(( \$( ) )), after a case in \$( ); none in a quoted heredoc" "yes yes yes yes yes no" \
+  "$(pushes $'(( y = 1 << 3 ))\ngit push origin HEAD') $(pushes $'cat > f <<EOF\n$(git push)\nEOF') $(pushes 'echo ${x:-$(git push)}') $(pushes 'echo $(( $(git push) + 1 ))') $(pushes 'echo $(case y in y) git push;; esac)') $(pushes $'cat > f <<\'EOF\'\n$(git push)\nEOF')"
+check "parse: a heredoc with no end line says so; a quoted } in \${x:-\"a}b\"} parses" "yes no" "$(sp $'cat <<E\nno end' | grep -q ERR && echo yes || echo no) $(sp 'echo ${x:-"a}b"}; git push' | grep -q ERR && echo yes || echo no)"
+check "a cd to \$(git rev-parse --show-toplevel), or cd -P, is followed" "0 0" \
+  "$(MERGEWORTHY_WATCHER=off bg 'cd "$(git rev-parse --show-toplevel)" && git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc' "$CK") $(MERGEWORTHY_WATCHER=off bg "cd -P $CK && git push https://github.com/nitedani-agent/vike.git HEAD:fix-telefunc" "$T")"
+check "a push from a checkout of no GitHub repo (gh: no known GitHub host) has no PR to read" 0 "$(GH_STUB_NOHOST=1 MERGEWORTHY_WATCHER=off bg 'git push https://gitlab.com/ns/p.git HEAD:fix-telefunc' "$CK")"
+tr_cmd 'git stash push -u -m wip-tag'
+check "git stash push is no push: the session isn't a task's by it" 0 "$(slj)"
+tr_file 'README tidied.'
+check "words that only contain an offer (your callback, ping messages) aren't one" "0 0" "$(slj 'The new hook now fires your callback once per event.') $(slj 'The bot no longer sends duplicate ping messages.')"
+echo '{"number":42,"title":"a bug"}' > "$FX/repos_o_r_issues_42"
+check "a state with no PR in its sentence, local checks, or an issue's state is no PR claim" "0 0 0" \
+  "$(slj 'Pushed the fix to o/r#12. Local checks are passing; CI is still running.') $(slj 'Fixes o/r#42 (the issue). The upstream fix is merged into main.') $(slj 'o/r#42 is merged.')"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Act as the review sub-agent for this task"}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"README tidied."}]}}))' > "$T/tr.jsonl"
+check "a tool result quoting the sub-agent line is no crash (and no child)" 0 "$(slj)"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

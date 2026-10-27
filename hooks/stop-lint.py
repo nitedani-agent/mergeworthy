@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Claude Code Stop hook. Blocks ending a turn with an offer or permission question the agent should just act on,
-or after posting on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers
-the events; nothing else wakes it), or with a line still owed in a live watcher's replies-owed.md (mergeworthy:reply)."""
-import glob, json, os, re, sys
+"""Claude Code Stop hook. Blocks ending a turn while the task's scope.md has an open item and nothing this session armed will
+wake it, with an offer or hand-back the agent should just act on, with a claim about a PR that GitHub contradicts, after posting
+on GitHub with no live Monitor on a watcher's events.log in this session (the session is what answers the events; nothing else
+wakes it), or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
+The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
+the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
+import glob, hashlib, json, os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import failclosed
 d = json.load(sys.stdin)
-if d.get('stop_hook_active'):
-    sys.exit(0)
+active = bool(d.get('stop_hook_active'))
 last = ''
 posted, monitor_ids, monitors, dead, commands, monitor_cmds = False, {}, set(), set(), [], []
+wakers, opened_task, acted = {}, False, False  # the background commands and Monitors this session started; whether it is a task's
 last_user = ''  # the user's own last message (not a tool result or a hook's feedback)
 said = []  # every text the agent wrote, in order
 POST = re.compile(r'\bgh\b[^\n]*(body-file|body=@|--input|\s-F\s)')
@@ -26,13 +31,23 @@ def run_lines(cmd):  # the command's lines minus heredoc bodies, which are a fil
 def posts(cmd):
     return any(POST.search(l) and RUN_GH.search(QUOTED.sub("''", l)) and not (READ.search(l) and 'mutation' not in cmd) for l in run_lines(cmd))
 try:
-    lines = open(d['transcript_path']).readlines()
-except Exception:
-    sys.exit(0)
-sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    lines = open(d['transcript_path'], errors='replace').readlines()
+except (KeyError, TypeError, OSError):
+    # Without the transcript, what the session did can't be checked: block once; on the stop after, the final message's
+    # own checks still run (this session can't make its transcript readable)
+    if not active:
+        print(f"stop-lint can't read this session's transcript ({d.get('transcript_path')}), so whether its work is finished can't be checked. "
+              "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
+        sys.exit(2)
+    lines = []
 import steward
+from shellcmd import segments, prog, git_argv
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
-child = len(steward.threads(d.get('session_id'))) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', (json.loads(l).get('message') or {}).get('content') or '')
+def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
+    try: c = (json.loads(l).get('message') or {}).get('content')
+    except (ValueError, AttributeError): return ''
+    return c if isinstance(c, str) else ''
+child = len(steward.threads(d.get('session_id'))) > 1 or any(re.match(r'Act as the [\w-]+ sub-agent for this task', opening(l))
             for l in lines[:20] if '"type":"user"' in l.replace(' ', '') and 'sub-agent for this task' in l)
 for line in lines:
     try:
@@ -52,12 +67,18 @@ for line in lines:
             last_user = typed
         for t in texts:
             for tid in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?Monitor expired', t or ''): dead.add(tid)
+            for tid, st in re.findall(r'<task-id>(\w+)</task-id>[\s\S]*?<status>(\w+)</status>', t or ''):
+                if st in ('completed', 'failed', 'killed', 'stopped', 'cancelled', 'canceled', 'error'): dead.add(tid)
+            for tid in re.findall(r'Command running in background with ID: (\w+)|Monitor started \(task (\w+)', t or ''):
+                wakers[tid[0] or tid[1]] = 1
+        opened_task = opened_task or '<command-name>/mergeworthy:task</command-name>' in typed
     if e.get('type') == 'assistant':
         for x in c if isinstance(c, list) else []:
             if not isinstance(x, dict) or x.get('type') != 'tool_use': continue
             i = x.get('input') or {}
             if x.get('name') == 'Bash' and posts(i.get('command', '')): posted = True
             if x.get('name') == 'Bash': commands.append(i.get('command', ''))
+            if x.get('name') == 'Skill' and str(i.get('skill', '')) in ('task', 'mergeworthy:task'): opened_task = True
             if x.get('name') == 'Monitor' and 'events.log' in i.get('command', ''):
                 monitor_ids[x.get('id')] = 1
                 monitor_cmds.append(i.get('command', ''))
@@ -65,13 +86,25 @@ for line in lines:
         if isinstance(c, list):
             t = ''.join(x.get('text', '') for x in c if isinstance(x, dict) and x.get('type') == 'text')
             if t.strip(): last = t; said.append(t)
+# The final message as the harness hands it over: the transcript may not hold it yet when this hook runs
+fin = d.get('last_assistant_message')
+if isinstance(fin, str) and fin.strip():
+    if not said or said[-1].strip() != fin.strip(): said.append(fin)
+    last = fin
+cwd_d = d.get('cwd') or ''
+acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
+                      for c in commands for t in map(prog, segments(c)))
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
 own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
-tail = own.strip()[-400:]
-OFFER = r"(when you say (go|so)|say the word|want me to|shall I|should I\b|if you want|if you'd rather|your call|is yours to|or would you rather|which do you (want|prefer)|let me know if)"
-if re.search(OFFER, tail, re.I) and 'GENUINE-FORK' not in last:
-    print("Your last message ends with an offer or a permission question. If it is your own recommendation or in scope, "
-          "do it now. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
+# An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
+OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
+         r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|tell me (when|to|if|whether)|"
+         r"ask me (to|when|if)|ping me|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
+offer = re.search(OFFER, own, re.I)
+if offer and 'GENUINE-FORK' not in last:
+    print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
+          "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
+          "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
           "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
           "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
     sys.exit(2)
@@ -130,19 +163,88 @@ if not child and re.search(DONE, own.strip()[:300], re.I):
         url = f'https://{host}/{path}/{"pull" if host == "github.com" else "-/merge_requests"}/{n}'
         if host == 'github.com':
             pr = api(['gh', 'api', f'repos/{path}/pulls/{n}'])
-            if not isinstance(pr, dict) or pr.get('state') != 'open': continue
-            runs = api(['gh', 'api', f'repos/{path}/commits/{pr["head"]["sha"]}/check-runs']) or {}
+            if not isinstance(pr, dict):
+                unfinished.append(f"{url} (gh couldn't read it)"); continue
+            if pr.get('state') != 'open': continue
+            runs = api(['gh', 'api', f'repos/{path}/commits/{pr["head"]["sha"]}/check-runs'])
+            if not isinstance(runs, dict):
+                unfinished.append(f"{url} (gh couldn't read its checks)"); continue
             red = [r.get('name') for r in runs.get('check_runs', []) if r.get('conclusion') not in ('success', 'skipped', 'neutral')]
             why = (['draft'] if pr.get('draft') else []) + ([f"checks not green: {', '.join(red[:3])}"] if red else [])
         else:
             mr = api(['glab', 'api', '--hostname', host, f'projects/{urllib.parse.quote(path, safe="")}/merge_requests/{n}'])
-            if not isinstance(mr, dict) or mr.get('state') != 'opened': continue
+            if not isinstance(mr, dict):
+                unfinished.append(f"{url} (glab couldn't read it)"); continue
+            if mr.get('state') != 'opened': continue
             ci = (mr.get('head_pipeline') or {}).get('status') or 'no pipeline'
             why = (['draft'] if mr.get('draft') else []) + ([f'pipeline {ci}'] if ci != 'success' else [])
         if why: unfinished.append(f"{url} ({', '.join(why)})")
     if unfinished:
         print("Your message opens by calling the work done, but these PRs/MRs it links aren't: " + '; '.join(unfinished) +
               ". Say what is left on each instead (the converge gates, green CI, ready), and do it (mergeworthy:merging, Ready).", file=sys.stderr)
+        sys.exit(2)
+# A sentence stating a PR's state (a draft, ready, merged, CI green or red) is checked against GitHub now: the PR may have moved
+# since the agent last looked (a maintainer marks it ready, CI finishes), and the user acts on what the report says
+CLAIMS = [('a draft', r"\b(?:is|remains|stays|still)\s+(?:still\s+|now\s+)?(?:a\s+|in\s+)?draft\b"),  # "was a draft" tells history
+          ('ready for review', r"\b(?:is|are)\s+(?:now\s+)?(?:ready for review|out of draft|marked ready)\b|\bmarked (?:it )?ready\b"),
+          ('merged', r"\b(?:is|was|got|been)\s+(?:now\s+)?merged\b"),
+          ('green', r"\b(?:CI|checks?|jobs?)\b[^.\n]{0,30}?\b(?:is|are|now|went)\s+(?:now\s+|all\s+)?(?:green|passing)\b|\ball \d+ (?:CI )?(?:jobs|checks) pass|\bCI (?:is )?green\b"),
+          ('red', r"\b(?:CI|checks?)\b[^.\n]{0,30}?\b(?:is|are|still)\s+(?:still\s+)?(?:red|failing)\b")]
+REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)|(?<![\w/])(?:([\w.-]+/[\w.-]+))?#(\d+)\b')
+if not child and last.strip():
+    import subprocess
+    def gh(*a):
+        try: r = subprocess.run(['gh', *a], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as e: return None, str(e)
+        try: return (json.loads(r.stdout or 'null') if r.returncode == 0 else None), r.stderr
+        except ValueError: return None, 'unreadable answer'
+    def remotes():
+        out = []
+        for name in ('upstream', 'origin'):
+            u = subprocess.run(['git', '-C', d.get('cwd') or '.', 'remote', 'get-url', name], capture_output=True, text=True).stdout.strip()
+            if m := re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', u): out.append(m[1])
+        return out
+    url_repos = [m[0] for m in REF.findall(last) if m[0]]
+    states, ref, wrong = {}, None, []
+    for sentence in re.split(r'(?<=[.!?])\s+|\n+', own):
+        found = [(m[1] or m[3], m[2] or m[4]) for m in REF.finditer(sentence)]
+        ref = found[-1] if found else None  # a claim names its PR in its own sentence
+        for claim, rx in CLAIMS:
+            m = re.search(rx, sentence, re.I)
+            if not m or not ref or re.search(r"\blocal(ly)?\b", sentence, re.I) or re.search(r"\b(?:once|when|after|until|if|before|unless|whether|will|would)\b", sentence[:m.start()], re.I):
+                continue
+            key = ref
+            if key not in states:
+                pr, why = None, ''
+                repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + remotes()))
+                for repo in repos:
+                    pr, why = gh('api', f'repos/{repo}/pulls/{key[1]}')
+                    if pr is not None or 'HTTP 404' not in (why or ''): break
+                if pr is None and 'HTTP 404' in (why or '') and any(isinstance(i := gh('api', f'repos/{r}/issues/{key[1]}')[0], dict) and 'pull_request' not in i for r in repos[:1]):
+                    states[key] = None  # an issue, not a PR: its state is no PR state
+                    continue
+                if not isinstance(pr, dict):
+                    print(f"Your message states #{key[1]}'s state (\"{sentence.strip()[:120]}\"), and gh couldn't read that PR ({(why or 'no repo to look in').strip()[:120]}). "
+                          "Name it by its URL, read its state live (`gh pr view <url> --json isDraft,state,statusCheckRollup`), and say what that shows.", file=sys.stderr)
+                    sys.exit(2)
+                runs, why = gh('api', f"repos/{pr['base']['repo']['full_name']}/commits/{pr['head']['sha']}/check-runs?per_page=100")
+                if not isinstance(runs, dict):
+                    print(f"Your message states {pr.get('html_url')}'s state, and gh couldn't read its checks ({(why or '').strip()[:120]}): read them live and say what they show.", file=sys.stderr)
+                    sys.exit(2)
+                runs = runs.get('check_runs', [])
+                states[key] = (pr, [r.get('name') for r in runs if r.get('conclusion') in ('failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure')],
+                               [r.get('name') for r in runs if r.get('status') != 'completed'], len(runs))
+            if states[key] is None: continue
+            pr, red, pending, total = states[key]
+            ok = {'a draft': pr.get('draft') and pr.get('state') == 'open', 'ready for review': not pr.get('draft') and pr.get('state') == 'open',
+                  'merged': pr.get('merged'), 'green': total and not red and not pending, 'red': bool(red)}[claim]
+            if not ok:
+                actual = ('merged' if pr.get('merged') else pr.get('state', '?')) + (', a draft' if pr.get('draft') else ', ready for review' if pr.get('state') == 'open' else '') + \
+                         f"; checks: {len(red)} failing, {len(pending)} pending, of {total}"
+                wrong.append(f"{pr.get('html_url')} is {claim}, you say (\"{sentence.strip()[:100]}\"); GitHub says {actual}")
+    if wrong:
+        print("Your message states a PR's state that GitHub contradicts now: " + '; '.join(wrong) + ". Re-read it live and say what it shows "
+              "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
 own_dirs = set()
 reg = os.path.expanduser('~/.claude/gh-watch-dirs.txt')
@@ -171,12 +273,17 @@ if posted and watcher_on and not headless and not paused and not (monitors - dea
 # cannot end with a line still owed.
 if watcher_on and not paused and not child:
     for wd in sorted(own_dirs):
+        f = os.path.join(wd, 'replies-owed.md')
+        owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
         try:
             os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
         except (OSError, ValueError):
-            continue  # no live daemon in this dir
-        f = os.path.join(wd, 'replies-owed.md')
-        owed = [l.strip() for l in open(f) if l.strip() and not l.startswith('#')] if os.path.exists(f) else []
+            # a retired watcher has nothing left to answer; one that died still owes its lines, and sees no new comment
+            if not os.path.exists(os.path.join(wd, 'retired')) and any(not l.lower().startswith('done:') for l in owed):
+                print(f"The watcher in {wd} isn't running and its replies-owed.md still has open lines ({owed[0][:120]}): restart it "
+                      f"(`gh-watch-start {wd} <owner/repo>`), arm its Monitor, then answer them (mergeworthy:reply).", file=sys.stderr)
+                sys.exit(2)
+            continue
         import datetime
         try: events_text = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: events_text = ''
@@ -241,6 +348,43 @@ if watcher_on and not paused and not child:
             print(f"These FOLLOW-UP and MAINTAINER REVIEW events in {wd}/events.log are unsorted after 30 minutes: {', '.join(dict.fromkeys(late))}. Brief the sort "
                   f"(mergeworthy:rules step 6) and record each as `<sha, PR or review URL> MISS|TASTE|WORKED|DIRECTION <link or reason>` in {f}.", file=sys.stderr)
             sys.exit(2)
+# The task isn't finished while its scope.md has an open box (task step 10 walks them). A turn ends with one only when something
+# this session armed will wake it for the work (a live Monitor, a background command, an agent it launched) or with a
+# GENUINE-FORK the user must answer. A session that opened `task` or pushed or posted has a scope.md (task steps 2-3).
+if (opened_task or acted) and not child and not paused and not headless:
+    import work_folder, agent_jobs
+    home = os.path.realpath(os.path.expanduser('~'))
+    def task_dir(p):
+        p = os.path.realpath(os.path.expanduser(p))
+        if wf := work_folder.of(p): return wf
+        while p not in (home, '/'):
+            if os.path.dirname(p) == home and p.endswith('-work'): return p
+            p = os.path.dirname(p)
+    # the folders it works in: its cwd, its watch dirs, and where its commands cd, write, run git or the step tools; one it only read isn't
+    worked = [cwd_d]
+    for c in commands:
+        for t in map(prog, segments(c)):
+            name = os.path.basename(t[0]) if t else ''
+            worked += [x for x in t[1:] if not x.startswith('-')] if name in (
+                'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
+            worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
+    folders = set(own_dirs) | {t for p in worked if p.startswith(('/', '~')) and (t := task_dir(p))}
+    scopes = {f: open(os.path.join(f, 'scope.md'), errors='replace').read() for f in folders if os.path.isfile(os.path.join(f, 'scope.md'))}
+    scopes = {f: t for f, t in scopes.items() if re.match(r'\s*Tier:', t)}
+    if not scopes:
+        print("This session works on a task (it opened mergeworthy:task, or pushed or posted) and no work folder it used has a scope.md "
+              "opening with `Tier: <0|S|M|L>, because <signals>`: write ~/.mergeworthy/work/<task>/scope.md, with each ask and its link as "
+              "a checkbox (mergeworthy:task steps 2-3), then run the steps it leads to.", file=sys.stderr)
+        sys.exit(2)
+    open_items = [(f, m) for f, t in sorted(scopes.items()) for m in re.findall(r'^\s*[-*] \[ \] (.+)$', t, re.M)]
+    jobs = [j for _, j in agent_jobs.jobs() if j.get('session') == d.get('session_id') and not agent_jobs.finished(j)] if d.get('session_id') else []
+    live = [w for w in wakers if w not in dead] + jobs
+    if open_items and not live and 'GENUINE-FORK' not in last:
+        print(f"{open_items[0][0]}/scope.md still has open items ({'; '.join(m[:80] for _, m in open_items[:3])}) and nothing this session "
+              "started will wake it: no live Monitor, background command or agent. Do the next one now. If it waits on something (CI, a review, "
+              "an agent), arm a Monitor or a background command that ends when it lands, and continue then. Only what the user alone "
+              "can decide ends the turn, as a GENUINE-FORK line (always-on: Every session).", file=sys.stderr)
+        sys.exit(2)
 # The main session's memory.md is behind and covers nothing from the last 2 hours: the session-start order is repeated, at most hourly
 if not child and not paused:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -295,11 +439,12 @@ if (not child and d.get('session_id') and '/plugins/cache/' in own_root and os.p
           f"and paste briefs from there. Installed skills: {names}. Renamed: core -> task; github-threads -> post and reply; "
           "design-loop -> design; delegating -> delegate and rules; past-failures -> rules; verify, guardian and refactor -> converge; mechanisms -> docs/mechanisms.md; memory-refresh -> delegate/memory-refresh.md.", file=sys.stderr)
     sys.exit(2)
-# Before a turn ends, one check-in (the hook doesn't ask twice in a row: stop_hook_active lets the next stop through)
+# Before a turn ends, one check-in (not twice in a row: on the stop after a block, stop_hook_active skips it)
 # At most once per MERGEWORTHY_STOP_CHECKIN_SECONDS (default 30 min): every extra turn re-reads the whole context from cache
 def checkin_due():
     import time
-    f = os.path.expanduser('~/.claude/mergeworthy-stop-checkin')
+    key = re.sub(r'[^\w-]', '', d.get('session_id') or '') or hashlib.sha256(str(d.get('transcript_path')).encode()).hexdigest()[:16]
+    f = os.path.expanduser(f'~/.claude/mergeworthy-stop-checkin/{key}')  # per session: another session's check-in doesn't skip this one
     try:
         last = float(open(f).read().strip())
     except (OSError, ValueError):
@@ -309,7 +454,7 @@ def checkin_due():
     os.makedirs(os.path.dirname(f), exist_ok=True)
     open(f, 'w').write(str(time.time()))
     return True
-if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child and checkin_due():
+if os.environ.get('MERGEWORTHY_STOP_CHECKIN', 'on') != 'off' and not child and not active and checkin_due():
     print("Before you stop, check once: did the user ask you to stop or pause? Then stop. Otherwise: is there work you said "
           "is next, or that the critical path needs, that you could start now? Is anything waiting on you (a reply owed, "
           "red CI, a finished agent's result to read, a dependency that landed)? If so, do it now, or brief a subagent for it. If nothing is, stop.",
