@@ -414,9 +414,11 @@ def pushed(git_cmd, env, rest):
         if not src or src.startswith('refs/tags/') or run('show-ref', '--verify', '-q', f'refs/tags/{src}').returncode == 0:
             continue  # a delete (:dst), or a tag
         sha = git('rev-parse', '--verify', '-q', f'{src}^{{commit}}')
-        if not sha:
+        if not sha and not re.search(r'[$`]', src):  # a commit computed when it runs is checked only if the push is collaboration
             block(f"`{src}` in this push names no commit here, so what it publishes can't be checked: push a branch or commit of this checkout")
         branch = dst or (to[1] if not pos[1:] else head if src == 'HEAD' else src)
+        if re.search(r'[$`]', branch):
+            block(f"the branch this push updates ({branch}) is computed when it runs, so whether it is a PR's can't be told: write it out")
         out.append((sha, re.sub(r'^refs/heads/', '', branch)))
     return urls, out
 
@@ -464,15 +466,6 @@ def collaboration(d, url, heads):
           [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])
     return why, prs
 
-def task_folder(top):
-    """The task's work folder holding checkout top (task §Files): ~/.mergeworthy/work/<task>/, or an older ~/<name>-work/ holding it or beside it."""
-    if wf := work_folder.of(top): return wf
-    home, p = os.path.realpath(os.path.expanduser('~')), os.path.realpath(top)
-    while p not in (home, '/'):
-        if os.path.dirname(p) == home and p.endswith('-work'): return p
-        p = os.path.dirname(p)
-    return top + '-work' if os.path.isdir(top + '-work') else None
-
 def failing_jobs(urls):
     """{job name: PR URL} of every failing CI job on these PRs' heads; a PR whose checks gh can't read blocks."""
     out = {}
@@ -494,7 +487,7 @@ def check_workflow(what, d, commits, updates=()):
     if not top:
         if what.startswith('this push'): return  # outside a work tree git itself refuses the push
         block(f"{what} runs from the PR branch's checkout (mergeworthy:pull-request step 7), so its records can be checked")
-    wf = task_folder(top)
+    wf = work_folder.task_of(top)
     if not wf:
         block(f"{top} isn't in a task's work folder: {what} runs from a worktree in ~/.mergeworthy/work/<task>/ (mergeworthy:task §Files, pull-request step 1)")
     scope = os.path.join(wf, 'scope.md')
@@ -578,12 +571,14 @@ def check(t, has_cd):
             leases = [x for x in rest if x.startswith('--force-with-lease')]
             force = any(x in ('--force', '--mirror') or (not x.startswith('--') and x.startswith('-') and short_has(x, 'f'))
                         or (x.startswith('+') and len(x) > 1) for x in rest)
-            if force or any(not re.match(r'^--force-with-lease=\S+:\S+$', x) for x in leases):
+            if force or any(not re.match(r'^--force-with-lease=[^:\s]+:.+$', x, re.S) for x in leases):  # the sha may be computed
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
             if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
             urls, heads = pushed(['git', *git_globals(t)], {**os.environ, **env}, rest)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
+            if why and not all(sha for sha, _ in heads):
+                block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
                 check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
                 head, missing = missing_steps(repo)
@@ -725,6 +720,9 @@ has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 for s in segs:
+    # a command named by a variable this command set (`G="git -C x"; $G commit`) is checked as what it runs
+    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and v[1] in shell_vars:
+        s = ((segments(shell_vars[v[1]]) or [[]])[0]) + prog(s)[1:]
     # a command named by an expansion (`"${a[@]}"`, `$GIT push`), or a shell running a computed script (`sh -c "$(...)"`), runs what this
     # hook can't see: it blocks when its arguments, or the variables it names, hold a guarded verb
     named = prog(s)[0] if prog(s)[:1] and prog(s)[0][:1] in '$`' else (_nested(s) or '') if (_nested(s) or '')[:1] in '$`' else ''

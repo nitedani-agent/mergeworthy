@@ -94,13 +94,6 @@ if isinstance(fin, str) and fin.strip():
     last = fin
 cwd_d = d.get('cwd') or ''
 import work_folder
-home = os.path.realpath(os.path.expanduser('~'))
-def task_dir(p):
-    p = os.path.realpath(os.path.expanduser(p))
-    if wf := work_folder.of(p): return wf
-    while p not in (home, '/'):
-        if os.path.dirname(p) == home and p.endswith('-work'): return p
-        p = os.path.dirname(p)
 parsed = {}
 def runs(rx):  # the simple commands of this session's commands that rx finds a word of: a push names git, a work folder's path names it
     from concurrent.futures import ThreadPoolExecutor
@@ -117,7 +110,7 @@ for t in runs(r'\.mergeworthy/work|-work'):
     worked += [x for x in t[1:] if not x.startswith('-')] if name in (
         'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
     worked += [t[i + 1] for i in range(len(t) - 1) if t[i] == '-C' and name == 'git' or re.fullmatch(r'\d*>>?|&>>?', t[i])]
-task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := task_dir(p))}
+task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := work_folder.task_of(p))}
 # mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started) gets the hand-back check and the check-in;
 # a plain question answered gets neither
 working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds)
@@ -175,7 +168,8 @@ if running and not child:
     # a task is named by its id (its link), else by its title: the last task of that title (an earlier "Memory refresh" is not this one)
     named = {i: v for i, v in status.items() if i.rsplit('%3A', 1)[-1].lower() in text}
     last_of = {t.lower(): i for i, (_, t) in status.items() if t}
-    named.update({i: status[i] for t, i in last_of.items() if t in text and all(v[1].lower() != t for v in named.values())})
+    if not named:  # a list that links its tasks names them by link; one with no link, by title
+        named = {i: status[i] for t, i in last_of.items() if t in text}
     done = [t or i for i, (st, t) in named.items() if re.match(r'(completed|failed|cancel+ed|interrupted|error)', st)]
     stale = [t or i for i in named if i not in seen]
     if launched and (done or stale):

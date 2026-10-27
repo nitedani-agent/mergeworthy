@@ -1893,6 +1893,18 @@ git -C "$OWN2" checkout -q scratch; git -C "$OWN2" config --unset remote.pushDef
 fp=; for c in '"$(npm bin)/vitest" run tests/git-push.test.ts' '$PYTHON -m pytest -k "git push"' '"$VENV/bin/pytest" -k git-commit' \
              '${PNPM:-pnpm} test && git log --oneline | grep -i commit' '"$CLAUDE" -p "summarize the last git commit"'; do fp="$fp $(bg "$c" "$OWN2")"; done
 check "a command named by an expansion that only mentions git (a test name, a prompt) passes" " 0 0 0 0 0" "$fp"
+check "a command named by a variable the command set is checked as what it runs: \$G commit with the right author passes, a wrong one blocks" "0 2" \
+  "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'G="git -c user.name=me -c user.email=42+me@users.noreply.github.com"; $G commit -m x' "$TCO") $(bg 'G="git -c user.name=x -c user.email=x@x"; $G commit -m x' "$TCO")"
+gql nitedani-agent nitedani-agent
+check "a computed sha pushed to its own repo with no PR passes (an evidence upload); a computed lease is a lease" "0 0" \
+  "$(bg 'c=$(git rev-parse HEAD); git push origin $c:refs/heads/shots' "$OWN2") $(bg 'git push --force-with-lease=scratch:$(git rev-parse HEAD) origin HEAD:scratch' "$OWN2")"
+check "BLOCK: a computed sha on a collaboration push, and a computed branch" "2 2" \
+  "$(bg 'c=$(git rev-parse HEAD); git push https://github.com/vikejs/vike.git $c:refs/heads/x' "$OWN2") $(bg 'b=x; git push origin HEAD:$b' "$OWN2")"
+# the T3 worktree layout: <task>-work/ holding scope.md, its checkouts inside it or beside it under the task's prefix (fu185-work/, fu185-gps/)
+TW="$T/t3wt"; mkdir -p "$TW/fu185-work"; printf 'Tier: S, because x\n\n- [ ] y https://github.com/o/r/issues/1\n' > "$TW/fu185-work/scope.md"
+for c in fu185-gps fu185-work/stack other; do git clone -q "$OTH" "$TW/$c"; git -C "$TW/$c" remote set-url origin https://github.com/vikejs/vike.git; done
+check "a checkout inside <task>-work/ or beside it under the task's prefix is in that work folder; an unrelated one isn't" "0 0 1" \
+  "$(bg 'git push origin HEAD:s' "$TW/fu185-gps" >/dev/null; grep -c "isn't in a task's work folder" "$T/err") $(bg 'git push origin HEAD:s' "$TW/fu185-work/stack" >/dev/null; grep -c "isn't in a task's work folder" "$T/err") $(bg 'git push origin HEAD:s' "$TW/other" >/dev/null; grep -c "isn't in a task's work folder" "$T/err")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
     'direnv exec . git push' 'flock /tmp/l git push' 'taskset 0x1 git push' 'chronic git push' "su -c 'git push' me" "script -qc 'git push' /dev/null" "fish -c 'git push'" 'parallel -k git push ::: x'; do printf '%s ' "$(pushes "$c")"; done | xargs)"
