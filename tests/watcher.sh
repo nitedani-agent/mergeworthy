@@ -502,6 +502,20 @@ age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(
 print(round(age.total_seconds() / 86400))
 ')
 check "a first --pass round looks back a week" 7 "$got"
+got=$(py '
+m.PASS = True
+m.STATE, m.THREADS = os.path.join(m.HERE, "pass-state.json"), os.path.join(m.HERE, "pass-threads.txt")
+open(m.THREADS, "w").write("o/r 1\no/r 2\n")
+X = os.path.join(os.path.dirname(m.HERE), "livex"); os.makedirs(X, exist_ok=True)
+open(os.path.join(X, "threads.txt"), "w").write("o/r 2\n"); open(os.path.join(X, "gh-watch.pid"), "w").write(str(os.getpid()))
+open(os.path.expanduser("~/.claude/gh-watch-dirs.txt"), "a").write(X + "\n")
+seen = []
+m.fetch_thread = lambda repo, num, *a, **k: (seen.append(num), (False, "x", [], None, None, None, {}, True, None))[1]
+m.scan_reactions = lambda state, threads: None
+m.run_scan(everything=True)
+print(",".join(seen))
+')
+check "a --pass round doesn't read a thread a live daemon's dir lists, though an earlier pass listed it" 1 "$got"
 
 # `owner/repo all` in repos.txt: a moved thread of the repo joins that dir (unless another dir lists it), a new one is reported unless
 # it carries the badge, and /agent at the start of a new body is an agent command (routed to the dir watching the repo whole, else main_dir)

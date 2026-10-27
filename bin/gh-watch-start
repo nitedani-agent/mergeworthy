@@ -12,7 +12,8 @@
 # - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply).
 # - --pass: no daemon: one round of the watcher appends to events.log, recording what it reported, and touches <dir>/passed
-#   (mergeworthy:steward); a thread another live dir watches is skipped with a note. Refused while the dir's daemon runs.
+#   (mergeworthy:steward); a thread another live dir watches is skipped with a note, and the round doesn't read it. Refused
+#   while the dir's daemon runs.
 set -e
 main=; [ "${1:-}" = --main ] && { main=1; shift; }
 pass=; [ "${1:-}" = --pass ] && { pass=1; shift; }
@@ -60,8 +61,10 @@ daemon_alive() { local p; p=$(cat "$dir/gh-watch.pid" 2>/dev/null || true); [ -n
 if [ -n "$pass" ]; then
   daemon_alive && { echo "a daemon watches $dir: read its events.log past events.cursor instead" >&2; exit 1; }
   n=$(wc -l < "$dir/events.log")
-  (cd "$dir" && GH_WATCH_EYES=$(cat eyes 2>/dev/null) python3 -u gh-watch.py --pass >> events.log 2>&1) || echo "WATCH ERROR gh-watch.py --pass exited $?" >> "$dir/events.log"
-  touch "$dir/passed"; rm -f "$dir/retired"
+  # passed: the hooks treat the dir as watched for a day, only after a round that ran
+  if (cd "$dir" && GH_WATCH_EYES=$(cat eyes 2>/dev/null) python3 -u gh-watch.py --pass >> events.log 2>&1); then touch "$dir/passed"
+  else echo "WATCH ERROR gh-watch.py --pass exited $?" >> "$dir/events.log"; fi
+  rm -f "$dir/retired"
   echo "pass: $(( $(wc -l < "$dir/events.log") - n )) new lines in $dir/events.log; read it past events.cursor (mergeworthy:reply)"
   exit 0
 fi

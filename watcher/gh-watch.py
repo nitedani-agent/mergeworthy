@@ -1554,9 +1554,13 @@ def locked():
 
 def run_scan(everything=False):
     """Read what is due now (everything: every listed thread, in full); the reactions of what was read in full."""
+    threads = read_threads()
+    if PASS:  # a thread a live daemon watches is its dir's, though an earlier pass listed it here
+        taken = set().union(*(listed_threads(d) for d in live_dirs() if d != HERE))
+        threads = [t for t in threads if f"{t[0]}#{t[1]}" not in taken]
     with locked():
         state = load_state()
-        ok, fulls = scan(state, plan(state, read_threads(), OK, everything))
+        ok, fulls = scan(state, plan(state, threads, OK, everything))
         save_state(state)
     read_reactions(fulls)
 
