@@ -152,13 +152,15 @@ if running and not child:
             if n: status[n.group(1)] = (n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
             elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
         for b in c if isinstance(c, list) else []:
-            if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status)$', b.get('name', '')):
+            if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status|thread_send)$', b.get('name', '')):
                 titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
                 launched = launched or not titles[b['id']][0]
             elif b.get('type') == 'tool_result' and b.get('tool_use_id') in titles:
                 r = b.get('content'); r = ''.join(x.get('text', '') for x in r) if isinstance(r, list) else str(r or '')
                 try: r = json.loads(r)
                 except ValueError: continue
+                if isinstance(r, dict) and r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
+                    r = {'taskId': r['threadId'] + '#sent', 'childThreadId': r['threadId'], 'status': 'running'}
                 if isinstance(r, dict) and r.get('taskId'):
                     is_read, title = titles[b['tool_use_id']]
                     old = status.pop(r['taskId'], ('', ''))

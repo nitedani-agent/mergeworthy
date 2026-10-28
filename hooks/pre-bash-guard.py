@@ -560,7 +560,14 @@ def check(t, has_cd):
             if why := no_preflight(repo):
                 block(why)
             check_commit_identity(overrides, repo)
+        if sub == 'push' and {'--dry-run', '-n'} & set(rest):
+            sub = 'push --dry-run'  # publishes nothing
         if sub == 'push' and not os.path.isdir(repo) and '--help' not in rest:
+            # a checkout the command makes first (`git clone ../o.git d; cd d`): a push to a local path, or to the local repo it was cloned from, publishes nothing
+            to = next((x for x in operands(rest) if not x.startswith('-')), 'origin')
+            if (repo_of(to if to != 'origin' else clones.get(os.path.normpath(repo), to)) is None and
+                    (to != 'origin' or os.path.normpath(repo) in clones)):
+                return
             block(f"can't tell which checkout this push runs in (a cd to {repo}), so what it publishes can't be checked: cd to an absolute path first")
         if sub == 'stash':
             first = rest[0] if rest else ''
@@ -721,7 +728,11 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
 has_cd = False
 run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
 shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
+clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
 for s in segs:
+    if prog(s)[:2] == ['git', 'clone'] and (ops := [x for x in operands(prog(s)[2:]) if not x.startswith('-')]):
+        src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
+        clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
     # a command named by a variable this command set (`G="git -C x"; $G commit`) is checked as what it runs
     if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and v[1] in shell_vars:
         s = ((segments(shell_vars[v[1]]) or [[]])[0]) + prog(s)[1:]

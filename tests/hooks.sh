@@ -1014,6 +1014,9 @@ for e in ev:
     elif e == 'followup':  # a message sent to the finished Loop A's thread: a new task of that thread
         n[0] += 1; w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "f1", "name": "mcp__t3-code__task_status", "input": {}}]}})
         w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "f1", "content": json.dumps({"taskId": "node:delegated-task:command%3Amcp%3Aabc%3Athread-send%3Aloop-a-1-r2", "childThreadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "status": "running"})}]}})
+    elif e == 'send':  # t3_thread_send to the finished Loop A's thread: it runs again
+        w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "s1", "name": "mcp__t3-code__t3_thread_send", "input": {}}]}})
+        w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "s1", "content": json.dumps({"threadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1"})}]}})
     elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
@@ -1042,6 +1045,7 @@ Running:
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other2; check "T3's newer notice (\`Delegated task <id> (<title>) [completed]:\`) is not the user either (the handoff session's 305 blocks)" 0 "$(stop "$T")"
 rl_tr $'Started round 2.\n\nRunning:\n- Loop A round 2' user notice round2; check "a title names the latest task whose title holds it: round 2 of a finished Loop A is running" 0 "$(stop "$T")"
 rl_tr $'Sent round 2 to it.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1)' user notice followup; check "a link to a thread names its latest task: a follow-up sent to a finished task's thread is running" 0 "$(stop "$T")"
+rl_tr $'Asked it for its report.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1)' user notice send; check "a message sent to a finished task's thread with t3_thread_send runs it again: its Running list passes" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
@@ -1916,6 +1920,8 @@ check "a checkout inside <task>-work/ or beside it under the task's prefix is in
 AS="$T/assets"; git clone -q "$OWN" "$AS"; git -C "$AS" update-ref refs/remotes/origin/HEAD HEAD; git -C "$AS" checkout -q --orphan shots; git -C "$AS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m s
 check "a commit on a branch that shares no history with origin's default (a PR's screenshots) needs no preflight; one on a branch of the product does" "0 2" \
   "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
+check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from, or is a dry run" "0 0 0 2" \
+  "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
     'direnv exec . git push' 'flock /tmp/l git push' 'taskset 0x1 git push' 'chronic git push' "su -c 'git push' me" "script -qc 'git push' /dev/null" "fish -c 'git push'" 'parallel -k git push ::: x'; do printf '%s ' "$(pushes "$c")"; done | xargs)"
