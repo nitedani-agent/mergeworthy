@@ -258,6 +258,7 @@ open(m.THREADS, "w").write("o/r 5\n")
 iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 now = time.time()
 MERGED = iso(now - 86400 * '"${2:-1}"')
+BASE = "main"  # the branch the PR merged into
 hunk = lambda old, new, a, b: f"@@ -{old},2 +{new},2 @@\n-{a}\n+{b}\n ctx"
 com = lambda sha, who, parents=1, when=now - 3600, bot=False: {"sha": sha, "author": {"login": who, "type": "Bot" if bot else "User"}, "parents": [{}] * parents, "html_url": f"<c-{sha}>", "commit": {"committer": {"date": iso(when)}, "author": {"name": who}}}
 commits = [com("c1aaaaaaaaaa", "alice"), com("c2bbbbbbbbbb", "alice"), com("c3cccccccccc", "me"), com("c4dddddddddd", "bob", 2), com("c5eeeeeeeeee", "carol"), com("c6ffffffffff", "dependabot[bot]", bot=True), com("c0merge", "me")]
@@ -280,7 +281,11 @@ Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data, "
 def fake_request(path, *a, **k):
     calls.append(path)
     if path.endswith("/pulls/5"):
-        return Answer({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": "main"}})
+        return Answer({"merged_at": MERGED, "merge_commit_sha": "c0merge", "base": {"ref": BASE}})
+    if path == "repos/o/r":
+        return Answer({"default_branch": "main"})
+    if path.startswith("repos/o/r/commits?sha=gone&"):  # a branch deleted after the merge
+        raise RuntimeError(f"gh api {path}: HTTP 404 {{\"message\":\"Not Found\"}}")
     if path.startswith("repos/o/r/commits?"):
         return Answer(commits)
     return Answer({"files": files[path.rsplit("/", 1)[1]]})
@@ -309,6 +314,43 @@ print("recorded=" + str(sorted(record()["files"].items())))
 check "FOLLOW-UP: overlap and rename and the referencing PR once; non-overlap, own commit, merge commit, issue, own PR, bots nothing; no repeat" "first=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR
 second=
 recorded=[('z.ts', [[11, 12]])]" "$got"
+got=$(follow '
+BASE = "gone"
+listed = m.request  # another PR followed on main left an ETag for that list: a request that may use it gets a 304
+m.request = lambda path, *a, **k: type("A", (), {"status": 304})() if "sha=main&" in path and not k.get("fresh") else listed(path, *a, **k)
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    first = scan()
+    second = scan()
+print("errors=" + str(out.getvalue().count("WATCH ERROR")), "base=" + record()["base"], "listed=" + ",".join(c.split("?sha=")[1].split("&")[0] for c in calls if "/commits?" in c), "backlog=" + ",".join(m.shared_read()["backlog"]))
+print("first=" + "|".join(first)); print("second=" + "|".join(second))
+')
+check "FOLLOW-UP: a PR whose base branch was deleted after the merge is followed on the default branch from the next pass, with no WATCH ERROR" "errors=0 base=main listed=gone,main backlog=
+first=
+second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR" "$got"
+got=$(follow '
+BASE = "gone"   # a pass that ran out of calls on page 1 left the rest of the list, and the branch is deleted before the next
+m.shared_update(lambda s: s["followups"].__setitem__("o/r#5", m.follow_record("o/r#5")))
+m.shared_update(lambda s: s["backlog"].__setitem__("o/r@gone", {"since": MERGED, "floor": MERGED, "started": iso(now - 7200), "next": f"repos/o/r/commits?sha=gone&since={MERGED}&per_page=100&page=2", "queue": [], "fresh": True, "keys": ["o/r#5"]}))
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    first = scan()
+    second = scan()
+print("errors=" + str(out.getvalue().count("WATCH ERROR")), "base=" + record()["base"], "backlog=" + ",".join(m.shared_read()["backlog"]))
+print("second=" + "|".join(second))
+')
+check "FOLLOW-UP: a backlog resumed past page 1 of a deleted base branch moves to the default branch too, with no WATCH ERROR" "errors=0 base=main backlog=
+second=### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>|### FOLLOW-UP o/r#5: <pr-9> by alice references your PR" "$got"
+joined() { follow '
+BASE = "'"$1"'"   # another PR followed on main stopped at its timeline: its backlog of the list is drained, its validator saved
+m.shared_update(lambda s: s["backlog"].__setitem__("o/r@main", {"since": iso(now - 86400 * 2), "floor": iso(now - 86400 * 2), "started": iso(now - 600), "next": None, "queue": [], "fresh": False, "keys": ["o/r#6"]}))
+listed = m.request
+m.request = lambda path, *a, **k: type("A", (), {"status": 304})() if "sha=main&" in path and not k.get("fresh") else listed(path, *a, **k)
+print("|".join(l for l in scan() + scan() if "changes lines" in l))
+'; }
+check "FOLLOW-UP: a PR joining a group whose backlog another PR drained reads the list itself, a new one and one moved off a deleted base alike" "new: ### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>
+moved: ### FOLLOW-UP o/r#5: c5eeeeeeee by carol changes lines from your PR <c-c5eeeeeeeeee>|### FOLLOW-UP o/r#5: c1aaaaaaaa by alice changes lines from your PR <c-c1aaaaaaaaaa>" "new: $(joined main)
+moved: $(joined gone)"
 got=$(follow '
 sd = os.path.join(os.path.dirname(m.HERE), "stew"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n")
