@@ -1958,6 +1958,7 @@ check "GitLab: a push to its own namespace with no MR passes; to a group's repo,
   "$(bg 'git push origin HEAD:scratch' "$GL") $(bg 'git push git@gitlab.com:acme/app.git HEAD:scratch' "$GL") $(grep -c "acme/app isn't me's" "$T/err") $(echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/4","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; bg 'git push origin HEAD:scratch' "$GL") $(grep -c 'updates https://gitlab.com/me/app/-/merge_requests/4' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
+check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"
 # a plain question answered (no task, work folder, push, post, watcher or agent) is no mergeworthy work: no check-in, no hand-back check
 qa() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"can you access ssh the opensource machine?"}}))

@@ -5,7 +5,7 @@ on GitHub with no live Monitor on a watcher's events.log in this session (the se
 wakes it), or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
-import glob, hashlib, json, os, re, sys
+import glob, hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 d = json.load(sys.stdin)
@@ -94,13 +94,30 @@ if isinstance(fin, str) and fin.strip():
     last = fin
 cwd_d = d.get('cwd') or ''
 import work_folder
-parsed = {}
+# Each stop reads the whole session's commands: their parses are kept per session (by the parser's pin and the command), so a
+# stop parses only the commands since the last one
+_parse_dir = os.path.expanduser('~/.claude/mergeworthy-parses')
+_parse_file = os.path.join(_parse_dir, re.sub(r'[^\w-]', '', d.get('session_id') or '') or 'none') + '.json'
+try: parsed = json.load(open(_parse_file))
+except (OSError, ValueError): parsed = {}
+import shellcmd
+_pin = hashlib.sha256(open(shellcmd.REQUIREMENTS, 'rb').read()).hexdigest()[:16]
+_key = lambda c: hashlib.sha256((_pin + c).encode()).hexdigest()[:32]
 def runs(rx):  # the simple commands of this session's commands that rx finds a word of: a push names git, a work folder's path names it
     from concurrent.futures import ThreadPoolExecutor
-    todo = [c for c in dict.fromkeys(commands) if c not in parsed and re.search(rx, c)]
-    with ThreadPoolExecutor(8) as ex:  # each parse is its own shfmt process
-        parsed.update(zip(todo, ex.map(segments, todo)))
-    return [prog(t) for c in commands if re.search(rx, c) for t in parsed[c]]
+    todo = [c for c in dict.fromkeys(commands) if _key(c) not in parsed and re.search(rx, c)]
+    if todo:
+        with ThreadPoolExecutor(8) as ex:  # each parse is its own shfmt process
+            done = list(zip(todo, ex.map(shellcmd.parse, todo)))
+        parsed.update({_key(c): segs for c, (segs, err) in done})
+        keep = {_key(c): segs for c, (segs, err) in done if 'shell parser' not in err}  # not what a missing parser made of it
+        try:
+            os.makedirs(_parse_dir, exist_ok=True)
+            [os.remove(os.path.join(_parse_dir, f)) for f in os.listdir(_parse_dir) if os.path.getmtime(os.path.join(_parse_dir, f)) < time.time() - 30 * 86400]
+            old = json.load(open(_parse_file)) if os.path.exists(_parse_file) else {}
+            open(_parse_file + '.tmp', 'w').write(json.dumps({**old, **keep})); os.replace(_parse_file + '.tmp', _parse_file)
+        except (OSError, ValueError): pass  # the parses still hold for this stop
+    return [prog(t) for c in commands if re.search(rx, c) for t in parsed[_key(c)]]
 acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
                       for t in runs(r'\b(?:git|gh)\b'))
 # the folders it works in: its cwd, and where its commands cd, write, run git or the step tools; one it only read isn't
