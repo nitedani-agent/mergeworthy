@@ -321,7 +321,11 @@ watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WA
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 # The user paused the work: nothing is to be watched or answered until they resume
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
-if posted and watcher_on and not headless and not paused and not (monitors - dead):
+# A steward pass (gh-watch-start --round, mergeworthy:steward) leaves nothing running: the next pass reads the replies. A round that ran
+# names its session in <dir>/passed; that dir's owed lines hold the session's turn as a live watcher's do
+pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
+own_dirs |= pass_dirs
+if posted and watcher_on and not headless and not paused and not pass_dirs and not (monitors - dead):
     print("You posted on GitHub in this session and no Monitor in it watches a watcher's events.log, so replies go unseen: "
           "nothing else answers them. Run `gh-watch-start <your work folder> <owner/repo> <N>` and arm the Monitor it "
           "prints, with the longest timeout; re-arm it whenever it expires (mergeworthy:reply step 1).", file=sys.stderr)
@@ -335,12 +339,13 @@ if watcher_on and not paused and not child:
         try:
             os.kill(int(open(os.path.join(wd, 'gh-watch.pid')).read().strip()), 0)
         except (OSError, ValueError):
-            # a retired watcher has nothing left to answer; one that died still owes its lines, and sees no new comment
-            if not os.path.exists(os.path.join(wd, 'retired')) and any(not l.lower().startswith('done:') for l in owed):
-                print(f"The watcher in {wd} isn't running and its replies-owed.md still has open lines ({owed[0][:120]}): restart it "
-                      f"(`gh-watch-start {wd} <owner/repo>`), arm its Monitor, then answer them (mergeworthy:reply).", file=sys.stderr)
-                sys.exit(2)
-            continue
+            if wd not in pass_dirs:  # a dir this session's round passed has no daemon: its owed lines are checked below
+                # a retired watcher has nothing left to answer; one that died still owes its lines, and sees no new comment
+                if not os.path.exists(os.path.join(wd, 'retired')) and any(not l.lower().startswith('done:') for l in owed):
+                    print(f"The watcher in {wd} isn't running and its replies-owed.md still has open lines ({owed[0][:120]}): restart it "
+                          f"(`gh-watch-start {wd} <owner/repo>`), arm its Monitor, then answer them (mergeworthy:reply).", file=sys.stderr)
+                    sys.exit(2)
+                continue
         import datetime
         try: events_text = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: events_text = ''

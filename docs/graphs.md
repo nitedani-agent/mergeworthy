@@ -20,6 +20,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
 | `rules` | `task`, `delegate`, `reply` |
+| `steward` | `reply`, `rules`, `delegate`, `writing` |
 | `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
 | `writing` | nothing |
 

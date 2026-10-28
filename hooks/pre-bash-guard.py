@@ -123,7 +123,10 @@ def need_watch(repo):
         block("can't tell which repo this acts on, so the watcher check can't run: pass -R <owner/repo>")
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
-    covering = [d for d in watch_dirs() if any(l.split()[:1] in ([r] for r in repos) for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
+    # a dir this session's steward pass read in the last day covers too (gh-watch-start --round): its next pass reads the thread
+    reg, sid = os.path.expanduser('~/.claude/gh-watch-dirs.txt'), d.get('session_id')
+    passed = [w for w in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if sid and steward.passed_by(w) == sid]
+    covering = [d for d in watch_dirs() + passed if any(l.split()[:1] in ([r] for r in repos) for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
     if not covering:
         block(f"no running watcher covers {' or '.join(repos)}: `gh-watch-start <your work folder> {repos[0]}`, arm the Monitor it prints, then retry (mergeworthy:task step 5)")
 
