@@ -7,7 +7,7 @@ code waits for prior art (task step 6) and the design (design step 4): the work 
 before an edit inside the repo or an implementation agent."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import no_preflight, unread_instructions
+from shellcmd import no_preflight, no_instructions_read
 import work_folder
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -15,12 +15,7 @@ tool = d.get('tool_name', '')
 cwd = d.get('cwd') or os.getcwd()
 if 'delegate_task' not in tool:
     target = os.path.join(cwd, str(ti.get('file_path') or ti.get('notebook_path') or ''))
-    if unread := unread_instructions(target, d):
-        sys.stderr.write(f"BLOCKED: read this repo's instructions first, with the Read tool, and follow them: {', '.join(unread)}\n")
-        sys.exit(2)
-    near = os.path.dirname(os.path.realpath(target))
-    while not os.path.isdir(near): near = os.path.dirname(near)  # a new file's folder may not exist yet
-    if why := no_preflight(near):
+    if why := no_instructions_read(target, d) or no_preflight(target):
         sys.stderr.write(f"BLOCKED: {why}\n")
         sys.exit(2)
 try:

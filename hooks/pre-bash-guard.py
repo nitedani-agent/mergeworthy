@@ -4,7 +4,7 @@ Checks each simple command separately (split at ; && || | & and newlines, heredo
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, unread_instructions, sed_files
+from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files
 import steward, post_words
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -327,10 +327,6 @@ def by_agent():
     """A subagent's command: Claude Code's (agent_id), or a T3 child's (its thread has a parent)."""
     return bool(d.get('agent_id')) or len(steward.threads(d.get('session_id'))) > 1
 
-def unread(path):
-    """The repo instructions this session hasn't read yet, for a command writing path (shellcmd.unread_instructions)."""
-    return unread_instructions(path, d)
-
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
 def check(t, has_cd):
@@ -401,9 +397,9 @@ def check(t, has_cd):
             if force or any(not re.match(r'^--force-with-lease=\S+:\S+$', x) for x in leases):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
             if '--delete' not in rest and not any(x.startswith(':') for x in rest):
-                d = os.path.join(run_dir, os.path.expanduser(git_dir))
-                pr = subprocess.run(['gh', 'pr', 'view', '--json', 'isDraft,state', '--jq', 'select(.state=="OPEN" and (.isDraft|not)) | "ready"'], cwd=d, capture_output=True, text=True, timeout=20).stdout.strip()
-                head, missing = missing_steps(d)
+                push_dir = os.path.join(run_dir, os.path.expanduser(git_dir))
+                pr = subprocess.run(['gh', 'pr', 'view', '--json', 'isDraft,state', '--jq', 'select(.state=="OPEN" and (.isDraft|not)) | "ready"'], cwd=push_dir, capture_output=True, text=True, timeout=20).stdout.strip()
+                head, missing = missing_steps(push_dir)
                 if pr == 'ready' and missing:
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
     if p == 'gh' and a[:1] == ['pr'] and a[1:2] in (['create'], ['edit']) and '--help' not in a and '-h' not in a:
@@ -413,14 +409,12 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(a[2:], run_dir)):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
+    written = written_files(t)
+    for x in written:
+        if why := no_instructions_read(os.path.join(run_dir, os.path.expanduser(x)), d):
+            block(why)
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
-    redirected = [] if p in ('claude', 'codex') else [t[i + 1] for i in range(len(t) - 1) if re.fullmatch(r'\d*>>?|&>>?|>\|', t[i])]
-    files = [x for x in a if not x.startswith('-')]
-    written = redirected + (files if p == 'tee' else sed_files(a) if p == 'sed' and any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a) else
-                            files[-1:] if p in ('cp', 'mv', 'install') else [])
-    if missing := sorted({f for x in written for f in unread(os.path.join(run_dir, os.path.expanduser(x)))}):
-        block(f"read this repo's instructions first, with the Read tool, and follow them: {', '.join(missing)}")
-    if any(x.endswith('.review.out') for x in written) and not by_agent():
+    if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in written) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
