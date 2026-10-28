@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Run by pre-push with git's pre-push input on stdin: each pushed commit that changes skills/ or always-on.md needs a
-`Cold-read: <path>` trailer naming an existing file (the cold read's record, rules step 4), in it or a later commit of the push."""
+"""Run by pre-push with git's pre-push input on stdin: each pushed commit no remote-tracking ref holds yet that changes
+skills/ or always-on.md needs a `Cold-read: <path>` trailer naming an existing file (the cold read's record, rules step 4),
+in it or a later commit of the push. A published commit, such as main's squash merge of a checked PR, isn't checked again."""
 import os, subprocess, sys
 
 ZERO = '0' * 40
@@ -10,7 +11,7 @@ for line in sys.stdin:
     _, local, _, remote = line.split()
     if local == ZERO:
         continue  # a deleted ref pushes no commits
-    commits = git('rev-list', '--reverse', local, *(['--not', '--remotes'] if remote == ZERO else ['^' + remote])).split()
+    commits = git('rev-list', '--reverse', local, '--not', '--remotes', *([] if remote == ZERO else [remote])).split()
     read = [any(os.path.isfile(os.path.expanduser(p.strip()))
                 for p in git('log', '-1', '--format=%(trailers:key=Cold-read,valueonly)', c).splitlines() if p.strip()) for c in commits]
     for i, c in enumerate(commits):
