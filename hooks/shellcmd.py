@@ -1,5 +1,5 @@
 """Shell command parsing and transcript reading shared by the hooks (pre-bash-guard, pre-design-gate, pre-skill-gate, post-bash-register)."""
-import hashlib, json, os, re, shlex, subprocess
+import functools, hashlib, json, os, re, shlex, subprocess
 
 
 def branch_record(d, kind):
@@ -132,26 +132,41 @@ def transcript(d):
     return path if path and os.path.isfile(path) else None
 
 
+def sed_files(a):
+    """sed's file operands in its arguments a: its script (each -e or -f value, else the first operand) is not one."""
+    files, script, it = [], False, iter(a)
+    for x in it:
+        if x in ('-e', '-f', '--expression', '--file') or re.fullmatch(r'-[A-Za-z]*[ef]', x):
+            script = next(it, None) is not None
+        elif x.startswith(('--expression=', '--file=')) or re.fullmatch(r'-[A-Za-z]*[ef].+', x):
+            script = True
+        elif not x.startswith('-'):
+            files.append(x)
+    return files if script else files[1:]
+
+
 def unread_instructions(path, d):
-    """The AGENTS.md and CLAUDE.md at the root of the git repo holding path that this session's transcript shows no Read,
-    cat or sed of since its last compaction; [] outside git or when the root has neither."""
-    near = os.path.dirname(os.path.realpath(path))
+    """The AGENTS.md and CLAUDE.md at the root of the git repo holding path (a file, or a folder written into) that this
+    session's transcript shows no successful Read, cat or sed of since its last compaction; [] outside git or when the root has neither."""
+    near = os.path.realpath(path)
     while not os.path.isdir(near): near = os.path.dirname(near)  # a new file's folder may not exist yet
     root = subprocess.run(['git', '-C', near, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip()
     need = [f for f in (os.path.join(root, n) for n in ('AGENTS.md', 'CLAUDE.md')) if root and os.path.isfile(f)]
     if not need:
         return []
     t = transcript(d)
-    seen = files_read(t, {os.path.basename(f).encode() for f in need}) if t else set()
+    names = frozenset(os.path.basename(g).encode() for f in need for g in (f, os.path.realpath(f)))  # a symlink's target too
+    seen = files_read(t, names) if t else set()
     return [f for f in need if os.path.realpath(f) not in seen]
 
 
+@functools.lru_cache(maxsize=None)
 def files_read(path, names):
-    """Real paths the transcript's Read calls, and its Bash cat and sed (not sed -i), read since its last compaction;
-    only lines naming one of names are parsed."""
-    seen = set()
-    for l in rlines(path):
-        if not any(k in l for k in (b'compact_boundary', b'isCompactSummary', *names)):
+    """Real paths the transcript's Read calls, and its Bash cat and sed (not sed -i), read since its last compaction, leaving
+    out calls whose result is an error; only lines naming one of names, or holding an error, are parsed."""
+    seen, failed = set(), set()
+    for l in rlines(path):  # last first: a call's result comes before the call
+        if not any(k in l for k in (b'compact_boundary', b'isCompactSummary', b'"is_error":true', *names)):
             continue
         try:
             e = json.loads(l)
@@ -160,14 +175,19 @@ def files_read(path, names):
         if e.get('subtype') == 'compact_boundary' or e.get('isCompactSummary'):
             break
         content = (e.get('message') or {}).get('content') if isinstance(e.get('message'), dict) else None
-        if e.get('type') != 'assistant' or not isinstance(content, list):
+        if not isinstance(content, list):
             continue
         for b in content:
-            if not isinstance(b, dict) or b.get('type') != 'tool_use':
+            if not isinstance(b, dict):
+                continue
+            if b.get('type') == 'tool_result' and b.get('is_error'):
+                failed.add(b.get('tool_use_id'))
+            if b.get('type') != 'tool_use' or e.get('type') != 'assistant' or b.get('id') in failed:
                 continue
             i, cwd = b.get('input') or {}, e.get('cwd') or '/'
+            at = lambda x: os.path.realpath(os.path.join(cwd, os.path.expanduser(re.sub(r'^\$(PWD\b|\{PWD\})', lambda _: cwd, x))))
             if b.get('name') == 'Read' and i.get('file_path'):
-                seen.add(os.path.realpath(os.path.join(cwd, os.path.expanduser(str(i['file_path'])))))
+                seen.add(at(str(i['file_path'])))
             elif b.get('name') == 'Bash':
                 try:
                     segs = segments(str(i.get('command') or ''))
@@ -177,7 +197,9 @@ def files_read(path, names):
                     t = prog(s)
                     p, a = (os.path.basename(t[0]), t[1:]) if t else ('', [])
                     if p in ('cd', 'pushd') and a:
-                        cwd = os.path.join(cwd, os.path.expanduser(a[0]))
-                    elif p == 'cat' or p == 'sed' and not any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a):
-                        seen |= {os.path.realpath(os.path.join(cwd, os.path.expanduser(x))) for x in a if not x.startswith('-')}
+                        cwd = at(a[0])
+                    elif p == 'cat':
+                        seen |= {at(x) for x in a if not x.startswith('-')}
+                    elif p == 'sed' and not any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a):
+                        seen |= {at(x) for x in sed_files(a)}
     return seen

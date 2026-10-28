@@ -4,7 +4,7 @@ Checks each simple command separately (split at ; && || | & and newlines, heredo
 MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, unread_instructions
+from shellcmd import segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, unread_instructions, sed_files
 import steward, post_words
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -416,7 +416,7 @@ def check(t, has_cd):
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
     redirected = [] if p in ('claude', 'codex') else [t[i + 1] for i in range(len(t) - 1) if re.fullmatch(r'\d*>>?|&>>?|>\|', t[i])]
     files = [x for x in a if not x.startswith('-')]
-    written = redirected + (files if p == 'tee' or p == 'sed' and any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a) else
+    written = redirected + (files if p == 'tee' else sed_files(a) if p == 'sed' and any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a) else
                             files[-1:] if p in ('cp', 'mv', 'install') else [])
     if missing := sorted({f for x in written for f in unread(os.path.join(run_dir, os.path.expanduser(x)))}):
         block(f"read this repo's instructions first, with the Read tool, and follow them: {', '.join(missing)}")

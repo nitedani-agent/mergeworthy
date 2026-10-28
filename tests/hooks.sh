@@ -1386,17 +1386,19 @@ check "there, a Tier M edit passes once prior art and a decision exist" 0 "$(gat
 I="$T/instr"; mkdir -p "$I/sub"; git -C "$I" init -q; printf 'rules\n' > "$I/AGENTS.md"; printf '@AGENTS.md\n' > "$I/CLAUDE.md"
 IN="$T/instr-none"; mkdir -p "$IN"; git -C "$IN" init -q
 for x in "$I" "$IN"; do (cd "$x" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null); done
-ir_tr() { # <transcript> <event>...: read:<path> | bash:<cwd>|<command> | compact
+ir_tr() { # <transcript> <event>...: read:<path> | bash:<cwd>|<command> | compact; failread: and failbash: get an error result
   python3 - "$@" <<'EOF'
 import json, sys
 out = open(sys.argv[1], 'w')
-w = lambda e: out.write(json.dumps(e) + '\n')
-call = lambda cwd, name, i: w({"type": "assistant", "cwd": cwd, "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": name, "input": i}]}})
+w = lambda e: out.write(json.dumps(e, separators=(',', ':')) + '\n')  # Claude Code writes compact JSON
+def call(n, cwd, name, i, err):
+    w({"type": "assistant", "cwd": cwd, "message": {"role": "assistant", "content": [{"type": "tool_use", "id": f"toolu_{n}", "name": name, "input": i}]}})
+    w({"type": "user", "cwd": cwd, "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": f"toolu_{n}", "content": "Permission denied" if err else "rules", "is_error": err}]}})
 w({"type": "user", "message": {"role": "user", "content": "fix the bug"}})
-for ev in sys.argv[2:]:
+for n, ev in enumerate(sys.argv[2:]):
     kind, _, v = ev.partition(':')
-    if kind == 'read': call('/', 'Read', {"file_path": v})
-    elif kind == 'bash': call(v.split('|', 1)[0], 'Bash', {"command": v.split('|', 1)[1]})
+    if kind.endswith('read'): call(n, '/', 'Read', {"file_path": v}, kind.startswith('fail'))
+    elif kind.endswith('bash'): call(n, v.split('|', 1)[0], 'Bash', {"command": v.split('|', 1)[1]}, kind.startswith('fail'))
     elif kind == 'compact': w({"type": "system", "subtype": "compact_boundary", "content": "Conversation compacted"})
 EOF
 }
@@ -1423,6 +1425,16 @@ check "a path outside any git repo is never blocked" 0 "$(iedit "$IT" Write "$T/
 check "BLOCK: a command writing into that repo before the reads: a redirect, tee, sed -i, cp" "2 2 2 2" "$(ibash "$IT" "echo x > $I/a.txt") $(ibash "$IT" "echo x | tee sub/b.txt") $(ibash "$IT" "sed -i s/a/b/ $I/a.ts") $(ibash "$IT" "cp /etc/hostname $I/h")"
 check "a command reading there, or writing outside it, passes" "0 0 0" "$(ibash "$IT" "cat $I/AGENTS.md") $(ibash "$IT" "echo x > /dev/null") $(ibash "$IT" "echo x > $T/nogit/a.md")"
 ir_tr "$IT" "read:$I/AGENTS.md" "read:$I/CLAUDE.md"; check "a command writing into it passes once both were read" 0 "$(ibash "$IT" "echo x > $I/a.txt")"
+ir_tr "$IT"; echo x > "$T/nogit/src"
+check "BLOCK: cp, mv and install into the repo's folder itself (a folder destination)" "2 2 2 2" "$(ibash "$IT" "cp $T/nogit/src .") $(ibash "$IT" "mv $T/nogit/src .") $(ibash "$IT" "install $T/nogit/src .") $(ibash "$IT" "cp $T/nogit/src $I/")"
+check "sed -i on a file outside the repo passes: its script is no path" "0 0" "$(ibash "$IT" "sed -i 's/foo/bar/' $T/nogit/src") $(ibash "$IT" "sed -i -e s/foo/bar/ $T/nogit/src")"
+check "BLOCK: sed -i -e on a file inside it" 2 "$(ibash "$IT" "sed -i -e s/foo/bar/ $I/a.ts")"
+ir_tr "$IT" "failread:$I/AGENTS.md" "failread:$I/CLAUDE.md"; check "BLOCK: reads whose result is an error" 2 "$(iedit "$IT" Edit "$I/a.ts")"
+ir_tr "$IT" "failbash:$I|cat AGENTS.md CLAUDE.md"; check "BLOCK: a cat whose result is an error" 2 "$(iedit "$IT" Edit "$I/a.ts")"
+ir_tr "$IT" "bash:$I|cat \"\$PWD/AGENTS.md\" \"\${PWD}/CLAUDE.md\""; check "a cat of \$PWD/AGENTS.md counts as a read" 0 "$(iedit "$IT" Edit "$I/a.ts")"
+IL="$T/instr-link"; mkdir -p "$IL"; git -C "$IL" init -q; printf 'rules\n' > "$T/shared-agents"; ln -s "$T/shared-agents" "$IL/AGENTS.md"
+(cd "$IL" && bash "$R/bin/pr-steps" preflight 'none, because instruction reads are tested here' >/dev/null)
+ir_tr "$IT" "read:$T/shared-agents"; check "a Read of a symlinked AGENTS.md's target counts" 0 "$(iedit "$IT" Edit "$IL/a.ts")"
 # ---------- pre-skill-gate: an action waits for the skills its always-on row names, opened since the last compaction ----------
 sg_tr() { # <transcript> <event>...: skill:<input.skill> | typed:<name> | compact | text
   python3 - "$@" <<'EOF'
