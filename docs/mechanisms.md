@@ -22,10 +22,11 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 ### `post-lint` (`post` step 2)
 
-`post-lint drafts/x.md --kind reply|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
+`post-lint drafts/x.md --kind reply|status|pr|issue|inline|tracker|proposal [--repo o/r]` checks a draft before it is posted.
 - **A reply** reads its parent comment from `drafts/x.parent.md`. Use `--parent none` when it answers nobody.
 - **A draft PR's body** takes `--kind pr --draft`: its first line under the badge must be `**State: draft** (<why>)`; without `--draft` that line is a finding. The guard checks the same line on `gh pr create`.
 - **The repo's language.** A `Language: <code>` line in the project file (`Language: hu`) makes these checks and the guard's look for that language's words: the State line, the badge's effort words, the evidence-block titles, the notes table and its kinds, the decision block, `### What you should see` and the recommendation words. The words live in `hooks/post_words.py`; without the line, or with a code it doesn't list, they are English. Without `--repo`, the language's repo is the one in `repos.txt` of the first folder above the draft that holds one (when it lists several, the one `threads.txt` names; else a finding asks for `--repo`), else the cwd's git origin. The same word dictionary holds the tracker's title and Decisions headings. Without `--repo`, the inference gives only the language; the other repo checks need `--repo`.
+- **`status`** is a reply checked in place of a review (`post` step 3): its deadline follows `by` or `before` as an ISO time in UTC (`2026-10-28T16:00Z`, the form stop-lint holds its `PROMISED` line to) and is still ahead, a clock time (`16:00 UTC`, which stop-lint reads as its next occurrence, whatever date stands beside it) and a relative time it lists (`tomorrow`, `in about an hour`) are findings, each sentence (a list item too) says what is being done (`I'm …ing`, `I'll …`, but not `I'm seeing` or `getting`, which report a result) or holds that time, and it holds no claim or result (a sha, a commit or file link, a table or code block, a rating, a count of tests, files or lines, words like fixed, passes, verified, because, ", since"), no question or decision, and at most 100 words; a badge naming a reviewer is a finding.
 - **`tracker`** checks the umbrella issue's format: a `Title: Tracking: …` line, `##` sections of checkboxes, no table, the Decisions comment linked (not at creation), a ticked item's end state, and the Decisions comment's sections. Leave tracker posts badge-free (`writing`).
 - **The checks**, each where it applies to the kind:
   - **Writing:** banned phrases; sentences over 40 words or averaging over 25, and more than 30% bold (not for `pr`); internal labels like W2; a bold label followed by a fragment; em dashes.
@@ -41,7 +42,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 
 ### `gate-pass` (`post` step 4)
 
-`gate-pass <abs>/drafts/x.md <review output> [post-lint flags]` records that a draft passed the gate.
+`gate-pass <abs>/drafts/x.md <review output> [post-lint flags]` records that a draft passed the gate. A `--kind status` draft takes `none` as its review output, and only it; it needs its `PROMISED` line.
 - It re-runs `post-lint` with the draft's last flags, checks that the review's final message is exactly `CLEAN` and that the review output is newer than the draft (a draft trimmed after its review is linted and reviewed again; gate-pass's own harness line keeps the draft's time), and records the draft's sha256 in `<draft>.gate`.
 - A `reply`, `inline` or `proposal` draft needs `thread-context.md` in its folder, newer than its `.parent.md`, recording a latest human comment (`thread-context --verify`).
 - A `thread-context.md` beside the draft must be older than its last edit; posting refuses one regenerated after the gate.

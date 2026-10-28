@@ -308,10 +308,40 @@ check "gate-pass passes with thread-context.md beside the draft, written before 
 check "gate-pass records the thread context in the gate" 1 "$(grep -c '^tc ' "$GD/r.md.gate")"
 printf 'The test checks that "I'"'"'ll switch it once X is released" passes.\n' > "$GD/r.md"; touch -d '+2 minutes' "$GD/r.md"
 check "a quoted \"I'll\" is someone else's words, not a promise" 0 "$(gp)"
+printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"'"')\n```\n' > "$GD/r.md"; touch -d '+150 seconds' "$GD/r.md"
+check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
+printf 'The build fails:\n\n```\n3 foo();\n  ~~~\n```\n\nI'"'"'ll fix it in a follow-up PR.\n' > "$GD/r.md"; touch -d '+160 seconds' "$GD/r.md"
+check "BLOCK: a promise after a code block whose output holds a fence-like line (tsc's ~~~ underline)" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The lint says:\n\n~~~\nI'"'"'ll merge it once green\n~~~\n' > "$GD/r.md"; touch -d '+170 seconds' "$GD/r.md"
+check "an \"I'll\" inside a ~~~ code block is not a promise either" 0 "$(gp)"
 printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
 check "BLOCK: the draft's own \"I'll\" needs a PROMISED line" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
 WP="$T/wp"; mkdir -p "$WP"; echo sess1 > "$WP/session"; echo "$WP" >> "$HOME/.claude/gh-watch-dirs.txt"; echo "PROMISED o/r#1: a PR (r.md)" > "$WP/proposals-open.md"
 check "a PROMISED line in the session's watch dir counts, wherever the draft lives" 0 "$(CLAUDE_CODE_SESSION_ID=sess1 gp)"
+
+# ---------- a status post (post step 3): post-lint checks it in place of a review, and gate-pass takes `none` for it alone ----------
+FUT=$(date -u -d '+1 day' +%Y-%m-%dT%H:%MZ); PAST=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%MZ)
+# sl <finding> <draft> [badge]: the lines naming <finding>; with '' post-lint's exit code, so a crash isn't a pass
+sl() { printf '%s\n' "$2" > "$T/st.md"; local out rc; out=$(MERGEWORTHY_BADGE="${3:-off}" python3 "$R/bin/post-lint" "$T/st.md" --kind status --parent none 2>/dev/null); rc=$?; [ -n "$1" ] || { echo "$rc"; return; }; printf '%s\n' "$out" | grep -c "$1"; }
+check "status: what is being done and by when, in UTC, passes" 0 "$(sl '' "@brillout On it: I'm rating everything this PR adds or changes against your refactor skill, with one commit per refactor. The table of old ⇒ new ratings comes by $FUT.")"
+check "status: a time of day (UTC, or with a date beside it), one that passed, a lowercase ISO one (stop-lint can't parse it), a relative one (hedged too), and none at all are findings" "1 1 1 1 1 1 1 1" "$(sl 'time of day' 'The table comes by 16:00.') $(sl 'time of day' "I'll merge it by 23:30 UTC on October 27th.") $(sl 'has passed' "The table comes by $PAST.") $(sl 'say by when' "The table comes by ${PAST,,}.") $(sl 'relative time' "The table comes tomorrow, the rest by $FUT.") $(sl 'relative time' "The table comes by $FUT (in about an hour).") $(sl 'relative time' "The rest comes in a few days, the table by $FUT.") $(sl 'say by when' 'On it.')"
+check "status: a date, a month or a number in the prose is no time: those pass" "0 0 0" "$(sl '' "I'm reviewing the May release, the JUnit 5 suite and 3 decisions. The report comes by $FUT.") $(sl '' "I'll mark 2 items done before $FUT.") $(sl '' "I'm checking the 2026-10-27 run. The report comes by $FUT.")"
+check "status: a sha, a count, a result word, a reason (because, \", since\", now that, not the time \"since\"), a table and a question each need the review" "1 1 1 1 1 1 0 1 1" "$(sl 'is a claim' "Fixed in abc1234, the rest by $FUT.") $(sl 'is a claim' "12 tests to go, done by $FUT.") $(sl 'is a claim' "It passes now, the docs come by $FUT.") $(sl 'is a claim' "I'm switching to the new parser because the old one is slow. The report comes by $FUT.") $(sl 'is a claim' "I'm rerunning the suite, since the cache was the cause. The report comes by $FUT.") $(sl 'is a claim' "I'm rerunning the suite now that the patch is in. The report comes by $FUT.") $(sl '' "I'm reading what changed since the last pass. The report comes by $FUT.") $(sl 'is a claim' "$(printf '| a | b |\n|---|---|\n| 1 | 2 |\n\nBy %s.' "$FUT")") $(sl 'question or a decision' "Should it cover X? I recommend yes, by $FUT.")"
+check "status: a fenced code block, with backticks or tildes, needs the review" "1 1" "$(sl 'code block' "$(printf 'I am rerunning the suite.\n\n```\nok\n```\n\nThe report comes by %s.' "$FUT")") $(sl 'code block' "$(printf 'I am rerunning the suite.\n\n~~~\nok\n~~~\n\nThe report comes by %s.' "$FUT")")"
+check "status: each sentence says what is being done or by when; any other needs the review" "1 1 0" "$(sl 'says neither' "The docs are updated. The report comes by $FUT.") $(sl 'says neither' "I checked it and the cache was the cause. The report comes by $FUT.") $(sl '' "Next, I'll rebase onto main. Then I'm rerunning the gates, and the report comes by $FUT.")"
+check "status: 'I'm seeing …' or 'I'm getting …' reports a result: it needs the review" "1 1 1 0" "$(sl 'says neither' "I'm seeing the expected output. The report comes by $FUT.") $(sl 'says neither' "We are still getting the correct output. The report comes by $FUT.") $(sl 'says neither' "I'm seeing matching output. The report comes by $FUT.") $(sl '' "I'm still reviewing the patch. The report comes by $FUT.")"
+check "status: a list of actions and their deadline passes, an item that is neither does not" "0 0 1" "$(sl '' "$(printf -- "- I'm reviewing the patch.\n- I'll send the report by %s." "$FUT")") $(sl '' "$(printf -- "1. I'm reviewing the patch\n2. I'll send the report by %s" "$FUT")") $(sl 'says neither' "$(printf -- "- I'm reviewing the patch\n- The docs are updated\n- I'll send the report by %s" "$FUT")")"
+check "status: a time not after by or before (stop-lint's form), a link to code, a GENUINE-FORK line and over 100 words are findings" "1 1 1 1" "$(sl 'say by when' "The table comes at $FUT.") $(sl 'is a claim' "See https://github.com/o/r/commit/abc, the rest by $FUT.") $(sl 'question or a decision' "$(printf 'The rest by %s.\nGENUINE-FORK: a or b; I recommend a' "$FUT")") $(sl '> 100' "$(printf 'word %.0s' $(seq 101)) by $FUT.")"
+check "status: a badge naming a reviewer is a finding" 1 "$(sl 'names only the writer' "$(printf '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude"> *Opus 5.5 (low effort) wrote this; Opus 5.5 (low effort) reviewed it.*\nThe table comes by %s.' "$FUT")" on)"
+GS="$T/sdrafts/x"; mkdir -p "$GS"; cp "$TD/thread-context.md" "$GS/"; printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+1 minute' "$GS/s.md"
+sg() { MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GS/s.md" none --kind "$1" --parent none >"$T/gp.out" 2>&1; echo $?; }
+check "BLOCK: gate-pass without a review for anything but a status post" "1 1" "$(sg reply) $(grep -c 'only a status post' "$T/gp.out")"
+check "BLOCK: a status post needs its PROMISED line" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The rebase lands by %s, and then I'"'"'ll merge.\n' "$FUT" > "$GS/s.md"; touch -d '+2 minutes' "$GS/s.md"
+check "BLOCK: a status post needs its PROMISED line even when it says it will merge" "1 1" "$(sg status) $(grep -c 'promises work' "$T/gp.out")"
+printf 'The table of old ⇒ new ratings comes by %s.\n' "$FUT" > "$GS/s.md"; touch -d '+3 minutes' "$GS/s.md"
+echo "PROMISED o/r#1: the ratings table (s.md)" > "$T/sdrafts/proposals-open.md"
+check "gate-pass gates a status post with no review once its PROMISED line is there" "0 yes" "$(sg status) $([ "$(sha256sum "$GS/s.md" | cut -d' ' -f1)" = "$(head -1 "$GS/s.md.gate")" ] && echo yes)"
 
 # ---------- post-bash-register: only a real gh post registers, and only the thread it posted to ----------
 sleep 600 & SPID=$!
