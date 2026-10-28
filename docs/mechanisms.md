@@ -137,6 +137,7 @@ It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcm
 - a post or edit on a thread whose draft folder has no `thread-context.md` for that thread recording its current latest human comment, or older than the draft's parent. `--kind tracker` drafts and new issues and PRs are exempt;
 - a third comment on a thread (`post §Thread rules`);
 - `gh pr create` or `gh pr edit` with a `--title` typed inline, not `"$(cat <work folder>/drafts/title.md)"`;
+- a shell write (a redirection, `tee`, `sed -i`, `cp`, `mv`, `install`) into a git repo whose root `AGENTS.md` or `CLAUDE.md` this session hasn't read (a Read, `cat` or `sed` with no error) since its last compaction, naming the files; `pre-design-gate.py` blocks Edit, Write, MultiEdit and NotebookEdit the same way;
 - a shell write of a `.review.out` file (a redirection, `tee`, `cp`, `mv`, `sed -i`) by the main session: the reviewer writes its own (`codex exec -o`, the agent's output file, a `claude -p` reviewer's stdout);
 - `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
 - `--delete-branch` while PRs are based on the branch;
@@ -205,4 +206,4 @@ Before `tests/all.sh`, it refuses a push in which a commit changing `skills/` or
 
 ### `netns-run`
 
-`netns-run <command...>` runs the command in a private network namespace (`unshare -rn`) with internet access through slirp4netns: ports inside are its own, DNS and HTTPS work, and the command's exit status comes back. It needs `slirp4netns` installed (`sudo apt install slirp4netns`).
+`netns-run <command...>` runs the command in a private network namespace (`unshare -rnm`) with internet access through slirp4netns: ports inside are its own, DNS and HTTPS work (its `/etc/resolv.conf` names slirp4netns's forwarder, keeping the host's search domains), and the command's exit status comes back. It needs `slirp4netns` installed (`sudo apt install slirp4netns`).

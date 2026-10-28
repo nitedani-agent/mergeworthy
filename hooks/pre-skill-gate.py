@@ -7,7 +7,7 @@ a gated action whose transcript can't be read is blocked, as nothing shows which
 import json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, opt, api_call, git_argv
+from shellcmd import segments, prog, opt, api_call, git_argv, rlines, transcript
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITE = ('post', 'writing')
@@ -140,19 +140,6 @@ def old_catalog(session_id):
         return False
 
 
-def rlines(path, chunk=1 << 20):
-    """The file's lines, last first."""
-    with open(path, 'rb') as f:
-        f.seek(0, 2)
-        pos, rest = f.tell(), b''
-        while pos > 0:
-            n = min(chunk, pos); pos -= n; f.seek(pos)
-            lines = (f.read(n) + rest).split(b'\n')
-            rest = lines.pop(0)
-            yield from reversed(lines)
-        yield rest
-
-
 def opened(path):
     """Skills opened since the transcript's last compaction: Skill tool calls, /<skill> launches, and the skills the harness
     re-attaches whole right after a compaction (an invoked_skills attachment; one cut "for compaction" doesn't count)."""
@@ -178,13 +165,6 @@ def opened(path):
             text = content if isinstance(content, str) else ' '.join(b.get('text', '') for b in content or [] if isinstance(b, dict))
             names |= set(re.findall(r'<command-name>/([\w:-]+)</command-name>', text))
     return {n.split(':', 1)[1] if n.startswith('mergeworthy:') else n for n in names if ':' not in n or n.startswith('mergeworthy:')}
-
-
-def transcript(d):
-    path = d.get('transcript_path') or ''
-    if d.get('agent_id'):  # a subagent's context holds only its own skills
-        path = d.get('agent_transcript_path') or os.path.join(os.path.dirname(path), d.get('session_id', ''), 'subagents', f"agent-{d['agent_id']}.jsonl")
-    return path if path and os.path.isfile(path) else None
 
 
 def main():

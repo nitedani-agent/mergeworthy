@@ -6,7 +6,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, git_argv, git_globals, operands, unquoted, GUARDED, _nested
+from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested
 import steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -607,14 +607,14 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
+    written = written_files(t)
+    for x in written:
+        if why := no_instructions_read(os.path.join(run_dir, os.path.expanduser(x)), d):
+            block(why)
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
-    redirected = [] if p in ('claude', 'codex') else [t[i + 1] for i in range(len(t) - 1) if re.fullmatch(r'\d*>>?|&>>?|>\|', t[i])]
-    files = [x for x in a if not x.startswith('-')]
-    written = redirected + (files if p == 'tee' or p == 'sed' and any(re.fullmatch(r'-\w*i\w*|--in-place(=.*)?', x) for x in a) else
-                            files[-1:] if p in ('cp', 'mv', 'install') else [])
     if any(os.path.realpath(os.path.join(run_dir, os.path.expanduser(x))).startswith(RECORDS) for x in written):
         block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
-    if any(x.endswith('.review.out') for x in written) and not by_agent():
+    if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in written) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
               "Never write a verdict yourself (mergeworthy:delegate §Reviewers, post step 3)")
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:

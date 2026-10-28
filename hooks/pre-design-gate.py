@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook (matcher: Write, Edit, MultiEdit, NotebookEdit, delegate_task). Exit 2 blocks; stderr goes to the agent.
-An edit inside a git work tree waits for its repo and branch's `pr-steps preflight` record.
+An edit inside a git work tree waits until this session read the AGENTS.md and CLAUDE.md at its root (pre-bash-guard checks the files a
+command writes the same way), then for its repo and branch's `pr-steps preflight` record.
 At Tier M or L (first line of scope.md in the work folder: ~/.mergeworthy/work/<task>/ holding the checkout, or <repo>-work/ beside it),
 code waits for prior art (task step 6) and the design (design step 4): the work folder's prior-art.md and a decisions/*.md must exist
 before an edit inside the repo or an implementation agent. In a task's work folder, code waits for scope.md's Tier line (task step 2).
@@ -8,7 +9,7 @@ The step records under ~/.claude/pr-steps are pr-steps' to write."""
 import glob, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import no_preflight
+from shellcmd import folder, no_preflight, no_instructions_read
 import work_folder
 d = json.load(sys.stdin)
 ti = d.get('tool_input', {}) or {}
@@ -20,9 +21,8 @@ if 'delegate_task' not in tool:
     if target.startswith(os.path.realpath(os.path.expanduser('~/.claude/pr-steps')) + os.sep):
         sys.stderr.write("BLOCKED: the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first\n")
         sys.exit(2)
-    near = os.path.dirname(target)
-    while not os.path.isdir(near): near = os.path.dirname(near)  # a new file's folder may not exist yet
-    if why := no_preflight(near):
+    near = folder(target)  # a new file's folder may not exist yet
+    if why := no_instructions_read(target, d) or no_preflight(near):
         sys.stderr.write(f"BLOCKED: {why}\n")
         sys.exit(2)
 # the edited file's repo, else the session's: an edit outside any repo is no code change (the push gate checks what leaves)
