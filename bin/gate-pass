@@ -21,7 +21,8 @@ esac
 [ "$r" = none ] && out=CLEAN || out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
-own=$(sed -E '/^ {0,3}(`{3,}|~{3,})/,/^ {0,3}(`{3,}|~{3,})/d; s/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d' "$d")  # quoted text and code blocks are someone else's words or a tool's output, not a promise
+own=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import post_words; sys.stdout.write(post_words.uncoded(open(sys.argv[2]).read()))' "$(dirname "$(readlink -f "$0")")/../hooks" "$d" |
+  sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d')  # quoted text and code blocks are someone else's words or a tool's output, not a promise
 if [ "$kind" = status ] || { printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; }; then
   # the list lives in the session's watch dir (github-threads), or beside a drafts folder kept in it
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
