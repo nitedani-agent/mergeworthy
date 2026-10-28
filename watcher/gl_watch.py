@@ -7,7 +7,7 @@ import datetime, json, re, subprocess, time, urllib.parse
 
 HOST = 'gitlab.com/'
 RECENT_EVERY = 60
-BADGE = 'https://github.com/claude.png'  # the agent's posts carry it (mergeworthy:writing)
+BADGE = re.compile(r'\s*<img src="https://github\.com/(claude|openai)\.png"')  # an agent's post starts with it (mergeworthy:writing §Forms); BADGE.match(body)
 BOT = re.compile(r'^(project|group)_\d+_bot|[-_]bot$|^(ghost|support-bot|alert-bot)$')
 DEVELOPER = 30  # GitLab's access level that can push: GitHub's write access
 
@@ -86,7 +86,7 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post, first):
         if upd < floor:
             break
         who, body = n['author']['username'], n.get('body') or ''
-        if n.get('system') or BOT.search(who) or BADGE in body or agent_post(body):
+        if n.get('system') or BOT.search(who) or BADGE.match(body) or agent_post(body):
             continue
         if own or who == me or maintainer(state, proj, n['author']['id']):
             notes.append((n['id'], upd, who, body))

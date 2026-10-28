@@ -4,8 +4,11 @@
 set -u
 command -v slirp4netns >/dev/null || { echo "netns-run: slirp4netns is not installed (sudo apt install slirp4netns)" >&2; exit 127; }
 dir=$(mktemp -d); mkfifo "$dir/go" "$dir/ready"
+# DNS goes to slirp4netns's forwarder: the host's resolv.conf may name a stub (systemd-resolved's 127.0.0.53) that only
+# the host's own loopback answers. Its search, domain and options lines stay, so short names resolve as on the host.
+{ echo 'nameserver 10.0.2.3'; grep -E '^(search|domain|options)[[:space:]]' /etc/resolv.conf 2>/dev/null; } > "$dir/resolv.conf"
 # The namespace's first process waits until slirp4netns has configured tap0, then runs the command
-unshare -rn --fork bash -c 'read -r _ < "$1"; ip link set lo up; shift; exec "$@"' _ "$dir/go" "$@" &
+unshare -rnm --fork bash -c 'read -r _ < "$1"; ip link set lo up; if [ -e /etc/resolv.conf ]; then mount --bind "$2" /etc/resolv.conf || exit 1; fi; shift 2; exec "$@"' _ "$dir/go" "$dir/resolv.conf" "$@" &
 ushare=$!
 ns=""; for _ in $(seq 1 100); do ns=$(ps -o pid= --ppid "$ushare" | tr -d ' ' | head -1); [ -n "$ns" ] && break; sleep 0.05; done
 [ -n "$ns" ] || { echo "netns-run: the namespace didn't start" >&2; kill "$ushare" 2>/dev/null; rm -rf "$dir"; exit 1; }
