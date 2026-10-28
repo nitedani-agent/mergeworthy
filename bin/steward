@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """steward round <folder> | owed | fired [--days N] | sessions [<folder>] [--since ISO] | metrics <folder> [--since ISO] [--author LOGIN]... | done <folder> <summary>:
 the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <folder> being the steward's. Reads only, except
-that `metrics` appends its records to <folder>/metrics.jsonl and `done` appends `<UTC time> <summary>` to <folder>/passes.txt.
+that `round` writes <folder>'s watcher files, `metrics` appends its records to <folder>/metrics.jsonl and `done` appends
+`<UTC time> <summary>` to <folder>/passes.txt.
 
 - fired [--days N]: the hook checks hooks/run logged as blocking, each with its last day, and the hooks with no block in N days
   (default 60): the removal candidates.
-- round: `gh-watch-start --pass <folder> nitedani/mergeworthy all` plus every open PR of yours: one watcher round, no daemon.
+- round: `gh-watch-start --round <folder> nitedani/mergeworthy` (covered, for its rule PRs) with every open PR of yours whose body starts
+  with an agent's badge: one watcher round, no daemon; the round watches
+  nitedani/mergeworthy whole only when ~/.mergeworthy/steward names <folder> (gh-watch.py's steward_line).
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
-  lines not done, FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
+  lines not done nor held (a holding or drafting line whose ETA is ahead), FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
   One `<folder> (<watcher>, <session>)\t<kind>\t<line>` per item.
 - sessions: this machine's Claude Code and Codex logs written since --since (default: the folder's last pass, else 7 days):
   tokens, turns, hours, the PRs they name, and each user message that corrects the agent, with its line. Paths relative to ~.
-- metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) created since --since
-  (default: the last line of <folder>/passes.txt, else 60 days), and the window as long before it: outcome, hours to merge,
-  first-pass acceptance (merged with no change request and no commit after the first maintainer review), review rounds,
+- metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) settled (merged or closed)
+  since --since (default: the last line of <folder>/passes.txt, else 60 days), in the window as long before it, and still open:
+  outcome, hours to merge, first-pass acceptance (merged with no change request and no commit after the first maintainer review
+  but a merge of the base), review rounds,
   FOLLOW-UP MISS/TASTE verdicts, and the tokens (cache reads left out) of the local sessions that name the PR more than any other
   (unknown when none does).
 """
@@ -23,8 +27,10 @@ HOME = os.path.expanduser('~')
 NOW = time.time()
 CORRECTION = re.compile(r"\b(why (?:did|didn't|are|aren't|is|isn't|not|do)|not good|that's wrong|wrong|you (?:forgot|missed|skipped)|stop|revert|undo|again\?|nem jó|miért|rossz|állj|megint)\b", re.I)
 PR_URL = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)')
-EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+): (\S+) by .*$', re.M)
+EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?:, #\d+)*): (\S+) by .*$', re.M)  # one commit can touch several PRs: o/r#5, #6
+BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
+SHA = re.compile(r'[0-9a-f]{7,40}')
 
 
 def iso(t):
@@ -61,7 +67,7 @@ def verdicts(d):
 
 def sorted_as(key, done):
     """The verdict of a FOLLOW-UP or review key: an exact line, or a sha prefix of 7+ characters either way."""
-    return next((v for k, v in done.items() if k == key or len(k) >= 7 and key[:7] == k[:7] and (k.startswith(key) or key.startswith(k))), None)
+    return next((v for k, v in done.items() if k == key or SHA.fullmatch(k) and SHA.fullmatch(key) and (k.startswith(key) or key.startswith(k))), None)
 
 
 def idle(d):
@@ -72,6 +78,15 @@ def idle(d):
     return None if hours < 2 else hours
 
 
+def waiting(line):
+    """A `holding: <url> <ETA>` or `drafting: <url> <ETA>` line whose ETA is ahead: its session answers it (stop-lint's rule)."""
+    m = re.match(r'(?:[-*]\s+)?(?:holding|drafting):\s+\S+\s+(\S+)', line, re.I)
+    try:
+        return bool(m) and epoch(m.group(1)) > NOW
+    except ValueError:
+        return False
+
+
 def owed():
     for d in folders():
         h = idle(d)
@@ -80,7 +95,7 @@ def owed():
         tag = f"{d.replace(HOME, '~', 1)} ({'watcher on' if live(d) else 'no watcher'}, session {'unknown' if h == float('inf') else f'idle {h:.0f}h'})"
         for l in read(os.path.join(d, 'replies-owed.md')).splitlines():
             l = l.strip()
-            if l and not l.startswith('#') and not re.match(r'(?:[-*]\s+)?done:', l, re.I):
+            if l and not l.startswith('#') and not re.match(r'(?:[-*]\s+)?done:', l, re.I) and not waiting(l):
                 print(f"{tag}\treply\t{l}")
         done = verdicts(d)
         for key, ref in dict.fromkeys(EVENT.findall(read(os.path.join(d, 'events.log')))):
@@ -95,6 +110,8 @@ def owed():
 def typed(e):
     """The text a person typed in one log line: Claude Code's user message (not a tool result or a hook's), Codex's user message."""
     m = e.get('message') if isinstance(e.get('message'), dict) else {}
+    if e.get('isMeta'):
+        return ''  # text the harness injects (a skill's), not the user's
     if e.get('type') == 'user' and m.get('role', 'user') == 'user':
         c = m.get('content')
         t = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
@@ -108,7 +125,7 @@ def typed(e):
 def session(path):
     """One log's numbers: start, end, turns, tokens, the PRs it names, and the user's corrections as (line, text)."""
     s = {'path': path.replace(HOME, '~', 1), 'start': None, 'end': None, 'turns': 0, 'tokens': 0, 'prs': {}, 'corrections': []}
-    codex_total = 0
+    codex_total, counted = 0, set()
     with open(path, errors='replace') as f:
         for n, line in enumerate(f, 1):
             for r, num in PR_URL.findall(line):
@@ -123,10 +140,14 @@ def session(path):
             if isinstance(ts, str) and ts[:4].isdigit():
                 s['start'] = s['start'] or ts
                 s['end'] = ts
-            u = ((e.get('message') or {}) if isinstance(e.get('message'), dict) else {}).get('usage') or {}
-            s['tokens'] += sum(u.get(k) or 0 for k in ('input_tokens', 'output_tokens', 'cache_creation_input_tokens'))  # cache reads left out: they repeat the context
+            m = e.get('message') if isinstance(e.get('message'), dict) else {}
+            if m.get('id') not in counted:  # each content block of a message is a line of its own, carrying the message's usage
+                counted.add(m.get('id') or n)
+                u = m.get('usage') or {}
+                s['tokens'] += sum(u.get(k) or 0 for k in ('input_tokens', 'output_tokens', 'cache_creation_input_tokens'))  # cache reads left out: they repeat the context
             info = ((e.get('payload') or {}) if isinstance(e.get('payload'), dict) else {}).get('info') or {}
-            codex_total = max(codex_total, ((info.get('total_token_usage') or {}) if isinstance(info, dict) else {}).get('total_tokens') or 0)
+            u = (info.get('total_token_usage') or {}) if isinstance(info, dict) else {}  # cumulative; its input includes the cache reads
+            codex_total = max(codex_total, (u.get('input_tokens') or 0) - (u.get('cached_input_tokens') or 0) + (u.get('output_tokens') or 0))
             t = typed(e)
             if t.strip():
                 s['turns'] += 1
@@ -161,10 +182,10 @@ def gh(*args):
 
 
 QUERY = '''query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
- state merged createdAt mergedAt author{login}
+ state merged createdAt mergedAt closedAt author{login}
  timelineItems(itemTypes:[READY_FOR_REVIEW_EVENT],first:1){nodes{... on ReadyForReviewEvent{createdAt}}}
  reviews(first:100){nodes{author{login} authorAssociation state submittedAt comments{totalCount}}}
- commits(last:100){nodes{commit{committedDate}}}}}}'''
+ commits(last:100){nodes{commit{committedDate parents{totalCount}}}}}}}'''
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 
 
@@ -174,11 +195,11 @@ def pr_record(repo, num):
     revs = [v for v in p['reviews']['nodes'] if (v.get('author') or {}).get('login') != (p.get('author') or {}).get('login')
             and v['authorAssociation'] in MAINTAINER and v.get('submittedAt')]
     first = min((v['submittedAt'] for v in revs), default=None)
-    after = sum(1 for c in p['commits']['nodes'] if first and c['commit']['committedDate'] > first)
+    after = sum(1 for c in p['commits']['nodes'] if first and c['commit']['committedDate'] > first and c['commit']['parents']['totalCount'] < 2)  # a merge of the base isn't rework
     ready = (p['timelineItems']['nodes'] or [{}])[0].get('createdAt') or p['createdAt']
     changes = sum(v['state'] == 'CHANGES_REQUESTED' for v in revs)
     hours = lambda a: round((epoch(p['mergedAt']) - epoch(a)) / 3600, 1) if p['merged'] else None
-    return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
+    return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'settled': p['mergedAt'] or p['closedAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
             'hours_to_merge': hours(p['createdAt']), 'hours_ready_to_merge': hours(ready), 'review_rounds': len(revs),
             'change_requests': changes, 'review_comments': sum(v['comments']['totalCount'] for v in revs),
             'commits_after_review': after, 'first_pass': bool(p['merged'] and not changes and not after)}
@@ -191,8 +212,9 @@ def followups():
         done = verdicts(d)
         for key, ref in dict.fromkeys(EVENT.findall(read(os.path.join(d, 'events.log')))):
             v = sorted_as(ref, done)
-            if v:
-                out.setdefault(key, []).append(v)
+            repo = key.split('#', 1)[0]
+            for num in re.findall(r'#(\d+)', key) if v else ():
+                out.setdefault(f"{repo}#{num}", []).append(v)
     return out
 
 
@@ -201,53 +223,65 @@ def summary(rows):
     first = sum(r['first_pass'] for r in merged)
     med = lambda xs: round(statistics.median(xs), 1) if xs else '-'
     tokens = [r['tokens'] for r in merged if r['tokens'] is not None]
-    return [str(len(rows)), str(len(merged)), f"{first}/{len(merged)}" + (f" ({100 * first // len(merged)}%)" if merged else ''),
-            str(med([r['hours_to_merge'] for r in merged])), str(med(tokens)) + (f" ({len(tokens)} known)" if merged else ''),
-            str(sum(r['followup_miss_taste'] for r in rows))]
+    return [('PRs settled (merged or closed)', len(rows)), ('merged', len(merged)),
+            ('first-pass acceptance (north star)', f"{first}/{len(merged)}" + (f" ({100 * first // len(merged)}%)" if merged else '')),
+            ('median hours to merge', med([r['hours_to_merge'] for r in merged])),
+            ('median tokens per merged PR', f"{med(tokens)}" + (f" ({len(tokens)} known)" if merged else '')),
+            ('FOLLOW-UP MISS/TASTE', sum(r['followup_miss_taste'] for r in rows))]
+
+
+def search(q):
+    items, page = [], 1
+    while True:
+        got = gh('api', '-X', 'GET', 'search/issues', '-f', f'q={q}', '-F', 'per_page=100', '-F', f'page={page}')['items']
+        items += got
+        if len(got) < 100:
+            return items
+        page += 1
+
+
+def costs(since):
+    """{PR key: [tokens, turns, session hours]} of the local sessions since then, each counted for the PR it names more than any other."""
+    cost = {}
+    for p in logs(since):
+        s = session(p)
+        most = [pr for pr, n in s['prs'].items() if n == max(s['prs'].values())]
+        if len(most) == 1:  # an orchestrator naming many PRs isn't each one's cost
+            c = cost.setdefault(most[0], [0, 0, 0.0])
+            c[0] += s['tokens']; c[1] += s['turns']; c[2] += s['hours'] or 0
+    return cost
 
 
 def metrics(folder, since, authors):
-    windows = (since - (NOW - since), since)
+    """A PR counts in the window it settled in (merged or closed), so a window isn't judged by the fast merges of PRs still open."""
+    start = since - (NOW - since)
     me = gh('api', 'user')['login']
-    items = []
-    for a in authors or [me]:
-        q = f"is:pr author:{a} created:>={iso(windows[0])[:10]}"
-        page = 1
-        while True:
-            got = gh('api', '-X', 'GET', 'search/issues', '-f', f'q={q}', '-F', 'per_page=100', '-F', f'page={page}')['items']
-            items += got
-            if len(got) < 100:
-                break
-            page += 1
-    badge = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')
-    items = [i for i in items if badge.match(i.get('body') or '') or i['user']['login'] != me]
-    fu = followups()
-    cost = {}
-    for p in logs(windows[0] - 86400):
-        s = session(p)
-        if s['prs']:  # a session counts for the PR it names most: an orchestrator naming many PRs isn't each one's cost
-            c = cost.setdefault(max(s['prs'], key=s['prs'].get), [0, 0, 0.0])
-            c[0] += s['tokens']; c[1] += s['turns']; c[2] += s['hours'] or 0
-    rows = []
+    items = [i for a in authors or [me] for q in (f"closed:>={iso(start)[:10]}", "is:open") for i in search(f"is:pr author:{a} {q}")
+             if BADGE.match(i.get('body') or '') or i['user']['login'] != me]
+    fu, cost, rows = followups(), costs(start - 86400), []
     for i in items:
-        repo = i['repository_url'].split('/repos/', 1)[1]
-        r = pr_record(repo, i['number'])
-        if epoch(r['created']) < windows[0]:
+        r = pr_record(i['repository_url'].split('/repos/', 1)[1], i['number'])
+        if r['settled'] and epoch(r['settled']) < start:
             continue  # the search matches by day
         c = cost.get(r['pr'])
         r.update(tokens=c[0] if c else None, turns=c[1] if c else None, session_hours=round(c[2], 1) if c else None,
-                 followup_miss_taste=sum(v in ('MISS', 'TASTE') for v in fu.get(r['pr'], [])), window='this' if epoch(r['created']) >= since else 'previous')
+                 followup_miss_taste=sum(v in ('MISS', 'TASTE') for v in fu.get(r['pr'], [])),
+                 window='open' if not r['settled'] else 'this' if epoch(r['settled']) >= since else 'previous')
         rows.append(r)
     with open(os.path.join(folder, 'metrics.jsonl'), 'a') as f:
         for r in rows:
             f.write(json.dumps({'pass': iso(NOW), **r}) + '\n')
-    names = ['PRs opened', 'merged', 'first-pass acceptance (north star)', 'median hours to merge', 'median tokens per merged PR', 'FOLLOW-UP MISS/TASTE']
-    prev, this = summary([r for r in rows if r['window'] == 'previous']), summary([r for r in rows if r['window'] == 'this'])
-    print(f"| Since {iso(since)[:10]} vs the {round((NOW - since) / 86400)} days before | previous | this |\n|---|---|---|")
-    for n, a, b in zip(names, prev, this):
-        print(f"| {n} | {a} | {b} |")
+    print_tables(rows, since)
+
+
+def print_tables(rows, since):
+    window = lambda w: [r for r in rows if r['window'] == w]
+    print(f"| Settled since {iso(since)[:10]} vs the {round((NOW - since) / 86400)} days before | previous | this |\n|---|---|---|")
+    for (name, a), (_, b) in zip(summary(window('previous')), summary(window('this'))):
+        print(f"| {name} | {a} | {b} |")
+    print(f"\nOpen now: {len(window('open'))}")
     print("\n| PR | outcome | rounds | change requests | commits after review | hours to merge | tokens |\n|---|---|---|---|---|---|---|")
-    for r in sorted((r for r in rows if r['window'] == 'this'), key=lambda r: r['created']):
+    for r in sorted(window('this'), key=lambda r: r['settled']):
         print(f"| {r['pr']} | {r['outcome']} | {r['review_rounds']} | {r['change_requests']} | {r['commits_after_review']} | {r['hours_to_merge'] if r['hours_to_merge'] is not None else '-'} | {r['tokens'] if r['tokens'] is not None else 'unknown'} |")
 
 
@@ -290,11 +324,12 @@ def main(a):
         return sessions(epoch(since[-1]) if since else folder and last_pass(folder) or NOW - 7 * 86400)
     if a[:1] == ['metrics'] and folder:
         return metrics(folder, epoch(since[-1]) if since else last_pass(folder) or NOW - 60 * 86400, opt('--author'))
-    if a[:1] == ['round'] and folder:  # the steward's repo whole and every open PR of yours, one watcher round (gh-watch-start --pass)
-        prs = gh('search', 'prs', '--author', '@me', '--state', 'open', '--limit', '1000', '--json', 'repository,number')
+    if a[:1] == ['round'] and folder:  # every open PR of yours an agent wrote, one watcher round (gh-watch-start --round)
+        prs = [p for p in gh('search', 'prs', '--author', '@me', '--state', 'open', '--limit', '1000', '--json', 'repository,number,body')
+               if BADGE.match(p.get('body') or '')]  # a PR the user wrote under the same login is theirs to answer
         threads = [x for p in prs for x in (p['repository']['nameWithOwner'], str(p['number']))]
         start = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'gh-watch-start')
-        sys.exit(subprocess.run([start, '--pass', folder, 'nitedani/mergeworthy', 'all', *threads]).returncode)
+        sys.exit(subprocess.run([start, '--round', folder, 'nitedani/mergeworthy', *threads]).returncode)  # covered, not watched whole: its rule PRs can open
     if a[:1] == ['fired']:
         return fired(int((opt('--days') or ['60'])[-1]))
     if a[:1] == ['done'] and folder and a[2:3]:

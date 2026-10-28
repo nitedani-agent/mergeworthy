@@ -5,7 +5,7 @@ description: "Everything that reaches GitHub or another external service (a comm
 
 # Post
 
-Everything that reaches an external service passes these steps, with no lighter category: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Only the main session posts; subagents hand it drafts. A reviewed draft isn't permission to publish: the task says what you may open, comment and file. Called by a step of another skill; when done, return to it.
+Everything that reaches an external service passes these steps: comments, review replies, inline comments, PR and issue bodies, filed issues, and edits of any of these. Reactions are exempt. Only the main session posts; subagents hand it drafts. A reviewed draft isn't permission to publish: the task says what you may open, comment and file. Called by a step of another skill; when done, return to it.
 
 ## Steps
 
@@ -13,7 +13,7 @@ Everything that reaches an external service passes these steps, with no lighter 
    Run: `thread-context <owner/repo#N> --out <work folder>/drafts/<thread>/thread-context.md` · Open: `delegate/drafter.md`; `writing` · Record: thread-context.md · Hook: gate-pass and pre-bash-guard (no record, or one without the thread's latest human comment)
 2. **Lint until it passes.** gate-pass re-runs it with the same flags.
    Run: `post-lint <draft> --kind <kind> [--repo <owner/repo>] [--draft]` (§Kinds)
-3. **Review.** An independent reviewer with the post-review brief. Fix each finding by rewriting the passage in your own words, never patching the reviewer's; lint again (step 2), then re-review until its final message is exactly `CLEAN`; from round 3 the reviewer is asked only about a false claim or an unanswered question. **The fast form,** for "Done in <sha>", a holding reply, a draft PR's first body (`pull-request` step 7) or a typo or sha edit: the same, the reviewer asked only about those claims and, after a refactor ask, the result table.
+3. **Review.** An independent reviewer with the post-review brief. Fix each finding by rewriting the passage in your own words, never patching the reviewer's; lint again (step 2), then re-review until its final message is exactly `CLEAN`; from round 3 the reviewer is asked only about a false claim or an unanswered question. **The fast form,** for "Done in <sha>", a holding reply with findings, a draft PR's first body (`pull-request` step 7) or a typo or sha edit: the same, the reviewer asked only about those claims and, after a refactor ask, the result table. **A status post** (a reply saying only what you are doing and by an absolute time in UTC; post-lint rejects anything to check) skips the review: lint it with `--kind status`, add its `PROMISED` line (step 4), badge only its drafter, and give gate-pass `none` in place of the review output.
    Open: `delegate §Reviewers`; `delegate/post-review.md` · Record: `<name>.review.out` (the reviewer's final message only) · Hook: gate-pass (review newer than draft)
 4. **Right before posting:** `git fetch`, then re-read every claim against the current head and a PR's state. Every commit the draft names exists in the repository its claim or link names; your own PR's commits, in its head repository. A draft PR's first body, before the PR exists: the repository you push to. A promise ("I'll…", "follow-up PR") first gets its `PROMISED` line in `proposals-open.md` (`task §Files`).
    Run: `git fetch`; `gh api repos/<owner>/<repo>/commits/<sha>` succeeds for each (a PR's head: `gh pr view <N> --json headRepositoryOwner,headRepository`); `gate-pass <abs draft> <abs review output>` · Record: `<name>.md.gate` · Hook: gate-pass, pre-bash-guard
@@ -22,11 +22,11 @@ Everything that reaches an external service passes these steps, with no lighter 
 
 ### Kinds
 
-`post-lint --kind`: `reply` (a comment on a thread; `--parent none` when it answers nobody), `proposal` (a reply that proposes a design or asks agreement to one; counted per thread), `pr` (a PR body; a draft PR's body adds `--draft`), `issue`, `inline` (a review comment on a diff line), `tracker` (the umbrella issue and its Decisions comment; no badge).
+`post-lint --kind`: `reply` (a comment on a thread; `--parent none` when it answers nobody), `status` (a reply, step 3), `proposal` (a reply that proposes a design or asks agreement to one; counted per thread), `pr` (a PR body; a draft PR's body adds `--draft`), `issue`, `inline` (a review comment on a diff line), `tracker` (the umbrella issue and its Decisions comment; no badge).
 
 ### Thread rules
 
-- **At most two comments in a row.** The second is only the answer after its holding reply, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment. Anything else edits your last comment; a would-be third is an edit with an @-mention. pre-bash-guard blocks a third while your last two have no reply from anyone else and the last is under 3 hours old.
+- **At most two comments in a row.** The second is only the answer after its holding reply or status post, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment. Anything else edits your last comment; a would-be third is an edit with an @-mention. pre-bash-guard blocks a third while your last two have no reply from anyone else and the last is under 3 hours old.
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Correct your earlier post in place through these steps.
 - **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` for every token, cookie, auth header and key, and quote only the lines that show the point (post-lint fails on common token shapes).
 - **A maintainer who asks to see how you change this methodology:** write the installed mergeworthy commit (`git -C ~/.mergeworthy/current rev-parse HEAD`) to `~/.mergeworthy/harness-shown/<owner>`; gate-pass then appends to each `reply` or `proposal` a link comparing the commit it names with the installed one.

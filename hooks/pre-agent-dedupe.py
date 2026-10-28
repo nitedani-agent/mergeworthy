@@ -6,6 +6,7 @@ launch of the same job is blocked until `agent-job done <key>` releases it. A tu
 child wakes again when its background commands end, so only its terminal task status (read first) releases the job."""
 import datetime, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import failclosed
 import memory_file, steward, subprocess
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -264,7 +265,7 @@ if root and (ti.get('role') == 'research' or re.search(r'\bresearch', f"{ti.get(
 # a fan-out runs several agents on one brief, each under its own title: the title is part of the job
 key = ' '.join([*tickets, str(ti.get('title') or ti.get('description') or '').strip()]).strip()
 if not key:
-    sys.exit(0)
+    sys.exit(0)  # nothing names the job (no ticket, title or description), so no second launch of it can be told apart
 jobs = os.path.expanduser('~/.claude/agent-jobs'); os.makedirs(jobs, exist_ok=True)
 f = os.path.join(jobs, hashlib.sha256(key.encode()).hexdigest()[:16])
 if register:

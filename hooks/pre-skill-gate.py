@@ -2,10 +2,12 @@
 """Claude Code PreToolUse hook (matcher: Bash, the agent launchers, the file editors). Exit 2 blocks; stderr goes to the agent.
 Always-on rule 1, run the skill, don't recall it: an action waits until every skill its always-on row names was opened
 with the Skill tool (or typed as /mergeworthy:<name>) in this session since the last compaction. The transcript
-(transcript_path, a subagent's own file for a subagent) is read back to its last compact_boundary. Read-only actions pass."""
+(transcript_path, a subagent's own file for a subagent) is read back to its last compact_boundary. Read-only actions pass;
+a gated action whose transcript can't be read is blocked, as nothing shows which skills are open."""
 import json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shellcmd import segments, prog, opt, api_call
+import failclosed
+from shellcmd import segments, prog, opt, api_call, git_argv, rlines, transcript
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITE = ('post', 'writing')
@@ -13,12 +15,12 @@ WRITE = ('post', 'writing')
 # no action can be told by is in UNGATED; tests/hooks.sh fails when the two disagree.
 ACTIONS = {
     'gh-watch-start':        ('task',),                     # task step 5, the first command of a GitHub task
-    'gh pr create':          ('pull-request',) + WRITE,     # pull-request step 7
+    'gh pr create':          ('task', 'pull-request') + WRITE,  # pull-request step 7
     'gh pr edit':            ('pull-request',) + WRITE,     # pull-request step 10
     'gh pr ready':           ('pull-request', 'merging'),   # merging step 3
     'gh pr merge':           ('merging',),                  # merging step 4
-    'git push':              ('merging',),                  # merging step 1
-    'gh issue create':       ('open-issue',) + WRITE,       # open-issue step 4
+    'git push':              ('merging',),                  # merging step 1; a collaboration push also needs scope.md (pre-bash-guard)
+    'gh issue create':       ('task', 'open-issue') + WRITE,  # open-issue step 4
     'gh pr review':          ('review',) + WRITE,           # review step 4
     'a post in a thread':    WRITE,                         # comments, replies, body edits, gh api writes
     'thread-context':        ('post',),                     # post step 1
@@ -52,23 +54,11 @@ def rows():
     return {m.group(2): m.group(1) for m in re.finditer(r'^\|\s*(.+?)\s*\|\s*`mergeworthy:([\w-]+)`\s*\|', text, re.M)}
 
 
-def git_sub(t):
-    """git's subcommand and its arguments, past -C <dir>, -c <k=v> and other global options."""
-    i = 1
-    while i < len(t) and t[i].startswith('-'):
-        i += 2 if t[i] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace') else 1
-    return t[i:i + 1] + t[i + 1:]
-
-
-def bash_actions(cmd):
+def bash_actions(cmd, cwd='.'):
     out = []
-    try:
-        segs = segments(cmd)
-    except ValueError:
-        segs = [cmd.split()]
-    for s in segs:
+    for s in segments(cmd):
         t = prog(s)
-        if t and t[0] in ('python3', 'python', 'bash', 'sh') and len(t) > 1:
+        if t and t[0] in ('python3', 'python', 'bash', 'sh') and len(t) > 1 and not t[1].startswith('-'):
             t = t[1:]
         name = os.path.basename(t[0]) if t else ''
         a = t[1:]
@@ -77,8 +67,8 @@ def bash_actions(cmd):
         if name == 'gh' and opt(a, ['--attach']):
             out.append('an upload')
         if name == 'git':
-            sub = git_sub(t)
-            if sub[:1] == ['push'] and not {'--dry-run', '-n'} & set(sub):
+            _, _, sub, rest = git_argv(t, cwd)
+            if sub == 'push' and not {'--dry-run', '-n'} & set(rest):
                 out.append('git push')
         elif name == 'gh' and len(a) >= 2 and a[0] in ('pr', 'issue'):
             sub, rest = a[1], a[2:]
@@ -122,7 +112,7 @@ def bash_actions(cmd):
 def actions(d):
     tool, ti = d.get('tool_name', ''), d.get('tool_input') or {}
     if tool == 'Bash':
-        return bash_actions(ti.get('command', ''))
+        return bash_actions(ti.get('command', ''), d.get('cwd') or '.')
     if tool in ('Agent', 'Task') or re.search(r'(delegate_task|t3_thread_launch|create_threads)$', tool):
         return ['starting an agent']
     path = str(ti.get('file_path') or ti.get('notebook_path') or '')
@@ -148,19 +138,6 @@ def old_catalog(session_id):
         return True
     except IndexError:
         return False
-
-
-def rlines(path, chunk=1 << 20):
-    """The file's lines, last first."""
-    with open(path, 'rb') as f:
-        f.seek(0, 2)
-        pos, rest = f.tell(), b''
-        while pos > 0:
-            n = min(chunk, pos); pos -= n; f.seek(pos)
-            lines = (f.read(n) + rest).split(b'\n')
-            rest = lines.pop(0)
-            yield from reversed(lines)
-        yield rest
 
 
 def opened(path):
@@ -190,19 +167,17 @@ def opened(path):
     return {n.split(':', 1)[1] if n.startswith('mergeworthy:') else n for n in names if ':' not in n or n.startswith('mergeworthy:')}
 
 
-def transcript(d):
-    path = d.get('transcript_path') or ''
-    if d.get('agent_id'):  # a subagent's context holds only its own skills
-        path = d.get('agent_transcript_path') or os.path.join(os.path.dirname(path), d.get('session_id', ''), 'subagents', f"agent-{d['agent_id']}.jsonl")
-    return path if path and os.path.isfile(path) else None
-
-
 def main():
     d = json.load(sys.stdin)
     acts = actions(d)
-    path = transcript(d) if acts else None
-    if not path:
+    if not acts:
         return 0
+    path = transcript(d)
+    if not path:
+        sys.stderr.write(f"BLOCKED by pre-skill-gate: this session's transcript ({d.get('agent_transcript_path') or d.get('transcript_path') or 'none given'}) "
+                         f"can't be read, so whether the skills for {' and '.join(dict.fromkeys(acts))} are open can't be checked. Retry once; if it "
+                         "fails again, tell the user and do other work meanwhile.\n")
+        return 2
     have = opened(path)
     if have & set().union(*OLD_NAMES.values()) and old_catalog(d.get('session_id') or ''):
         have |= {new for new, old in OLD_NAMES.items() if have & old}

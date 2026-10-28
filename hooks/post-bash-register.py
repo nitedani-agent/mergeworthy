@@ -5,7 +5,9 @@ watcher, so maintainer comments on it are answered (mergeworthy:reply). A gated 
 .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import failclosed
 from shellcmd import segments, prog, new_post_drafts
+import steward
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
@@ -37,10 +39,7 @@ def target(t):
             return m.group(1), m.group(2)
     return None
 
-try:
-    segs = segments(cmd)
-except ValueError:
-    sys.exit(0)
+segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
     for s in segs:
@@ -51,7 +50,7 @@ if isinstance(r, dict) and not r.get('interrupted'):
                 if open(f + '.gate').read().split('\n')[0].strip() == sha:
                     open(f + '.posted', 'w').write(sha)
             except OSError:
-                pass
+                pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
 targets = [x for x in (target(s) for s in segs) if x]
 if not targets:
     sys.exit(0)
@@ -103,8 +102,8 @@ def live(dr):
         return True
     except (IndexError, OSError, ValueError):
         return False
-# a dir a steward pass read in the last day (gh-watch-start --pass) counts: its next pass reads the thread
-live_dirs = [dr for dr in dirs if live(dr) or os.path.exists(os.path.join(dr, 'passed')) and time.time() - os.path.getmtime(os.path.join(dr, 'passed')) < 86400]
+# a dir the posting session's steward pass read in the last day (gh-watch-start --round) counts: its next pass reads the thread
+live_dirs = [dr for dr in dirs if live(dr) or d.get('session_id') and steward.passed_by(dr) == d['session_id']]
 # The posting session's own dirs come first (gh-watch-start records the session): its Monitor tails only those, and an
 # older dir can stay live after its session ended, kept by a forgotten repos.txt line
 own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]

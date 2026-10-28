@@ -2,25 +2,28 @@
 # gate-pass <draft.md> <review-output-file> [post-lint flags]: records that <draft.md> passed the posting gate.
 # Requires post-lint to pass, a current thread-context.md next to a reply/inline/proposal draft, and the review's final message to be exactly CLEAN (the reviewer writes only its verdict to that file).
 # Writes <draft.md>.gate with the draft's sha256; the posting hook checks it, so any later edit needs a new review.
+# A status post (post-lint --kind status, post step 3) has no review: its review output is `none`, and it needs its PROMISED line.
 set -e
 d="$1"; r="$2"
-[ -f "$d" ] && [ -f "$r" ] || { echo "usage: gate-pass <draft.md> <review-output> [post-lint flags]"; exit 2; }
+[ -f "$d" ] && { [ -f "$r" ] || [ "$r" = none ]; } || { echo "usage: gate-pass <draft.md> <review-output>|none [post-lint flags]"; exit 2; }
 # the flags given here, else those the draft last passed post-lint with (<draft>.lint), else a reply's
 shift 2; flags=("$@"); [ ${#flags[@]} -gt 0 ] || { [ -f "$d.lint" ] && read -ra flags < "$d.lint"; } || true
 "$(dirname "$(readlink -f "$0")")/post-lint" "$d" "${flags[@]}" || { echo "post-lint failed"; exit 1; }
-# the reviewer saw the text that gets posted: a draft edited after its review (a trim to the length ceiling) is reviewed again
-[ "$r" -nt "$d" ] || { echo "$d changed after its review $r: lint it again (post step 2), then send it back to the reviewer (post step 3)"; exit 1; }
-# a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
 kind=reply; for i in "${!flags[@]}"; do [ "${flags[$i]}" = --kind ] && kind="${flags[$((i+1))]}"; done
-case "$kind" in reply|comment|inline|proposal)
+[ "$r" != none ] || [ "$kind" = status ] || { echo "only a status post (post-lint --kind status) skips the review: run it (post step 3)"; exit 1; }
+# the reviewer saw the text that gets posted: a draft edited after its review (a trim to the length ceiling) is reviewed again
+[ "$r" = none ] || [ "$r" -nt "$d" ] || { echo "$d changed after its review $r: lint it again (post step 2), then send it back to the reviewer (post step 3)"; exit 1; }
+# a reply, inline comment or proposal is drafted from the whole thread: thread-context.md (post step 1) next to the draft, newer than the comment it answers
+case "$kind" in reply|comment|inline|proposal|status)
   parent="${d%.md}.parent.md"; [ -f "$parent" ] || parent=""
   "$(dirname "$(readlink -f "$0")")/thread-context" --verify "$(dirname "$(readlink -f "$d")")/thread-context.md" ${parent:+--parent "$parent"} || exit 1;;
 esac
-out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
+[ "$r" = none ] && out=CLEAN || out=$(tr -d '\r' < "$r" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true)
 [ "$out" = "CLEAN" ] || { echo "review is not exactly CLEAN (it has $(printf '%s\n' "$out" | wc -l) non-empty lines; last: $(printf '%s\n' "$out" | tail -1)). The reviewer's final message, alone, is the review output"; exit 1; }
 # a posted promise is a task opened (mergeworthy:post step 4): it needs a PROMISED line naming this draft in proposals-open.md
-own=$(sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d' "$d")  # quoted text is someone else's words, not a promise
-if printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; then
+own=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import post_words; sys.stdout.write(post_words.uncoded(open(sys.argv[2]).read()))' "$(dirname "$(readlink -f "$0")")/../hooks" "$d" |
+  sed -E 's/"[^"]*"//g; s/“[^”]*”//g; s/`[^`]*`//g; /^>/d')  # quoted text and code blocks are someone else's words or a tool's output, not a promise
+if [ "$kind" = status ] || { printf '%s\n' "$own" | grep -qiE "\b(I'll|I will)\b|follow-up PR|subsequent PR|separate PR" && ! printf '%s\n' "$own" | grep -qiE "\b(and|then) I'll (squash-)?merge"; }; then
   # the list lives in the session's watch dir (github-threads), or beside a drafts folder kept in it
   po="$(dirname "$(readlink -f "$d")")/../proposals-open.md"
   while read -r w; do [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$(cat "$w/session" 2>/dev/null)" = "$CLAUDE_CODE_SESSION_ID" ] && po="$w/proposals-open.md"; done < <(cat ~/.claude/gh-watch-dirs.txt 2>/dev/null)
