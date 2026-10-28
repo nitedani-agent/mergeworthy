@@ -158,7 +158,7 @@ check "a GraphQL query is a read, not a post" 0 "$(stop "$T/work")"
 tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
 check "an explicit GET with fields is a read" 0 "$(stop "$T/work")"
 # a steward pass (gh-watch-start --round) leaves no Monitor: the session its passed file names may post, and that dir's owed replies hold the turn
-PD="$T/passdir"; mkdir -p "$PD"; echo "$PD" >> "$HOME/.claude/gh-watch-dirs.txt"
+PD="$T/passdir"; mkdir -p "$PD"; echo "$PD" >> "$HOME/.claude/gh-watch-dirs.txt"; echo 'Tier: S, because one fix' > "$PD/scope.md"  # a posting session works on a scoped task
 stop_as() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 tr_cmd "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
