@@ -58,7 +58,7 @@ class PassSpent(Exception):
 OK, RESERVE, LOW, PAUSED = range(4)  # level(): how much budget is left
 RESERVE_AT, LOW_AT = 1500, 500  # remaining calls: below RESERVE_AT only the daemons' own threads are scanned; below LOW_AT only the notifications fast path
 IDLE_DISCOVERY = 1800  # seconds after which a repo's comment feeds (and the search backup) are read although nothing is known to have moved in it
-PASS_CALLS, STABLE = 40, 86400  # calls one shared job may make per pass; seconds a polled URL's `since` stays the same, so its ETag still matches
+PASS_CALLS, STABLE = 40, 86400  # calls one shared job may make per daemon pass (a --pass has no cap); seconds a polled URL's `since` stays the same, so its ETag still matches
 POLL_DEFAULT = 60  # seconds between polls of the notifications, your events feed and the repos' issue lists, unless GitHub's X-Poll-Interval says longer
 _pass = {'left': None}
 
@@ -1486,8 +1486,8 @@ def follow_ups():
     (mergeworthy:rules step 6). A shared job (shared_pass): each merged PR of yours in any live watch dir is
     followed for FOLLOWUP_DAYS. `### FOLLOW-UP` goes once per commit (not yours, not a bot's, not a merge) that touches the
     recorded lines of PRs of yours, naming them all, to the dirs that list them, with its time (stop-lint's sort deadline), and once per other person's PR that references it.
-    The commits of a repo are listed once per pass, newest first and with an ETag, and read oldest first, so a pass that
-    runs out of calls (PASS_CALLS) resumes where it stopped, a list of more pages than a pass included (the backlog in the shared state);
+    The commits of a repo are listed once per pass, newest first and with an ETag, and read oldest first, so a daemon pass
+    that runs out of calls (PASS_CALLS) resumes where it stopped, a list of more pages than a pass included (the backlog in the shared state);
     PRs not checked for longest go first."""
     prs, now = followed_prs(), time.time()
     fu = shared_read()['followups']
@@ -1596,7 +1596,8 @@ RESERVE_JOBS = ('feeds',)  # the jobs that run below RESERVE_AT calls left too: 
 def shared_pass(force=False):
     """The machine-wide jobs, for every live watch dir, by the one daemon that holds the lease; the others skip them. Each job
     is due every so many seconds across all daemons (its last_run is in the shared state, so a restart doesn't make it due
-    again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy."""
+    again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy. Forced (startup, a --pass), it runs
+    whatever the budget, and a --pass's jobs have no call cap: it is one requested round, which GitHub's own limit still stops."""
     if level() > RESERVE and not force:
         return
     with lease() as mine:
