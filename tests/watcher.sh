@@ -515,6 +515,12 @@ bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$T/passwatch/gh-watch.pi
 PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" x/y all < /dev/null > /dev/null 2>&1
 check "gh-watch-start --pass refuses a dir whose daemon runs, leaving its session and repos as they were" "1 sess-d o/r all" "$? $(cat "$T/passwatch/session") $(echo $(cat "$T/passwatch/repos.txt"))"
 kill "$(cat "$T/passwatch/gh-watch.pid")"; rm "$T/passwatch/gh-watch.pid"
+LW="$T/livewatch"; mkdir -p "$LW"; echo 'o/r 7' > "$LW/threads.txt"; echo "$LW" >> "$HOME/.claude/gh-watch-dirs.txt"
+bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$LW/gh-watch.pid"; printf 'import sys\nprint("### stub round")\n' > "$GI/watcher/gh-watch.py"
+err=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
+check "gh-watch-start --pass skips a thread a live dir watches, with a note, and reads the rest" "0|skipped o/r 7: $LW watches it|o/r 8" \
+  "$rc|$err|$(grep -x 'o/r [78]' "$T/passwatch/threads.txt" | tr '\n' ' ' | sed 's/ $//')"
+kill "$(cat "$LW/gh-watch.pid")"
 got=$(py '
 m.PASS = True
 m.STATE, m.THREADS = os.path.join(m.HERE, "pass-state.json"), os.path.join(m.HERE, "pass-threads.txt")
@@ -668,6 +674,17 @@ print(asked, in_pass, len(calls))
 ')
 check "a --pass reads a newly listed thread back to its pass start, though its state saw a later round; its shared jobs finish past a daemon's per-job call cap" \
   "['2026-09-30T23:50:00Z'] 50 40" "$got"
+got=$(py '
+import subprocess, fcntl
+hold = subprocess.Popen([sys.executable, "-c", "import fcntl, sys, time; f = open(sys.argv[1], \"a\"); fcntl.flock(f, fcntl.LOCK_EX); print(1, flush=True); time.sleep(1)", m.shared_path("shared-watch.lease")], stdout=subprocess.PIPE, text=True)
+hold.stdout.readline()  # a daemon holds the lease for a second
+ran = []
+m.JOBS = (("feeds", 0, lambda: ran.append(m.PASS)),)
+m.PASS = False; m.shared_pass(force=True)
+m.PASS = True; m.shared_pass(force=True)
+hold.wait(); print(ran)
+')
+check "the shared jobs: a daemon skips them while another holds the lease; a --pass waits its turn and runs them" "[True]" "$got"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '
