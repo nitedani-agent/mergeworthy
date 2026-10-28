@@ -147,16 +147,17 @@ def in_place(a):
 def sed_files(a):
     """sed's file operands in its arguments a: its script (each -e or -f value, else the first operand) is not one, nor
     BSD sed's empty suffix after -i (`sed -i '' ...`)."""
-    files, script, it = [], False, iter(a)
+    files, script, it, prev = [], False, iter(a), ''
     for x in it:
         if x in ('-e', '-f', '--expression', '--file') or re.fullmatch(r'-[A-Za-z]*[ef]', x):
             script = next(it, None) is not None
         elif x.startswith(('--expression=', '--file=')) or re.fullmatch(r'-[A-Za-z]*[ef].+', x):
             script = True
-        elif x == '' and files == [] and '-i' in a:
-            continue
+        elif x == '' and re.fullmatch(r'-[A-Za-z]*i', prev):
+            pass
         elif not x.startswith('-'):
             files.append(x)
+        prev = x
     return files if script else files[1:]
 
 
