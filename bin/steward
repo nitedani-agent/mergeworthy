@@ -108,7 +108,7 @@ def typed(e):
 def session(path):
     """One log's numbers: start, end, turns, tokens, the PRs it names, and the user's corrections as (line, text)."""
     s = {'path': path.replace(HOME, '~', 1), 'start': None, 'end': None, 'turns': 0, 'tokens': 0, 'prs': {}, 'corrections': []}
-    codex_total = 0
+    codex_total, counted = 0, set()
     with open(path, errors='replace') as f:
         for n, line in enumerate(f, 1):
             for r, num in PR_URL.findall(line):
@@ -123,8 +123,11 @@ def session(path):
             if isinstance(ts, str) and ts[:4].isdigit():
                 s['start'] = s['start'] or ts
                 s['end'] = ts
-            u = ((e.get('message') or {}) if isinstance(e.get('message'), dict) else {}).get('usage') or {}
-            s['tokens'] += sum(u.get(k) or 0 for k in ('input_tokens', 'output_tokens', 'cache_creation_input_tokens'))  # cache reads left out: they repeat the context
+            m = e.get('message') if isinstance(e.get('message'), dict) else {}
+            if m.get('id') not in counted:  # each content block of a message is a line of its own, carrying the message's usage
+                counted.add(m.get('id') or n)
+                u = m.get('usage') or {}
+                s['tokens'] += sum(u.get(k) or 0 for k in ('input_tokens', 'output_tokens', 'cache_creation_input_tokens'))  # cache reads left out: they repeat the context
             info = ((e.get('payload') or {}) if isinstance(e.get('payload'), dict) else {}).get('info') or {}
             u = (info.get('total_token_usage') or {}) if isinstance(info, dict) else {}  # cumulative; its input includes the cache reads
             codex_total = max(codex_total, (u.get('input_tokens') or 0) - (u.get('cached_input_tokens') or 0) + (u.get('output_tokens') or 0))
