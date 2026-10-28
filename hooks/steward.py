@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """The steward, declared in ~/.mergeworthy/steward as `<watch dir> <T3 thread id>`: the session that sorts follow-ups and owns
 the mergeworthy repo. Without the file there is none, and each main session keeps both."""
-import os, sqlite3
+import os, sqlite3, time
 
 def read():
     """(watch dir, T3 thread id), or None."""
     try: wd, tid = open(os.path.expanduser('~/.mergeworthy/steward')).read().split()[:2]
     except (OSError, ValueError): return None
     return os.path.expanduser(wd).rstrip('/'), tid
+
+def passed_by(wd):
+    """The session whose watcher round in wd passed in the last day (gh-watch-start --pass writes <wd>/passed), or None."""
+    try:
+        p = os.path.join(wd, 'passed')
+        return open(p).read().split()[0] if time.time() - os.path.getmtime(p) < 86400 else None
+    except (OSError, IndexError):
+        return None
 
 def threads(session_id):
     """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""

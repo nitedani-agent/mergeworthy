@@ -344,6 +344,11 @@ python3 -c 'import json; print(json.dumps({"session_id":"sess-2","tool_input":{"
 check "a new PR joins the posting session's dir, not an older dir covering the repo" "o/r 8|none" \
   "$(cat "$D2/threads.txt" 2>/dev/null)|$(cat "$D1/threads.txt" 2>/dev/null || echo none)"
 check "the thread replaces that dir's bare repo line" "|o/r" "$(cat "$D2/repos.txt")|$(cat "$D1/repos.txt")"
+# a dir a steward pass read today (its passed file names the session) counts as live, for that session only
+D3="$T/reg-pass"; mkdir -p "$D3"; echo o/r > "$D3/repos.txt"; echo sess-3 > "$D3/passed"; echo "$D3" > "$HOME/.claude/gh-watch-dirs.txt"
+preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh pr create --repo o/r --fill"},"tool_response":{"stdout":"https://github.com/o/r/pull/9"}}))' "$1" \
+  | python3 "$R/hooks/post-bash-register.py"; cat "$D3/threads.txt" 2>/dev/null || echo none; rm -f "$D3/threads.txt"; }
+check "a new PR joins the dir the session passed today; another session's post leaves it alone" "o/r 9|none" "$(preg sess-3)|$(preg sess-4)"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
@@ -1633,6 +1638,11 @@ echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo 'o/r all' > "$GW/repos.txt"
 check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glguard 'gh issue create -R o/r --title x --body-file x.md' >/dev/null; grep -c 'no running watcher' "$T/err")"
+PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
+glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
+  | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
+check "a dir the session's steward pass read today covers its repo for opening an issue; not for another session" "0 1" "$(glsess sess-g) $(glsess sess-h)"
+echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 glreg() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }
 glreg 'glab issue create -R ns/sub/proj --title x' 'https://gitlab.com/ns/sub/proj/-/work_items/12'

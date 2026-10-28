@@ -6,6 +6,7 @@ watcher, so maintainer comments on it are answered (mergeworthy:reply). A gated 
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shellcmd import segments, prog, new_post_drafts
+import steward
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
@@ -103,8 +104,8 @@ def live(dr):
         return True
     except (IndexError, OSError, ValueError):
         return False
-# a dir a steward pass read in the last day (gh-watch-start --pass) counts: its next pass reads the thread
-live_dirs = [dr for dr in dirs if live(dr) or os.path.exists(os.path.join(dr, 'passed')) and time.time() - os.path.getmtime(os.path.join(dr, 'passed')) < 86400]
+# a dir the posting session's steward pass read in the last day (gh-watch-start --pass) counts: its next pass reads the thread
+live_dirs = [dr for dr in dirs if live(dr) or d.get('session_id') and steward.passed_by(dr) == d['session_id']]
 # The posting session's own dirs come first (gh-watch-start records the session): its Monitor tails only those, and an
 # older dir can stay live after its session ended, kept by a forgotten repos.txt line
 own = [dr for dr in live_dirs if d.get('session_id') and lines(dr, 'session')[:1] == [d['session_id']]]
