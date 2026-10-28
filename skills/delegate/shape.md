@@ -2,7 +2,7 @@
 
 Standards: `~/.mergeworthy/current/skills/code/SKILL.md`. Include `delegate/agent.md`.
 
-One read-only agent, after the reviewer brief in the same run (`converge` step 2), rating whole slices with fresh eyes every round. This brief says how to audit; the agent decides what to flag. Three steps, in order. An implementer (`delegate/implementer.md`) lands what you decide commit by commit; the same agent then re-rates (`delegate §Continue`: in T3 Code, a new task carrying this report). Step 2's prompt is the user's text and applies unchanged in every repo, whatever the project file says.
+One read-only agent, after the reviewer brief in the same run (`converge` step 2), rating whole slices with fresh eyes. This brief says how to audit; the agent decides what to flag. Three steps, in order. An implementer (`delegate/implementer.md`) lands what you decide commit by commit; the same agent then re-rates (`delegate §Continue`). Step 2's prompt is the user's text and applies unchanged in every repo, whatever the project file says.
 
 Dispositions, one list:
 - **DELETE-NOW:** remove; behavior-preserving, no probe needed.
@@ -31,9 +31,9 @@ Step 2, reshape what stays: the prompt below, as written, on what step 1 keeps, 
 
 Step 3, rate every file and function old ⇒ new: after each landing, re-rate every row with its commits, verify each implementation (behavior preserved, mutation probes still red, comments true), and say whether each decline holds.
 
-<Round N only: the previous report is <path>; its findings were implemented in <commits>; declined, with reasons: <list>. Run all three steps fresh, not only the old list.>
+<Round 2 on: the previous report <path>, the ledger <path>, the commits since it <list>: steps 1–2 on what they changed, step 3 on every row.>
 
-Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price.
+Write <report path>: `## Standards read` (above), then step 1's findings, DELETE-NOW first, then FIX, FILL, DELETE-CAREFULLY, OWNER-DECISION; the mechanism census; the 10-second pass as classes; step 2's ratings and ✅ coverage list; step 3's old ⇒ new ratings and the prior findings' closure; an honest-positive statement ("nothing worth changing" where that is the result). End the file with a line CLEAN only when your review in this run and all three steps leave nothing behavior-preserving whose value is worth its price (its should, agent.md).
 Final message: the path, counts per disposition, the three highest-value findings, the overall rating.
 
 <the prompt below, verbatim>

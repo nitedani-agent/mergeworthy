@@ -281,8 +281,8 @@ flowchart TB
   s0 -.-> r2[["open-issue"]]
   s0 -.-> r3[["writing"]]
   s0 -.-> r4[["delegate"]]
-  s2 -.-> r5[["pull-request"]]
-  s2 -.-> r6[["delegate"]]
+  s2 -.-> r5[["delegate"]]
+  s2 -.-> r6[["pull-request"]]
   s3 -.-> r7[["task"]]
   start --> g0
 ```

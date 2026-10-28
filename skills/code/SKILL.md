@@ -28,12 +28,12 @@ Fix at the root; never document around a defect. A sentence telling users to wor
 ### Earn every line
 
 A reviewer's, verifier's or shape pass's finding is a candidate, not a mandate. Before it becomes code, a test, a doc or an option, ask:
-- **How likely does a real user hit it, and what happens then?** A case only a contrived setup or a staged race reaches (a folder moved in at the exact moment, a swap timed between two syscalls) gets no code, however severe its failure. A rare case whose failure is mild, or arguably what the user asked for, gets none either. Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root.
+- **How likely does a real user hit it, and what happens then?** A contrived case (a staged race, a folder moved in at the exact moment) gets no code however severe its failure, nor does a rare one failing mildly or arguably as asked: nits (`delegate/agent.md`). Wrong data returned silently (a misattribution, a lenient parse that hides the cause) is never mild: fix it at the root.
 - **What does `main` do for the analogous case?** Add guards, asserts and caches only where `main` has an analogous one. `main` having the bug too is no reason to drop it.
 - **What does it cost** in lines, new state (maps, globals, build tracking) and tests? More than a few lines for a rare case is overkill.
 - **Would the maintainer write it?** Lean code, no special-casing. Performance work stops at the plainest conventional code winning the order of magnitude; more shaving (planner hints, caches, odd query shapes) waits for the user's ask.
 
-It judges findings and patches, never the shape of a design (`design`). Record the judgment in one line ("accepted, not worth code: rare, and the page winning is what the user asked for"); that line is the finding's disposition. When unsure, don't add; ask with a recommendation. A converged PR is the smallest clean diff that does the job and reads as obviously right to its maintainers.
+It judges findings and patches, never the shape of a design (`design`). Record the judgment as the finding's ledger outcome (`declined: <why>`, `delegate §Review rounds`). When unsure, don't add; ask with a recommendation. A converged PR is the smallest clean diff that does the job and reads as obviously right to its maintainers.
 
 ### Shape that gets merged
 
