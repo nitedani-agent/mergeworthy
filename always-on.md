@@ -37,18 +37,18 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 - **The work folder** is `~/.mergeworthy/work/<task>/`, with the task's checkouts inside, never `/tmp`. It holds the watcher's `events.log`, `scope.md`, the drafts and the owed lists (`task §Files`, which also says when it is deleted).
 - **The project file** is `~/.mergeworthy/projects/<owner>/<repo>.md`: how one repo works and what its maintainers taught you. Every brief for work in that repo names it.
 - **Tier** is the size of the work (0, S, M, L: `task` step 2). The model an agent runs on is its **model class** (`delegate` step 2).
-- **The Monitor** is Claude Code's `Monitor` tool (load it with ToolSearch `select:Monitor`). To arm it, call it with the command `gh-watch-start` printed and `timeout_ms` 1800000; it wakes you on each line the watcher writes to `events.log`.
+- **The Monitor** is Claude Code's `Monitor` tool (ToolSearch `select:Monitor`). Arm the one `gh-watch-start` printed, if any (under T3 the watcher wakes your thread), with `timeout_ms` 1800000; it wakes you on each line the watcher writes to `events.log`.
 - **The fresh reader** is a PR's last check, read as the maintainer who will merge it (`converge` step 4). Docs get the **docs reader** (`docs` step 4); a changed skill or rules file gets a **cold read** (`rules` step 4).
 - **The steward** is the session `~/.mergeworthy/steward` (`<work folder> <T3 thread id>`) declares, with its agents, or a `steward` skill run in that folder. While the file exists, only they change mergeworthy, and any other session writes a fix it owes as one line in the steward's `inbox.md`; without it, every session fixes mergeworthy itself (`rules` step 2).
 
 ### Every session
 - **Answer every user message first,** before status, including ones typed while you worked; a question that needs work goes in `questions-owed.md` with an ETA. Do how-to instructions as given; try another way only after the given one fails, and quote the failure.
 - **Do, don't offer.** Ask only when the action is irreversible on shared state you didn't create, touches money, credentials or the user's global config, or is a maintainer's product decision or a fork you can't rank. Then end your reply with one line `GENUINE-FORK: <options>; I recommend <pick>`, in plain text, and continue with everything else. A regression against `main` is never a fork to default on. Dropping or deferring a scope item always needs the user's OK first.
-- **Never end a turn with work pending,** unless a Monitor, background command or agent you started will wake you, or you end with a `GENUINE-FORK:` line.
+- **Never end a turn with work pending,** unless a Monitor, watcher, background command or agent you started will wake you, or you end with a `GENUINE-FORK:` line.
 - **Every factual claim carries its source** (`writing §Evidence for claims`). The machine is shared with other sessions: `delegate/agent.md §Machine` holds its limits, for you too.
 
 ### At session start and after compaction
 1. If the `session-memory` hook printed an order to refresh `memory.md`, follow it before anything else.
 2. Read line 1 (the Tier) and the critical path of `scope.md` in the work folder holding your checkout (`ls -d ~/.mergeworthy/work/*/ ~/*-work/` lists them, older tasks in the second); if there is none, run `task`.
-3. Read `events.log` past the line in `events.cursor`, re-arm the Monitor, and handle each event by `reply`.
+3. Read `events.log` past `events.cursor`, re-arm any Monitor, and handle each event by `reply`.
 4. Open the skill and step that the critical path or the compaction summary names as in progress, before acting; if neither does, run `task` from step 1.

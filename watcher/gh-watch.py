@@ -18,6 +18,7 @@
   and the repos' issue lists are polled once per X-Poll-Interval, the repo lists by the one daemon holding the lease for all.
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
+- Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
@@ -28,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # a watch dir runs this through a link
 import gl_watch
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
-import agent_jobs, shlex, steward
+import agent_jobs, shlex, steward, work_folder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
@@ -594,7 +595,69 @@ def emit(line):
         ERRED = True
         if time.time() - ERRORS.get(line, 0) < 3600: return
         ERRORS[line] = time.time()
-    print(line, flush=True)  # into events.log, where the session's Monitor delivers it (mergeworthy:reply)
+    print(line, flush=True)  # into events.log, where wake_thread or the session's Monitor delivers it (mergeworthy:reply)
+
+
+EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-start's Monitor delivers
+
+
+def unsent():
+    """(offset, bytes): the whole lines of events.log past t3-wake.cursor, which wake_thread hasn't sent yet; none outside T3 Code."""
+    if not first_line(os.path.join(HERE, 't3-thread')):
+        return 0, b''
+    with open(os.path.join(HERE, 'events.log'), 'rb') as f:
+        size = os.fstat(f.fileno()).st_size
+        try:
+            start = int(first_line(os.path.join(HERE, 't3-wake.cursor')))
+        except ValueError:  # gh-watch-start writes it with the thread; without it, nothing before now is sent
+            start = size
+        start = start if start <= size else 0  # the log was cut
+        f.seek(start)
+        data = f.read(size - start)
+    return start, data[:data.rfind(b'\n') + 1]  # a line still being written goes with the next pass
+
+
+_ticks, _t3_missing = [0], [None]  # tick() counts its passes; the pass in which the recorded t3 was first found missing
+
+
+def wake_thread():
+    """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
+    since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
+    send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
+    instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code."""
+    tid, _, t3 = first_line(os.path.join(HERE, 't3-thread')).partition('\n')
+    cursor = os.path.join(HERE, 't3-wake.cursor')
+    if not tid:
+        return True
+    if os.path.exists(t3):
+        _t3_missing[0] = None
+    elif _t3_missing[0] is None:
+        _t3_missing[0] = _ticks[0]
+    start, data = unsent()
+    lines = [l for l in data.decode(errors='replace').splitlines() if EVENT.match(l)]
+    if lines:
+        msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
+        try:
+            r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
+            err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
+            gone = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
+        except (OSError, subprocess.SubprocessError) as e:
+            err, gone = str(e), isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]
+        if gone:
+            emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}; the watcher no longer sends to T3, events.log keeps every event")
+            for f in ('t3-thread', 't3-wake.cursor'):
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(os.path.join(HERE, f))
+            _t3_missing[0] = None
+            return True
+        if err:
+            emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}")
+            return False
+    if first_line(cursor) != str(start + len(data)):
+        with open(cursor + '.tmp', 'w') as f:
+            f.write(f"{start + len(data)}\n")
+        os.replace(cursor + '.tmp', cursor)
+    return True
 
 
 def waiting_keys(d=None):
@@ -1630,8 +1693,9 @@ def shared_pass(force=False):
 def retire_if_done():
     """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt doesn't
     keep it, an `owner/repo all` line does) has nothing left to watch: it writes the time to HERE/retired and disables its service, so
-    it doesn't come back after a reboot, or stops its daemon."""
-    if any(repo_lines(HERE).values()):
+    it doesn't come back after a reboot, or stops its daemon. A reply still owed in replies-owed.md keeps it: stop-lint holds a
+    session's turn only for a live watcher's owed lines."""
+    if any(repo_lines(HERE).values()) or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:'):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:
@@ -1640,9 +1704,10 @@ def retire_if_done():
         state = load_state()
     if not all(gl_watch.done(state, key) for key, *_ in gl):
         return
-    fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher
+    fu = shared_read()['followups']  # a merged PR of yours still being followed, or not yet recorded by the shared job, keeps the watcher,
+    # except in your own repo, where you are the one who follows up
     if any(state['prs'].get(k, {}).get('state') == 'merged' and state.get('author', {}).get(k) == ME and fu.get(k, {'until': float('inf')})['until'] > time.time()
-           for k in (f"{r}#{n}" for r, n in threads)):
+           for k in (f"{r}#{n}" for r, n in threads if r.split('/')[0].lower() != ME.lower())):
         return
     prs = state['prs']
     for repo, num in threads:
@@ -1658,7 +1723,10 @@ def retire_if_done():
                 return  # unknown: keep watching
         if not done:
             return
-    print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    if not re.search(rb'^WATCHER RETIRED ', unsent()[1], re.M):  # once, however many sends fail
+        print(f"WATCHER RETIRED at {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}: every watched thread is merged or closed", flush=True)
+    if not wake_thread():
+        return  # the thread didn't get the last events: the next pass sends them, then retires
     with open(os.path.join(HERE, 'retired'), 'w') as f:  # disk-sweep's w-done may delete this folder once nothing in it would be lost
         f.write(iso(time.time()) + '\n')
     # each supervisor gh-watch-start may have used, so the watcher doesn't come back after a reboot
@@ -1742,6 +1810,7 @@ def steward_line():
 def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
+    _ticks[0] += 1
     follow_update()
     steward_line()
     lvl = level()
@@ -1764,6 +1833,7 @@ def tick():
     scan_gitlab()
     agent_jobs_pass()
     announce()
+    wake_thread()
 
 
 def scan_gitlab():

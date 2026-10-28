@@ -102,7 +102,7 @@ codes="$(follow "$W/gh-watch.py") $(follow "$W/gh-watch.py") $(follow "$W/gh-wat
 check "three starts from a checkout, exit codes" "0 0 0" "$codes"
 [ -e "$HOME/.mergeworthy/current" ]; check "~/.mergeworthy/current not repointed" 1 $?
 # control: the same code inside the plugin cache, with a newer version installed, still follows (exit 75)
-C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$C/hooks/"
+C="$HOME/.claude/plugins/cache/mergeworthy/mergeworthy/v1"; mkdir -p "$C/watcher" "$C/hooks"; cp "$R/watcher/gh-watch.py" "$R/watcher/gl_watch.py" "$C/watcher/"; cp "$R/hooks/agent_jobs.py" "$R/hooks/steward.py" "$R/hooks/work_folder.py" "$C/hooks/"
 check "control: running from the plugin cache, newer version installed" 75 "$(follow "$C/watcher/gh-watch.py")"
 [ "$(readlink "$HOME/.mergeworthy/current")" = "$T/installed/v2" ]; check "control: current points at the new version" 0 $?
 
@@ -251,7 +251,7 @@ check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o
 
 # FOLLOW-UP: commits by others to the lines of your merged PR, and PRs that reference it: each once, to the dirs that list the PR
 rm -rf "$HOME/.mergeworthy/shared-watch.json"*
-follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen"; : > "$W/events.log"; py '
+follow() { rm -f "$HOME/.mergeworthy/shared-watch.json" "$HOME/.mergeworthy/agent-commands.seen" "$W/replies-owed.md"; : > "$W/events.log"; py '
 import time, datetime, re
 m.ONCE = False
 open(m.THREADS, "w").write("o/r 5\n")
@@ -376,6 +376,119 @@ with contextlib.redirect_stdout(buf): m.retire_if_done()   # every thread merged
 print(repr(buf.getvalue()))
 ')
 check "retire_if_done: stays while a merged PR is followed" "''" "$got"
+got=$(py '
+def run(threads):
+    open(m.THREADS, "w").write(threads); buf = io.StringIO()
+    m.save_state({"prs": {"Me/r#5": {"state": "merged"}, "o/r#6": {"state": "merged"}}, "author": {"Me/r#5": "me", "o/r#6": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+    try:
+        with contextlib.redirect_stdout(buf): m.retire_if_done()
+    except SystemExit:
+        pass
+    return buf.getvalue().count("WATCHER RETIRED")
+print(run("Me/r 5\n"), run("Me/r 5\no/r 6\n"))
+')
+check "retire_if_done: a merged PR of yours in your own repo doesn't keep the watcher for follow-ups; one in another repo does" "1 0" "$got"
+got=$(py '
+def run(owed):
+    open(m.THREADS, "w").write("Me/r 5\n"); open(os.path.join(m.HERE, "replies-owed.md"), "w").write(owed); buf = io.StringIO()
+    m.save_state({"prs": {"Me/r#5": {"state": "merged"}}, "author": {"Me/r#5": "me"}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+    try:
+        with contextlib.redirect_stdout(buf): m.retire_if_done()
+    except SystemExit:
+        pass
+    return buf.getvalue().count("WATCHER RETIRED")
+owed = "# replies owed\nme/r#5 comment 9 by bob https://github.com/me/r/pull/5#issuecomment-9\n"
+print(run(owed), run(owed.replace("me/r#5 comment", "- done: https://example.invalid/r answered; me/r#5 comment")))
+os.remove(os.path.join(m.HERE, "replies-owed.md"))
+')
+check "retire_if_done: a reply still owed keeps the watcher; once that line is done:, it retires" "0 1" "$got"
+rm -f "$W/retired"
+
+# Under T3 Code (gh-watch-start wrote t3-thread) a pass's event lines, from any writer, go to that thread as one message; a failed send is retried
+cat > "$T/bin/t3" <<EOF
+#!/bin/sh
+{ echo "t3 \$*"; cat; echo; } >> "$T/t3.log"
+[ ! -e "$T/t3.fail" ] || { echo 'connect ECONNREFUSED' >&2; exit 1; }
+[ ! -e "$T/t3.gone" ] || { echo "Thread \$3 was not found." >&2; exit 1; }  # t3 v0.1.4's answer for a deleted thread
+EOF
+chmod +x "$T/bin/t3"; : > "$T/t3.log"
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); add = lambda t: open(log, "a").write(t)
+open(log, "w").write("### old event\n"); open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-1\n'"$T"'/bin/t3\n")
+open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write(str(os.path.getsize(log)))
+add("### o/r#5 comment 1 by bob\n    the body\nWATCH ERROR x: y\nnot an event\n### AGENT DONE j\n### half"); m.wake_thread(); m.wake_thread()
+open("'"$T"'/t3.fail", "w"); add(" written\n")
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.wake_thread()
+os.remove("'"$T"'/t3.fail"); add("WATCHER RETIRED at now\n"); m.wake_thread()
+os.remove(os.path.join(m.HERE, "t3-thread")); add("### unsent\n"); m.wake_thread()
+print(repr(buf.getvalue()))
+')
+check "wake_thread: one message per pass with only the event lines, a half-written line waits, nothing twice, a failed send reported and retried, none without t3-thread" \
+  "'WATCH ERROR t3 thread send thr-1: connect ECONNREFUSED\n'|t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### o/r#5 comment 1 by bob;WATCH ERROR x: y;### AGENT DONE j;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;t3 thread send thr-1 -;Watcher events in $W/events.log (mergeworthy:reply):;### half written;WATCHER RETIRED at now;" \
+  "$got|$(tr '\n' ';' < "$T/t3.log")"
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); open(log, "w").write("### cron event\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-2\n'"$T"'/bin/t3\n"); os.environ["PATH"] = "/usr/bin:/bin"
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.wake_thread()
+print(repr(buf.getvalue()), open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip())
+')
+check "wake_thread runs the t3 gh-watch-start recorded, so a daemon cron revived with PATH=/usr/bin:/bin still sends" "'' 15|t3 thread send thr-2 -" "$got|$(grep '^t3 thread send thr-2' "$T/t3.log")"
+# retiring sends its WATCHER RETIRED line before the supervisor stops the daemon
+: > "$T/t3.log"
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); open(log, "w").write(""); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-3\n'"$T"'/bin/t3\n"); open(m.THREADS, "w").write("o/r 5\n")
+m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+def run():
+    with open(log, "a") as f, contextlib.redirect_stdout(f):
+        try:
+            m.retire_if_done()
+        except SystemExit:
+            return "stopped" if os.path.exists(os.path.join(m.HERE, "retired")) else "exit"
+    return "retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept"
+open("'"$T"'/t3.fail", "w"); first = [run() for _ in range(3)]; cur = open(os.path.join(m.HERE, "t3-wake.cursor")).read().strip()
+os.remove("'"$T"'/t3.fail"); print(*first, cur, run(), open(log).read().count("WATCHER RETIRED"))
+')
+check "retire_if_done: failed last sends keep the watcher and its cursor and write WATCHER RETIRED once; the next pass sends it, then retires" "kept kept kept 0 stopped 1|t3 thread send thr-3 -|1" \
+  "$got|$(grep '^t3 thread send thr-3' "$T/t3.log" | tail -1)|$(tail -n +"$(grep -n '^t3 thread send thr-3' "$T/t3.log" | tail -1 | cut -d: -f1)" "$T/t3.log" | grep -c '^WATCHER RETIRED at ')"
+# a deleted thread (t3's "was not found"), or a t3 binary gone, drops t3-thread: the watcher retires as outside T3 Code, events.log keeping the lines
+got=$(py '
+log = os.path.join(m.HERE, "events.log"); open(m.THREADS, "w").write("o/r 5\n")
+m.save_state({"prs": {"o/r#5": {"state": "closed"}}, "author": {}, "ci": {}, "is_pr": {}, "since_by": {}, "seen": {}, "since": "2026-01-01T00:00:00Z"})
+def run(t3):
+    os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
+    open(log, "w").write("### o/r#5 closed\n"); open(os.path.join(m.HERE, "t3-wake.cursor"), "w").write("0\n")
+    open(os.path.join(m.HERE, "t3-thread"), "w").write("thr-4\n" + t3 + "\n")
+    with open(log, "a") as f, contextlib.redirect_stdout(f):
+        try:
+            m.retire_if_done()
+        except SystemExit:
+            pass
+    out = ("retired" if os.path.exists(os.path.join(m.HERE, "retired")) else "kept") + ("" if os.path.exists(os.path.join(m.HERE, "t3-thread")) else " dropped")
+    text = open(log).read(); os.path.exists(os.path.join(m.HERE, "retired")) and os.remove(os.path.join(m.HERE, "retired"))
+    return " ".join([out, str(text.count(chr(10))), str(text.count("no longer sends to T3"))])
+def next_pass():
+    m._ticks[0] += 1
+    return ""
+open("'"$T"'/t3.gone", "w"); a = run("'"$T"'/bin/t3"); os.remove("'"$T"'/t3.gone")
+gone = "'"$T"'/bin/t3-removed"
+print(a, "|", run(gone), next_pass() + run(gone), "|", run(gone), next_pass() + run("'"$T"'/bin/t3"))
+')
+check "retire_if_done: a deleted thread drops t3-thread at once, a t3 missing on two passes in a row too, one missing for a pass doesn't; events.log keeps the event, RETIRED and the reason" \
+  "retired dropped 3 1 | kept 3 0 retired dropped 3 1 | kept 2 0 retired 2 0" "$got"
+# the passes those two runs stand for: the real tick() counts one per pass, before its wake_thread
+got=$(py '
+for name in ("follow_update", "steward_line", "scan_gitlab", "agent_jobs_pass", "announce"):
+    setattr(m, name, lambda *a, **k: None)
+seen = []; m.level = lambda: m.PAUSED; m.wake_thread = lambda: seen.append(m._ticks[0])
+before = m._ticks[0]; m.tick(); m.tick()
+print(m._ticks[0] - before, [n - before for n in seen])
+')
+check "tick() advances _ticks once per pass, before the pass's wake_thread" "2 [1, 2]" "$got"
+rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
+rm -f "$W/retired"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
@@ -456,7 +569,7 @@ with contextlib.redirect_stdout(buf): m.scan_gitlab()
 print(buf.getvalue().count("### gitlab.com/ns/sub/proj#8 note 81 by alice"))
 ')
 check "GitLab in a --round: a thread not due yet is read, one never read back to the pass start, though the state saw a later round" 1 "$got"
-sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"
+sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"; rm -f "$GLW/replies-owed.md"  # answered, so the retire cases below can retire
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
 out = run(m.scan_gitlab)
@@ -503,6 +616,19 @@ chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/cro
 PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
+# under T3 Code (T3's state names the session's thread) it records the thread and the log's end, and prints no Monitor; outside it, the Monitor again
+mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py" "$GI/hooks/"; printf '### before\n' > "$T/t3watch/events.log"
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
+c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-9', '{\"nativeThreadRef\":{\"nativeId\":\"sess-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+t3start() { PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-watch-start" "$T/t3watch" o/r 6 < /dev/null 2>/dev/null | tail -1; }
+out=$(t3start sess-t3)
+check "gh-watch-start under T3 Code records the thread, t3's full path and the log's end, and says no Monitor is needed" "thr-9 $T/bin/t3 11 1" \
+  "$(echo $(cat "$T/t3watch/t3-thread")) $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
+out=$(t3start sess-plain)
+check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
+GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
+rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
 out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null 2>&1)

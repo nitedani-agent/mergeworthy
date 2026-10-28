@@ -9,8 +9,9 @@
 # - A thread line drops its repo's bare line (not an `all` line) from repos.txt; <dir>/session records the Claude session that ran it.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
 # - Removes <dir>/retired, which the watcher writes when it retires (disk-sweep's w-done rule).
-# - Prints the Monitor to arm in the session: the daemon only records events in <dir>/events.log; the session that
-#   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply).
+# - Prints the Monitor to arm in the session: the daemon records events in <dir>/events.log; the session that
+#   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply). Under T3 Code the
+#   session's thread and t3's path go to <dir>/t3-thread and the daemon sends it each event itself: no Monitor.
 # - --round: no daemon: one round of the watcher appends to events.log, recording what it reported, and writes the session to
 #   <dir>/passed when the round ran (mergeworthy:steward); exits with the round's status. A thread another live dir watches is
 #   skipped with a note, and the round doesn't read it. Refused, before anything changes, while the dir's daemon runs.
@@ -48,7 +49,16 @@ while [ $# -gt 0 ]; do
   if [ "$file" = threads.txt ]; then grep -vxF "$repo" "$dir/repos.txt" > "$dir/repos.txt.tmp" || true; mv "$dir/repos.txt.tmp" "$dir/repos.txt"; fi
 done
 # the session that started it owns it: post-bash-register adds that session's new threads here (cron's revival has no session)
-if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then echo "$CLAUDE_CODE_SESSION_ID" > "$dir/session"; fi
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+  echo "$CLAUDE_CODE_SESSION_ID" > "$dir/session"
+  # under T3 Code the watcher sends each event to the session's thread (gh-watch.py's wake_thread), from the log's end on
+  t3=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import steward; print(*steward.threads(sys.argv[2])[:1])' "$root/hooks" "$CLAUDE_CODE_SESSION_ID" 2>/dev/null || true)
+  # with t3's full path: cron revives the daemon with a PATH that may not hold it
+  if [ -n "$t3" ] && t3bin=$(command -v t3); then
+    [ "$(head -n1 "$dir/t3-thread" 2>/dev/null)" = "$t3" ] || wc -c < "$dir/events.log" > "$dir/t3-wake.cursor"
+    printf '%s\n%s\n' "$t3" "$t3bin" > "$dir/t3-thread"
+  else rm -f "$dir/t3-thread" "$dir/t3-wake.cursor"; fi
+fi
 reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
 if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
@@ -137,6 +147,7 @@ else
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
 rm -f "$dir/retired"  # a re-armed dir is not finished: disk-sweep's w-done deletes only a dir its watcher retired
+if [ -s "$dir/t3-thread" ]; then echo "The watcher sends each event to this session's T3 thread $(head -n1 "$dir/t3-thread") itself: arm no Monitor."; exit 0; fi
 echo "Arm a Monitor in this session on (max timeout; re-arm it when it expires, since the expiry notice wakes the session):"
 # a shell loop, not grep or awk: an agent shell's grep can be a wrapper, and mawk, that hold matched lines back
 echo "  tail -n 0 -F $dir/events.log 2>/dev/null | while IFS= read -r l; do case \$l in '###'*|'WATCH ERROR'*|'WATCHER RETIRED'*) printf '%s\\n' \"\$l\";; esac; done"
