@@ -1596,8 +1596,8 @@ def follow_ups():
         floor, since = min(e['scanned'] for e in entries.values()), min(e['merged'] for e in entries.values())
         url = f"repos/{repo}/commits?sha={base}&since={since}&per_page=100"
         bk = shared_read()['backlog'].get(gk)  # a commit list longer than a pass, kept page by page: this pass continues it
-        if not bk or bk['since'] > since or bk['floor'] > floor:
-            bk = {'since': since, 'floor': floor, 'started': iso(now - 600), 'next': url, 'queue': [],  # overlap: claims dedupe
+        if not bk or bk['since'] > since or bk['floor'] > floor or not set(keys) <= set(bk.get('keys', ())):  # one read without a PR of the group (followed or moved here since) is read again for it
+            bk = {'since': since, 'floor': floor, 'started': iso(now - 600), 'next': url, 'queue': [], 'keys': keys,  # overlap: claims dedupe
                   'fresh': any(e['checked'] == 0 for e in entries.values())}  # a PR never read can't use a 304 for a list others have read
         try:
             while bk['next']:  # newest first, down to what was already read
@@ -1605,7 +1605,7 @@ def follow_ups():
                 try:
                     resp = request(bk['next'], store=shared_read()['etags'] if first else None, pending=pending if first else None, fresh=bk['fresh'], newest_first=True)
                 except RuntimeError as ex:
-                    if first and re.search(r'HTTP 404\b', str(ex)):  # the base branch was deleted after the merge (a PR into another PR's branch): the default branch is followed instead
+                    if re.search(r'HTTP 404\b', str(ex)):  # the base branch was deleted after the merge (a PR into another PR's branch): the default branch is followed instead
                         moved = request(f"repos/{repo}").json()['default_branch']
                     raise
                 page = [] if resp.status == 304 else resp.json()
