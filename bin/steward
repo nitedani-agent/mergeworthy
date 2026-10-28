@@ -4,7 +4,8 @@ the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <f
 that `round` writes <folder>'s watcher files, `metrics` appends its records to <folder>/metrics.jsonl and `done` appends
 `<UTC time> <summary>` to <folder>/passes.txt.
 
-- round: `gh-watch-start --round <folder>` with every open PR of yours whose body starts with an agent's badge: one watcher round, no daemon; the round watches
+- round: `gh-watch-start --round <folder> nitedani/mergeworthy` (covered, for its rule PRs) with every open PR of yours whose body starts
+  with an agent's badge: one watcher round, no daemon; the round watches
   nitedani/mergeworthy whole only when ~/.mergeworthy/steward names <folder> (gh-watch.py's steward_line).
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
   lines not done nor held (a holding or drafting line whose ETA is ahead), FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
@@ -305,7 +306,7 @@ def main(a):
                if BADGE.match(p.get('body') or '')]  # a PR the user wrote under the same login is theirs to answer
         threads = [x for p in prs for x in (p['repository']['nameWithOwner'], str(p['number']))]
         start = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'gh-watch-start')
-        sys.exit(subprocess.run([start, '--round', folder, *threads]).returncode)
+        sys.exit(subprocess.run([start, '--round', folder, 'nitedani/mergeworthy', *threads]).returncode)  # covered, not watched whole: its rule PRs can open
     if a[:1] == ['done'] and folder and a[2:3]:
         with open(os.path.join(folder, 'passes.txt'), 'a') as f:  # the next pass's window starts here
             f.write(f"{iso(NOW)} {' '.join(a[2:])}\n")

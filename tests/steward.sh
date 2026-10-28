@@ -103,7 +103,7 @@ printf '#!/bin/sh
 echo %s
 ' "'[{\"repository\":{\"nameWithOwner\":\"o/r\"},\"number\":5,\"body\":\"<img src=x alt=\\\"Claude\\\"> *y*\"},{\"repository\":{\"nameWithOwner\":\"x/y\"},\"number\":9,\"body\":\"<img src=x alt=\\\"Codex\\\"> *y*\"},{\"repository\":{\"nameWithOwner\":\"u/v\"},\"number\":3,\"body\":\"a PR the user wrote\"}]'" > "$T/bin/gh"
 PATH="$T/bin:$PATH" python3 "$SB/steward" round "$S"
-check "round: one watcher round on the folder with each open PR an agent wrote, not the user's own; no repo watched whole from here" "--round $(readlink -f "$S") o/r 5 x/y 9" "$(cat "$T/args")"
+check "round: one watcher round on the folder with each open PR an agent wrote, not the user's own; mergeworthy covered for its rule PRs, not watched whole" "--round $(readlink -f "$S") nitedani/mergeworthy o/r 5 x/y 9" "$(cat "$T/args")"
 echo "failures: $fails"
 rm -rf "$T"
 [ "$fails" -eq 0 ]
