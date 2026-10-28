@@ -6,7 +6,7 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
 
 - round: `gh-watch-start --pass <folder> nitedani/mergeworthy all` plus every open PR of yours: one watcher round, no daemon.
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
-  lines not done, FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
+  lines not done nor held (a holding or drafting line whose ETA is ahead), FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
   One `<folder> (<watcher>, <session>)\t<kind>\t<line>` per item.
 - sessions: this machine's Claude Code and Codex logs written since --since (default: the folder's last pass, else 7 days):
   tokens, turns, hours, the PRs they name, and each user message that corrects the agent, with its line. Paths relative to ~.
@@ -72,6 +72,15 @@ def idle(d):
     return None if hours < 2 else hours
 
 
+def waiting(line):
+    """A `holding: <url> <ETA>` or `drafting: <url> <ETA>` line whose ETA is ahead: its session answers it (stop-lint's rule)."""
+    m = re.match(r'(?:[-*]\s+)?(?:holding|drafting):\s+\S+\s+(\S+)', line, re.I)
+    try:
+        return bool(m) and epoch(m.group(1)) > NOW
+    except ValueError:
+        return False
+
+
 def owed():
     for d in folders():
         h = idle(d)
@@ -80,7 +89,7 @@ def owed():
         tag = f"{d.replace(HOME, '~', 1)} ({'watcher on' if live(d) else 'no watcher'}, session {'unknown' if h == float('inf') else f'idle {h:.0f}h'})"
         for l in read(os.path.join(d, 'replies-owed.md')).splitlines():
             l = l.strip()
-            if l and not l.startswith('#') and not re.match(r'(?:[-*]\s+)?done:', l, re.I):
+            if l and not l.startswith('#') and not re.match(r'(?:[-*]\s+)?done:', l, re.I) and not waiting(l):
                 print(f"{tag}\treply\t{l}")
         done = verdicts(d)
         for key, ref in dict.fromkeys(EVENT.findall(read(os.path.join(d, 'events.log')))):

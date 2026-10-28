@@ -17,6 +17,8 @@ printf 'PROMISED o/r#1: the table by 18:00 UTC (r.md)\nDONE https://x PROMISED o
 out=$(python3 "$R/bin/steward" owed)
 check "owed: one open reply, the unsorted follow-up, one promise, each line naming the folder with ~ and its watcher state" \
   "1 1 1 3" "$(echo "$out" | grep -c $'\treply\to/r#1 comment 11') $(echo "$out" | grep -c $'\tsort\to/r#5 9999999aaa') $(echo "$out" | grep -c $'\tpromise\tPROMISED o/r#1: the table') $(echo "$out" | grep -c '^~/.mergeworthy/work/a (no watcher, session unknown)')"
+printf 'holding: https://x/1 2099-01-01T00:00:00Z\nholding: https://x/2 2020-01-01T00:00:00Z\n' >> "$W/replies-owed.md"
+check "owed: a holding line whose ETA is ahead is its session's; one past its ETA is listed" "0 1" "$(python3 "$R/bin/steward" owed | grep -c 'x/1') $(python3 "$R/bin/steward" owed | grep -c 'x/2')"
 check "owed: a sorted follow-up and a done line are not listed" "0 0" "$(echo "$out" | grep -c abcdef1234) $(echo "$out" | grep -c 'https://x 12')"
 echo '### FOLLOW-UP o/r#5: https://github.com/o/r/pull/10 by dan references your PR  at 2026-10-01T00:00:00Z' >> "$W/events.log"; echo 'https://github.com/o/r/pull/1 MISS https://x' >> "$W/followups-sorted.txt"
 check "owed: a referencing PR stays unsorted though a PR whose URL is a prefix of its URL is sorted" 1 "$(python3 "$R/bin/steward" owed | grep -c $'\tsort\to/r#5 https://github.com/o/r/pull/10$')"
