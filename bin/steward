@@ -4,7 +4,7 @@ the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <f
 that `round` writes <folder>'s watcher files, `metrics` appends its records to <folder>/metrics.jsonl and `done` appends
 `<UTC time> <summary>` to <folder>/passes.txt.
 
-- round: `gh-watch-start --round <folder>` with every open PR of yours: one watcher round, no daemon; the round watches
+- round: `gh-watch-start --round <folder>` with every open PR of yours whose body starts with an agent's badge: one watcher round, no daemon; the round watches
   nitedani/mergeworthy whole only when ~/.mergeworthy/steward names <folder> (gh-watch.py's steward_line).
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
   lines not done nor held (a holding or drafting line whose ETA is ahead), FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
@@ -25,6 +25,7 @@ NOW = time.time()
 CORRECTION = re.compile(r"\b(why (?:did|didn't|are|aren't|is|isn't|not|do)|not good|that's wrong|wrong|you (?:forgot|missed|skipped)|stop|revert|undo|again\?|nem jó|miért|rossz|állj|megint)\b", re.I)
 PR_URL = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)')
 EVENT = re.compile(r'^### (?:FOLLOW-UP|MAINTAINER REVIEW) ([\w.-]+/[\w.-]+#\d+(?:, #\d+)*): (\S+) by .*$', re.M)  # one commit can touch several PRs: o/r#5, #6
+BADGE = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')  # an agent's post starts with its badge
 VERDICT = re.compile(r'^(\S+)\s+(MISS|TASTE|DIRECTION|WORKED)\b', re.M)
 SHA = re.compile(r'[0-9a-f]{7,40}')
 
@@ -252,9 +253,8 @@ def metrics(folder, since, authors):
     """A PR counts in the window it settled in (merged or closed), so a window isn't judged by the fast merges of PRs still open."""
     start = since - (NOW - since)
     me = gh('api', 'user')['login']
-    badge = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')
     items = [i for a in authors or [me] for q in (f"closed:>={iso(start)[:10]}", "is:open") for i in search(f"is:pr author:{a} {q}")
-             if badge.match(i.get('body') or '') or i['user']['login'] != me]
+             if BADGE.match(i.get('body') or '') or i['user']['login'] != me]
     fu, cost, rows = followups(), costs(start - 86400), []
     for i in items:
         r = pr_record(i['repository_url'].split('/repos/', 1)[1], i['number'])
@@ -300,8 +300,9 @@ def main(a):
         return sessions(epoch(since[-1]) if since else folder and last_pass(folder) or NOW - 7 * 86400)
     if a[:1] == ['metrics'] and folder:
         return metrics(folder, epoch(since[-1]) if since else last_pass(folder) or NOW - 60 * 86400, opt('--author'))
-    if a[:1] == ['round'] and folder:  # every open PR of yours, one watcher round (gh-watch-start --round)
-        prs = gh('search', 'prs', '--author', '@me', '--state', 'open', '--limit', '1000', '--json', 'repository,number')
+    if a[:1] == ['round'] and folder:  # every open PR of yours an agent wrote, one watcher round (gh-watch-start --round)
+        prs = [p for p in gh('search', 'prs', '--author', '@me', '--state', 'open', '--limit', '1000', '--json', 'repository,number,body')
+               if BADGE.match(p.get('body') or '')]  # a PR the user wrote under the same login is theirs to answer
         threads = [x for p in prs for x in (p['repository']['nameWithOwner'], str(p['number']))]
         start = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'gh-watch-start')
         sys.exit(subprocess.run([start, '--round', folder, *threads]).returncode)
