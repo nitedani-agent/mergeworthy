@@ -1330,6 +1330,15 @@ seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
 check "BLOCK: pr-steps small past 60 lines outside tests and docs" "1 1" "$(prss "$T/sr3.md") $(grep -c 'past a small fix' "$T/prss.err")"
+# a diff of docs alone carries the cold read's record (rules step 4) instead of a test
+GD="$T/prsd"; mkdir -p "$GD/skills/a"; git -C "$GD" init -q -b main; echo a > "$GD/skills/a/SKILL.md"; git -C "$GD" add -A; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m a
+git -C "$GD" update-ref refs/remotes/origin/main HEAD; git -C "$GD" checkout -q -b fix; echo b >> "$GD/skills/a/SKILL.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -qam b
+prsd() { (cd "$GD" && bash "$R/bin/pr-steps" small "$@" 2>"$T/prsd.err" >/dev/null; echo $?); }
+r1=$(prsd "$T/sr1.md"); r1="$r1 $(grep -c 'no cold read' "$T/prsd.err")"
+echo record > "$T/sd-cold.md"; git -C "$GD" -c user.name=t -c user.email=t@t commit -q --allow-empty -m c -m "Cold-read: $T/sd-cold.md"
+check "pr-steps small on a diff of docs alone: BLOCK naming the cold read with no Cold-read trailer, records with one" "1 1 0" "$r1 $(prsd "$T/sr1.md")"
+echo x > "$GD/pnpm-lock.yaml"; git -C "$GD" add pnpm-lock.yaml; git -C "$GD" -c user.name=t -c user.email=t@t commit -q -m lock
+check "BLOCK: pr-steps small on docs and a lockfile without a test, though a commit carries a cold read" "1 1" "$(prsd "$T/sr1.md") $(grep -c 'adds or changes no test' "$T/prsd.err")"
 # ---------- pr-steps: every converge step leaves its proof; the guard needs all five ----------
 G2="$T/prs2"; mkdir -p "$G2"; git -C "$G2" init -q; git -C "$G2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
 prs2() { (cd "$G2" && bash "$R/bin/pr-steps" "$@" >/dev/null 2>&1; echo $?); }

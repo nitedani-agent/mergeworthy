@@ -58,16 +58,21 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
-# pr-steps small <report>: a fix of at most 60 lines outside tests, docs and lockfiles, with a test in the diff, reviewed once by
-# delegate/small-review.md, stands for verify, shape, reverify, fresh and the approach (converge §Small fix); gates still run
+# pr-steps small <report>: a fix of at most 60 lines outside tests, docs and lockfiles, with a test in the diff (a diff of docs
+# alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
+# reverify, fresh and the approach (converge §Small fix); gates still run
 if [ "$step" = small ]; then
   pb=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || true)  # a stacked PR is measured against its own base
   base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
   testre='(^|/)(tests?|__tests__|e2e|specs?)/|\.(test|spec)\.|(^|/)\.test[A-Za-z-]*\.'
-  skip="$testre"'|\.md$|(^|/)docs?/|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
+  docs='\.md$|(^|/)docs?/'
+  skip="$testre|$docs"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
   n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
   [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs and lockfiles: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
-  git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre" || { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
+  if ! git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre"; then
+    git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
+    python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
+  fi
   [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
