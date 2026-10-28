@@ -12,9 +12,9 @@ From a request to the skill that delivers it. Each step names what to open or ru
 1. **Read the task and every link in it,** recursively: issues, PRs, review comments, commits, CI. Pull the default branch. Look for open PRs and other sessions' work folders on the same thing.
    Run: `gh issue view`, `gh pr list --state all --search "<keyword>"`, `ls -d ~/.mergeworthy/work/*/ ~/*-work/`
 2. **Triage.** Write `Tier: <0|S|M|L>, because <signals>` as line 1 of `<work folder>/scope.md`, and in your first report. Count every PR and repo the work has had so far, not only today's ask: two or more independently maintained repos make it Tier L. Re-triage when the deliverables or open decisions change, and say so.
-   Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate reads it
+   Open: §Tiers · Record: scope.md line 1 · Hook: pre-design-gate, pre-bash-guard
 3. **Scope.** Write each ask and link as a scope.md checkbox, at the start and whenever the user adds one; under them, the critical path: the goal's open items, in order. Dropping or deferring one, also when a later instruction seems to replace it, needs the user's OK first: ask in one line whether that item holds.
-   Open: §Scope · Record: scope.md
+   Open: §Scope · Record: scope.md · Hook: stop-lint, pre-bash-guard
 4. **The project file and its study.** Read `~/.mergeworthy/projects/<owner>/<repo>.md`. Missing, or its `## Who decides` links no repo study whose first line `Studied: <ISO date>` is within 30 days: run §Repo study now (it fills the project file's missing sections and keeps its lines), and say so in your report.
    Open: §Project file; §Repo study · Record: the file · Hook: pre-agent-dedupe (a brief for that repo names it)
 5. **The watcher.** Unless the plugin's `watcher` option is `off` (§Files): `gh-watch-start <work folder> <owner/repo>`, then arm the Monitor it prints with `timeout_ms` 1800000. Every thread you open or post in joins it (the hooks add it).
