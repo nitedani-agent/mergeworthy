@@ -175,7 +175,7 @@ It reads the final message from its input (`last_assistant_message`), not the tr
 - a `FOLLOW-UP` or `MAINTAINER REVIEW` in the `events.log` of a dir it works in, or the steward's, has no verdict after 30 minutes (`rules` step 6);
 - at most once an hour, `memory.md` is behind the session log and covers nothing from the last 2 hours: it repeats the refresh order, to run beside the work (`task` step 8). Launching an agent on `memory-prep`'s brief holds it for an hour; running `prep` alone doesn't.
 
-It skips its watcher checks, the open-box check and the refresh order while the user's last message says "pause". A turn's first stop in mergeworthy work also gets a check-in, at most once per 30 minutes per session: work to start, or anything waiting?
+It skips its watcher checks, the open-box check and the refresh order while the user's last message says "pause". A turn's first stop also gets a check-in, at most once per 30 minutes per session, in a session with work that can still be waiting (a work folder it worked in, an agent it started, a Monitor) and a message not ending with a `GENUINE-FORK:` line: work to start, or anything waiting? With nothing, the session ends the turn without writing anything.
 
 ### `session-start` 
 

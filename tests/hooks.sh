@@ -1807,12 +1807,19 @@ cmds = [h['command'] for es in json.load(open(sys.argv[1] + '/hooks/hooks.json')
 print('ok' if all(c.startswith('"${CLAUDE_PLUGIN_ROOT}"/hooks/run ') or c.endswith('/hooks/session-start') for c in cmds) else cmds)
 EOF2
 )"
-echo '{"hooks": 1}' > "$PO/hooks/hooks.json"; echo '{"hooks": 2}' > "$PN/hooks/hooks.json"; touch -d '1 hour ago' "$PO"; tr_file "Done."
+echo '{"hooks": 1}' > "$PO/hooks/hooks.json"; echo '{"hooks": 2}' > "$PN/hooks/hooks.json"; touch -d '1 hour ago' "$PO"; tr_file "Done." work
 rs() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" \
     | CLAUDE_PLUGIN_ROOT="$PO" MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 check "BLOCK once per session: a newer version changed hooks.json, so a restart loads it; the same hook list says nothing" "2 1 0 0" "$(rs rs-1) $(grep -c 'restart of this session' "$T/err") $(rs rs-1) $(cp "$PN/hooks/hooks.json" "$PO/hooks/"; rs rs-2)"
 mkdir -p "$PO/skills/task" "$PN/skills/task"; echo old > "$PO/skills/task/SKILL.md"; echo new > "$PN/skills/task/SKILL.md"
 check "BLOCK once per session: a newer version changed the skills, naming where the installed text is; the same skills say nothing" "2 1 0 0" "$(rs rs-3) $(grep -c 'read and follow ~/.mergeworthy/current/skills/<name>/SKILL.md' "$T/err") $(rs rs-3) $(cp "$PN/skills/task/SKILL.md" "$PO/skills/task/"; rs rs-4)"
+echo new2 > "$PN/skills/task/SKILL.md"; tr_file "Done."
+check "a plain session (no work folder, agent or Monitor) hears of neither a changed hook list nor changed skills" "0 0" "$(echo '{"hooks": 3}' > "$PN/hooks/hooks.json"; rs rs-5) $(rs rs-6)"
+python3 -c 'import json
+print(json.dumps({"type":"user","message":{"content":"make me a fox image"}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","id":"s1","input":{"skill":"mergeworthy:task"}}]}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Here is the fox."}]}}))' > "$T/tr.jsonl"
+check "a session that only opened the task skill hears of neither (it is asked for its scope.md instead)" "0 0 1" "$(rs rs-7 >/dev/null; grep -c 'restart of this session' "$T/err") $(rs rs-8 >/dev/null; grep -c 'read and follow ~/.mergeworthy/current/skills' "$T/err") $(grep -c 'scope.md' "$T/err")"
 if [ -n "$CUR" ]; then ln -sfn "$CUR" "$HOME/.mergeworthy/current"; else rm -f "$HOME/.mergeworthy/current"; fi
 # ---------- GitLab: a stub glab answers `glab api --hostname gitlab.com <path>` from $FX/gl_<path> ----------
 cat > "$T/bin/glab" <<'EOF'
@@ -1968,7 +1975,8 @@ check "the final message is the hook input's, not the transcript's last line (wh
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
 tr_file 'README tidied.' work
-ci() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$T" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>/dev/null; echo $?; }
+ci() { # session [cwd]
+  python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "${2:-$T}" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 check "the check-in is per session: another session gets its own, the first not twice within 30 minutes" "2 2 0" "$(ci sess-a) $(ci sess-b) $(ci sess-a)"
 echo 1 > "$HOME/.claude/mergeworthy-stop-checkin"  # the stamp an older stop-lint shared between sessions
 check "the old shared check-in stamp file doesn't crash the per-session one" 2 "$(ci sess-c)"
@@ -2129,6 +2137,16 @@ print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text"
 QA1="No. This session runs on a different box, not opensource. T3 Code also runs on this machine, so I can give you a pairing link if you want to use it from a phone."
 QA2="opensource doesn't show up in this machine's Tailscale peer list. If the firewall note is out of date and you want me to test it, say so and I'll check port 22."
 check "a plain Q&A answer (the user's 'can you access ssh the opensource machine?' session) gets no check-in and no hand-back block" "0 0 0" "$(qa "$QA1"; ci qa-1) $(qa "$QA1"; slj) $(qa "$QA2"; slj)"
+# the check-in asks only where work can still be waiting: a work folder it worked in, an agent it started, a Monitor
+python3 -c 'import json
+print(json.dumps({"type":"user","message":{"content":"make me four fox images, then pause"}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","id":"s1","input":{"skill":"mergeworthy:task"}}]}}))
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"All four images are generated."}]}}))' > "$T/tr.jsonl"
+check "a session that only opened the task skill gets no check-in" "0 0" "$(ci qa-2) $(grep -c 'Before you stop' "$T/err")"
+CIW="$HOME/.mergeworthy/work/ci"; mkdir -p "$CIW"; printf 'Tier: 0, because one answer\n\n- [x] answer it\n' > "$CIW/scope.md"
+check "a session in a work folder still gets the check-in" "2 1" "$(qa 'Answered.'; ci qa-3 "$CIW") $(grep -c 'Before you stop' "$T/err")"
+tr_file $'#20 is in review.\n\nGENUINE-FORK: publish as 0.1.0, or 1.0.0; I recommend 0.1.0.' work
+check "a message ending with a GENUINE-FORK line waits on the user: no check-in" 0 "$(ci qa-4)"
 tr_file "$QA2" work
 check "the same answer in a session that started an agent is a hand-back" 2 "$(slj)"
 tr_file 'I have nothing else to start. The review waits on the maintainer, and the watcher will tell me when that happens.' work
