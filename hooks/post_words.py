@@ -1,4 +1,4 @@
-"""The words a post's checks look for, per language (post-lint, pre-bash-guard). A repo's language is the `Language: <code>` line of
+"""The words a post's checks look for, per language (post-lint, pre-bash-guard), and what in a post renders as code. A repo's language is the `Language: <code>` line of
 its project file (~/.mergeworthy/projects/<owner>/<repo>.md); without one, or with a code not listed here, it is English."""
 import os, re
 
@@ -69,3 +69,21 @@ def alt(items):
 def state_line(w):
     """The draft State line: **<label>: <word>** (<why>)."""
     return re.compile(rf'^\*\*{re.escape(w["state"][0])}: {re.escape(w["state"][1])}\*\* \(.*\S.*\)$')
+
+def fence_spans(s):
+    """(start, end, inner) of each fenced code block in s, by CommonMark: an opening run of 3+ backticks or tildes indented up to 3 spaces
+    (a backtick fence's info string holds no backtick), closed by a run of the same character at least as long, indented up to 3 spaces
+    with nothing after it, or by the end of s. The one place post-lint and gate-pass decide what renders as code."""
+    spans, pos, opened = [], 0, None
+    for l in s.splitlines(True):
+        m = re.match(r' {0,3}(`{3,}|~{3,})([^\n]*)', l)
+        if opened is None:
+            if m and not (m[1][0] == '`' and '`' in m[2]): opened = (pos, m[1], pos + len(l))
+        elif m and m[1][0] == opened[1][0] and len(m[1]) >= len(opened[1]) and not m[2].strip():
+            spans.append((opened[0], pos + len(l), s[opened[2]:pos])); opened = None
+        pos += len(l)
+    return spans + ([(opened[0], len(s), s[opened[2]:])] if opened else [])
+def uncoded(s, keep=lambda block: ''):  # s with each fenced code block replaced by keep(block)
+    out, last = [], 0
+    for a, b, _ in fence_spans(s): out += [s[last:a], keep(s[a:b])]; last = b
+    return ''.join(out) + s[last:]

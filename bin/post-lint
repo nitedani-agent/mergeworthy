@@ -10,6 +10,7 @@ Settings: MERGEWORTHY_BADGE on|off|auto requires the badge always, never, or for
 import hashlib, os, re, sys, subprocess, urllib.parse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
 import post_words
+from post_words import fence_spans, uncoded
 def setting(name, default):
     """MERGEWORTHY_<name> from the environment, else from ~/.mergeworthy/settings.env (written at session start from the plugin's options)."""
     f = os.path.expanduser('~/.mergeworthy/settings.env')
@@ -31,23 +32,6 @@ W = post_words.words(_repo)  # the words the checks look for, in the repo's lang
 RATED = re.compile(r'^\s*\|.*(?:[0-9]+|\bnew) *(?:⇒|=>) *(?:[0-9]+|removed|new|n/a)', re.M)  # a row rating an item old ⇒ new (`7 ⇒ 9`, `7/10 => 9/10`, `new ⇒ 9`)
 REVIEWED = re.compile(r'^\|\s*Commit\s*\|.*\|\s*Rating\s*\|', re.M)  # the commit-review table's header (reply §Maintainer commits)
 TABLE = r'(?:^[ \t]*\|[^\n]*\n?)+'
-def fence_spans(s):
-    """(start, end, inner) of each fenced code block in s, by CommonMark: an opening run of 3+ backticks or tildes indented up to 3 spaces
-    (a backtick fence's info string holds no backtick), closed by a run of the same character at least as long, indented up to 3 spaces
-    with nothing after it, or by the end of s. The one place post-lint decides what renders as code."""
-    spans, pos, opened = [], 0, None
-    for l in s.splitlines(True):
-        m = re.match(r' {0,3}(`{3,}|~{3,})([^\n]*)', l)
-        if opened is None:
-            if m and not (m[1][0] == '`' and '`' in m[2]): opened = (pos, m[1], pos + len(l))
-        elif m and m[1][0] == opened[1][0] and len(m[1]) >= len(opened[1]) and not m[2].strip():
-            spans.append((opened[0], pos + len(l), s[opened[2]:pos])); opened = None
-        pos += len(l)
-    return spans + ([(opened[0], len(s), s[opened[2]:])] if opened else [])
-def uncoded(s, keep=lambda block: ''):  # s with each fenced code block replaced by keep(block)
-    out, last = [], 0
-    for a, b, _ in fence_spans(s): out += [s[last:a], keep(s[a:b])]; last = b
-    return ''.join(out) + s[last:]
 VISIBLE = lambda s: uncoded(re.sub(r'<!--[\s\S]*?-->', '', s))  # what GitHub renders as text: no HTML comments, no fenced code
 BOUND = 45  # words a rated row's rendered cell, or its table's header in all, leaves out of the count: #3609's longest rating reason is 45
 def cells(l):  # a table line's cells as GitHub splits them: an escaped \| stays inside its cell
