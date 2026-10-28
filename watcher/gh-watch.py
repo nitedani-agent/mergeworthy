@@ -382,7 +382,7 @@ def load_state():
         s.setdefault('etag', {})
         return s
     except Exception:
-        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=PASS_LOOKBACK if PASS else 3600)
+        now = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
         return {'since': now.strftime('%Y-%m-%dT%H:%M:%SZ'), 'seen': {}, 'prs': {}, 'ci': {}, 'is_pr': {}, 'since_by': {}, 'etag': {}}
 
 

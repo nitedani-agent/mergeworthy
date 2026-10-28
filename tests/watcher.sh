@@ -517,14 +517,6 @@ check "gh-watch-start --pass refuses a dir whose daemon runs, leaving its sessio
 kill "$(cat "$T/passwatch/gh-watch.pid")"; rm "$T/passwatch/gh-watch.pid"
 got=$(py '
 m.PASS = True
-m.STATE = os.path.join(m.HERE, "no-state-yet.json")
-import datetime
-age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(m.load_state()["since"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
-print(round(age.total_seconds() / 86400))
-')
-check "a first --pass round looks back a week" 7 "$got"
-got=$(py '
-m.PASS = True
 m.STATE, m.THREADS = os.path.join(m.HERE, "pass-state.json"), os.path.join(m.HERE, "pass-threads.txt")
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 X = os.path.join(os.path.dirname(m.HERE), "livex"); os.makedirs(X, exist_ok=True)
