@@ -39,7 +39,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 - **Tier** is the size of the work (0, S, M, L: `task` step 2). The model an agent runs on is its **model class** (`delegate` step 2).
 - **The Monitor** is Claude Code's `Monitor` tool (load it with ToolSearch `select:Monitor`). To arm it, call it with the command `gh-watch-start` printed and `timeout_ms` 1800000; it wakes you on each line the watcher writes to `events.log`.
 - **The fresh reader** is a PR's last check, read as the maintainer who will merge it (`converge` step 4). Docs get the **docs reader** (`docs` step 4); a changed skill or rules file gets a **cold read** (`rules` step 4).
-- **The steward** is the session `~/.mergeworthy/steward` (`<work folder> <T3 thread id>`) declares, with its agents, or a `steward` skill run in that folder. While the file exists, only they change mergeworthy; without it, every session fixes mergeworthy itself (`rules` step 2).
+- **The steward** is the session `~/.mergeworthy/steward` (`<work folder> <T3 thread id>`) declares, with its agents, or a `steward` skill run in that folder. While the file exists, only they change mergeworthy, and any other session writes a fix it owes as one line in the steward's `inbox.md`; without it, every session fixes mergeworthy itself (`rules` step 2).
 
 ### Every session
 - **Answer every user message first,** before status, including ones typed while you worked; a question that needs work goes in `questions-owed.md` with an ETA. Do how-to instructions as given; try another way only after the given one fails, and quote the failure.
