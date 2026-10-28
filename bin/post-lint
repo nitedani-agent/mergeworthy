@@ -438,24 +438,16 @@ if status:
     if _m and re.search(r'\breview', _m.group(0), re.I):
         findings.append("status: no reviewer worked on it, so the badge names only the writer")
     _st = VISIBLE(text)
-    _times = []
-    for t in re.finditer(r'\b(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)(?::\d\d)?Z\b', _st, re.I):
-        _times.append(datetime.datetime.fromisoformat(f"{t[1]}T{t[2]}:{t[3]}+00:00"))
-    for t in re.finditer(r'(?<![\d:T-])(\d{1,2}):(\d\d)(?![\d:])(\s*(?:UTC|Z)\b)?', _st):
-        if not t[3]:
-            findings.append(f"status: {t[0]!r} without UTC: write every promised time in UTC ('by 16:00 UTC')")
-        elif int(t[1]) < 24:
-            _times.append(now.replace(hour=int(t[1]), minute=int(t[2]), second=0, microsecond=0))
-    _times += [None] if re.search(r'\b(?:tomorrow|tonight|later today|in (?:about |around |roughly |under |less than )?(?:an?|\d+|a few|a couple of) (?:hours?|minutes?|days?))\b', _st, re.I) else []
-    for d in re.finditer(r'\b\d{4}-\d\d-\d\d\b(?!T\d)|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b|\b\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b', _st, re.I):
-        findings.append(f"status: {d[0]!r} is a date outside an ISO time, which this check and stop-lint read as today: write the time with it ('by 2026-10-28T16:00Z')")
-    if None in _times:
-        findings.append("status: a relative time ('tomorrow', 'in an hour'): write the time in UTC, with its date when it isn't today")
-    for at in (x for x in _times if x and x <= now):
-        findings.append(f"status: {at:%Y-%m-%d %H:%M} UTC has passed: promise a later time, with its date when it isn't today ('by 2026-10-28T16:00Z')")
-    _by = r'\b(?:by|before)\s+(?:\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?Z|\d{1,2}:\d\d\s*(?:UTC|Z)\b)'  # the form stop-lint holds a PROMISED line to
+    _times = [datetime.datetime.fromisoformat(f"{t[1]}T{t[2]}:{t[3]}+00:00") for t in re.finditer(r'\b(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)(?::\d\d)?Z\b', _st, re.I)]
+    for t in re.finditer(r'(?<![\d:T-])\d{1,2}:\d\d(?![\d:])(?:\s*(?:UTC|Z)\b)?', _st, re.I):  # stop-lint would read it as today, whatever date stands beside it
+        findings.append(f"status: {t[0]!r} is a time of day: write the deadline as an ISO time in UTC ('by 2026-10-28T16:00Z')")
+    if re.search(r'\b(?:tomorrow|tonight|later today|in (?:about |around |roughly |under |less than )?(?:an?|\d+|a few|a couple of) (?:hours?|minutes?|days?))\b', _st, re.I):
+        findings.append("status: a relative time ('tomorrow', 'in an hour'): write the deadline as an ISO time in UTC ('by 2026-10-28T16:00Z')")
+    for at in (x for x in _times if x <= now):
+        findings.append(f"status: {at:%Y-%m-%dT%H:%MZ} has passed: promise a later time")
+    _by = r'\b(?:by|before)\s+\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?Z\b'  # the form stop-lint holds a PROMISED line to, with its date
     if not re.search(_by, _st, re.I):
-        findings.append("status: say by when, in UTC ('by 16:00 UTC'): a status post is what is being done and when")
+        findings.append("status: say by when, as an ISO time in UTC ('by 2026-10-28T16:00Z'): a status post is what is being done and when")
     if fence_spans(text):
         findings.append("status: a code block is output to check: post it as a reply, through the review (post step 3)")
     _claim = re.search(r'^\s*\|.*\||\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b|/(?:commit|blob|tree|compare|files)\b|\b\d+(?:\.\d+)?\s*(?:%|ms\b|MB\b|GB\b|tests?\b|files?\b|lines?\b|calls?\b)|\d\s*(?:⇒|=>)\s*\d|\b\d+/10\b'
