@@ -44,7 +44,7 @@ How steps point: `<skill> step N` is a numbered step; `<skill> §<Heading>` is a
 ### Every session
 - **Answer every user message first,** before status, including ones typed while you worked; a question that needs work goes in `questions-owed.md` with an ETA. Do how-to instructions as given; try another way only after the given one fails, and quote the failure.
 - **Do, don't offer.** Ask only when the action is irreversible on shared state you didn't create, touches money, credentials or the user's global config, or is a maintainer's product decision or a fork you can't rank. Then end your reply with one line `GENUINE-FORK: <options>; I recommend <pick>`, in plain text, and continue with everything else. A regression against `main` is never a fork to default on. Dropping or deferring a scope item always needs the user's OK first.
-- **Never end a turn with work pending,** unless something running will wake you or you say what you wait for.
+- **Never end a turn with work pending,** unless a Monitor, background command or agent you started will wake you, or you end with a `GENUINE-FORK:` line.
 - **Every factual claim carries its source** (`writing §Evidence for claims`). The machine is shared with other sessions: `delegate/agent.md §Machine` holds its limits, for you too.
 
 ### At session start and after compaction

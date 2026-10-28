@@ -2,7 +2,8 @@
 
 A reference for the scripts that enforce the skills' steps; the skills name each one at the step it checks. Not loaded into sessions.
 
-- **Where they live.** The scripts ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, and its `hooks/hooks.json` is active while the plugin is enabled. Hooks run their scripts from `~/.mergeworthy/current` (`hooks/run`); only a changed `hooks.json` needs a restart, which `stop-lint` says once.
+- **Where they live.** The scripts ship in the mergeworthy plugin: its `bin/` is on the Bash `PATH`, and its `hooks/hooks.json` is active while the plugin is enabled. Hooks run their scripts from `~/.mergeworthy/current` (`hooks/run`); only a changed `hooks.json` or `hooks/run` needs a restart, which `stop-lint` says once.
+- **They fail closed.** Claude Code lets an action through on any hook exit code but 2, and when a hook outlives its timeout. So a hook that crashes blocks (`hooks/failclosed.py`), `hooks/run` turns any other exit code, and a run past 540 seconds, into a block, and a check that can't run (gh can't answer, a record or transcript can't be read, a command doesn't parse, the shell parser can't be installed) blocks what it guards, saying why; local work it doesn't guard (a commit while offline, a command after a `cd` it can't follow) passes. Where a check is skipped instead, a comment beside it says why nothing needs checking there.
 - **Changing them.** Edit and propagate from the source repo, leaving installed copies untouched (`rules` step 5).
 - **The steward.** `~/.mergeworthy/steward` (the user writes it) holds `<work folder> <T3 thread id>`. You are the steward if that is your T3 thread or your delegator's, your working directory is inside that work folder, or `<work folder>/session` names your session. While one is declared, only the steward and its agents commit or push to mergeworthy, and any other session writes a mergeworthy fix it owes as one line in `<work folder>/inbox.md`, read by the steward at every wakeup (`rules` step 2); with none declared, each session fixes mergeworthy itself. Every session whose `events.log` receives a `FOLLOW-UP` sorts it (`rules` step 6).
 - **Options.** The plugin's options are `badge`, `merge` and `watcher` (`/plugin` → mergeworthy → Configure options). They reach the scripts through `~/.mergeworthy/settings.env`, rewritten at every session start. An environment variable `MERGEWORTHY_<KEY>` wins over the option.
@@ -97,7 +98,7 @@ A reference for the scripts that enforce the skills' steps; the skills name each
 - `verify` and `reverify`: a line under a `## Dropped` (or other "dropped") heading giving "not a regression", "no documented usage", "rare" or "same as main" as a reason needs a later `RULED: <candidate>: <ruling>` line, the main session's (delegate/verifier.md, the brief's Write list).
 - `shape`: Loop B's shape report: the ✅ list and old ⇒ new ratings ending `CLEAN`, or `carries the pass of <sha>` with ≤ 80 changed lines. A carry is refused when `~/.claude/refactor-asks.txt` holds an ask on this branch (its head then is in HEAD's history) newer than the carried pass: a pass runs instead. Old heads' `loopb` and `refactor` records together satisfy the pipeline and may be carried into a `shape` record; the posting guard reads `shape` records only.
 - A new `approach` record ends with `contract: 2`. A branch whose latest approach record lacks it started before the shape pass and finishes under the old contract: `loopb` (trailing `CLEAN`) and `refactor` still record, a `fresh` report needs no `Maintainer:` line, and a `shape` record may carry an old head that has both a `loopb` ending `CLEAN` and a `refactor` pass.
-- `gates`: `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0.
+- `gates` and `quick` (the quick gates on any head, `code §Gates`): `<command> -> exit 0` lines; a test run's line ends `(N tests)`, N > 0; no line says a gate didn't run ("not installed", "let CI verify").
 - `gates`, in a repo with `.changeset/`: each changeset the branch adds or changes has at most 60 words after its front matter, and together they name every package (the nearest `package.json` with a name, not the root's or a private one's) whose files the branch changed.
 - `gh pr create`/`glab mr create` (unless `--draft`/`--wip`), `gh pr ready`/`glab mr update --ready` and a push to a ready PR are blocked until HEAD has all five and the branch has its `approach` record.
 - After a maintainer's refactor ask on a PR (the newest entry for it in `~/.claude/refactor-asks.txt`; an edited ask is a new entry), `gh pr ready`, a PR body edit and a comment on the PR are blocked, naming the ask, until a real pass (not a carry) is recorded after it on the PR's head or a commit on the first page of its commits. Until then a comment goes out (the line is what the guard reads, not proof the maintainer was told) when the session's watch dir, or the folder above the draft, has an open `PROMISED <repo>#<N>: … refactor …` line in `proposals-open.md`; `gh pr ready` and a body edit wait for the pass. The guard checks the record only; the post review checks that the post shows that pass's result (`delegate/post-review.md`). The target is resolved once for every check (`post_target`): `gh pr comment/edit/ready` by number, URL, branch or the current branch, with or without `-R`; `gh issue comment/edit` by number or URL, checked when it is a PR; `gh api` posts to `issues/<N>/comments`, edits of `issues/comments/<id>`, and PATCHes of `pulls/<N>` or `issues/<N>`. A PR `gh api` can't read is not checked.
@@ -126,7 +127,11 @@ The daemon reports to `<dir>/events.log` and never starts an agent.
 
 ### `pre-bash-guard.py` (`post`, `merging`, `delegate/agent.md`)
 
-It blocks:
+It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcmd.py`; `hooks/requirements.txt` pins it, installed with uv or pip into `~/.mergeworthy/pydeps` on first use): quotes and heredocs over several lines, `$( )`, chains, wrappers, `bash -c`, `eval`, git aliases. It blocks:
+- every collaboration push (one that updates an open PR's or MR's head, or goes to a repo the pushing account doesn't own, or to a host that is neither GitHub nor GitLab; its push URLs as git resolves them; a push to the account's own repo that updates no open PR or MR is free), and every `gh pr create`, draft or not: from a checkout outside a task's work folder (`~/.mergeworthy/work/<task>/`, or an older `<name>-work/` above the checkout or beside it under its prefix); while its `scope.md` lacks line 1 `Tier: …` or a checkbox; without a `pr-steps quick` (or `gates`) record on the pushed head; while the head's log lacks a passing line naming each failing CI job of the PRs `scope.md`'s open boxes link and of the PRs it updates; a push also needs a running watcher on the checkout's GitHub or GitLab repos, or the one pushed to;
+- a shell write into `~/.claude/pr-steps` (pre-design-gate blocks a Write or Edit there), and a GitHub write through `curl`, `wget`, `http`, `https` or `xh`;
+- a command that doesn't parse, or any command while the parser can't be installed, that holds `git push`, `git commit`, `gh pr|issue|api|release`, `glab issue|mr` or an HTTP client to `api.github.com`;
+- whatever it can't check: a thread, PR or its CI gh can't read, whether a push updates a PR or MR (except a push to the account's own repo from a checkout of no one else's), a thread or repo it can't tell, a compose config that doesn't load, a push after a `cd` it can't follow or to a remote computed when it runs, a command named by an expansion (`"${a[@]}"`) that holds a guarded verb;
 - a `gh` post or edit whose body isn't a gated draft, or changed since its gate (use absolute draft paths);
 - opening an issue or PR (`gh` or `glab`) in a repo no running watcher covers;
 - the same gated draft posted twice as new;
@@ -153,17 +158,19 @@ It adds a thread you just opened or posted in (its `gh` or `glab` URL) to your s
 
 ### `stop-lint.py` (always-on, `reply`)
 
-It blocks ending a turn when:
-- it ends with "want me to / should I / your call…" and no `GENUINE-FORK:` line;
+It reads the final message from its input (`last_assistant_message`), not the transcript, which may not hold it yet. `stop_hook_active` skips only the check-in: every other check holds until met (Claude Code ends a turn after 8 blocks in a row). It blocks ending a turn when:
+- in a session doing mergeworthy work (a task, a work folder, a push or post, a watcher, an agent it started), the message offers or hands the next step back ("want me to / should I / your call / tell me when / ask me to / nothing will notify me…") and has no `GENUINE-FORK:` line;
+- a session that opened `task`, pushed or posted has no `scope.md` starting with its Tier line in a work folder it used, or one of those `scope.md` files has an open box while nothing this session started will wake it (a live Monitor or background command, an agent it launched) and the message has no `GENUINE-FORK:` line;
+- a sentence whose subject is a PR (`#N is still a draft`, `CI on #N is green`; not `my reply to #N`, a quote or code) states its state (a draft, ready, merged, CI green or red) that GitHub contradicts now or gh can't read; a condition or plan (`once`, `until`, `will`) states none (`#N` is looked up in the repos the message links, then the checkout's `upstream` and `origin`);
 - you posted on GitHub and no live Monitor watches a watcher's `events.log` (a `claude -p` run's caller watches);
-- a work folder it worked in owes a reply;
+- a work folder it worked in owes a reply; with its watcher dead and not retired, every line not `done:` counts;
 - a `PROMISED` line in its `proposals-open.md`, or a draft folder's there, is past the time it or its draft names (`by <ISO time>`, `by HH:MM UTC`) and doesn't yet open with `DONE <commit or link>`;
-- in a session that started T3 tasks, its `Running:` list wasn't read with `task_status` since the user's last message, or names a terminal task.
+- in a session that started T3 tasks, its `Running:` list names a task (by its link, or the latest task of a title) neither launched nor read with `task_status` since the user's last message, or a terminal task.
 - an agent it launched finished and its job is still open (`agent_jobs.py`);
 - a `FOLLOW-UP` or `MAINTAINER REVIEW` in the `events.log` of a dir it works in, or the steward's, has no verdict after 30 minutes (`rules` step 6);
 - at most once an hour, `memory.md` is behind the session log and covers nothing from the last 2 hours: it repeats the refresh order, to run beside the work (`task` step 8). Launching an agent on `memory-prep`'s brief holds it for an hour; running `prep` alone doesn't.
 
-It skips its watcher checks and the refresh order while the user's last message says "pause". Each turn's first stop also gets a check-in: work to start, or anything waiting?
+It skips its watcher checks, the open-box check and the refresh order while the user's last message says "pause". A turn's first stop in mergeworthy work also gets a check-in, at most once per 30 minutes per session: work to start, or anything waiting?
 
 ### `session-start` 
 
@@ -175,7 +182,8 @@ It blocks an action until every skill its always-on row names was opened with th
 - The table is `ACTIONS` in `hooks/pre-skill-gate.py`; `post` and `writing` gate every post (`gh pr create`, `gh pr edit`, `gh issue create`, `gh pr review`, comments and `gh api` writes, `post-lint`, `gate-pass`).
 - `post-lint --kind` adds the kind's skill: `reply` (and `inline`), `proposal` → `design`, `pr` → `pull-request`, `issue` → `open-issue`, `tracker` → `task`.
 - `gh-watch-start`: `task`. `thread-context` (building a record): `post`. Any `gh` command with `--attach`: `evidence`.
-- `gh pr ready`: `pull-request`, `merging`; `gh pr merge` and `git push`: `merging`. `pr-steps approach`: `pull-request`; the other `pr-steps` records: `converge`.
+- `gh pr ready`: `pull-request`, `merging`; `gh pr merge` and `git push`: `merging`; `gh pr create` and `gh issue create` also `task`. `pr-steps approach`: `pull-request`; the other `pr-steps` records: `converge`.
+- A gated action whose transcript can't be read is blocked.
 - Starting an agent (`Agent`, `delegate_task`, `codex exec`, `claude -p`) or editing a brief or prompt file: `delegate`. Editing a skill, `always-on.md`, `AGENTS.md` or `CLAUDE.md`: `rules`.
 - `code`, `finality` and `docs` are ungated: `code` reaches agents by path in their briefs, `finality` has pre-bash-guard's third-proposal block, and no tool call tells docs apart.
 

@@ -134,10 +134,10 @@ Every sentence about behavior in docs, a README, JSDoc, a changeset or a code co
 ### Gates
 
 - **A lane** is one CI job's way of running the product: a runtime, an adapter, a transport or a build mode. The owning lane of a mechanism is the one that runs the code it lives in.
-- **Quick gates, after every commit:** format, type-check and units.
-- **Full gates, before every push:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; the runtime-specific lanes. Build the list from the repo's CI workflows, every check they run, never by hand.
+- **Quick gates, after every commit:** format, type-check, units, and each CI job failing on a PR it updates or an open `scope.md` box links, run here as `<job>: <command> -> exit 0`; `pr-steps quick <log>` records them before a collaboration push or `gh pr create`.
+- **Full gates, before every push:** the quick gates; spellcheck and docs lint; the released-API or public-surface check; runtime-specific lanes. Build the list from the repo's CI workflows, never by hand.
 - **Heavy lanes, before every push,** on each PR's head: build, then the heavy lanes the project file lists (production-mode e2e, every adapter or transport, the examples).
-- **Gates fail closed:** a gate that errors or can't run is red. A failure that doesn't repeat is still a finding: find its cause, or file it with the logs, before calling anything green. "N passed" with a non-zero exit code is red, and so is exit 0 with no test run (a filter that matched nothing); record `EXIT=$?` and the count of tests run, and quote both, never a log tail.
+- **Gates fail closed:** a gate that errors or can't run is red. A failure that doesn't repeat is still a finding: find its cause, or file it with the logs, before calling anything green. "N passed" with a non-zero exit code is red, and so is exit 0 with no test run (a filter that matched nothing); quote the exit code and the count of tests run, never a log tail.
 - **Name the head:** every claim names the head it ran on. A known base bug that a lane shows is recorded as the base's, with the evidence that the base fails it too.
 
 ### Git

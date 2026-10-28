@@ -1,7 +1,14 @@
 #!/bin/bash
 # Runs hook script $1. An installed copy runs it from ~/.mergeworthy/current, the installed version, so an update reaches
-# sessions already running (only a change to hooks.json needs a restart); a checkout (claude --plugin-dir) runs its own.
+# sessions already running (only a change to hooks.json or this file needs a restart); a checkout (claude --plugin-dir) runs its own.
 d=$(dirname "$0")
 case "$d" in */plugins/cache/*) [ -f "$HOME/.mergeworthy/current/hooks/$1" ] && d=$HOME/.mergeworthy/current/hooks;; esac
 s=$1; shift
-exec python3 "$d/$s" "$@"
+# Claude Code lets the action through on any exit code but 2, and when the hook outlives its timeout (hooks.json: 600s):
+# a hook that crashed, couldn't start or ran too long has no verdict, so the action waits
+limit=${MERGEWORTHY_HOOK_SECONDS:-540}
+if command -v timeout >/dev/null; then timeout -k 5 "$limit" python3 "$d/$s" "$@"; else python3 "$d/$s" "$@"; fi
+rc=$?
+case $rc in 0|2) exit $rc;; esac
+echo "BLOCKED by $s: it exited $rc$([ $rc = 124 ] && echo " after ${limit}s") without a verdict. Retry once; if it fails again, tell the user and do other work meanwhile." >&2
+exit 2
