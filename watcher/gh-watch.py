@@ -1596,7 +1596,7 @@ RESERVE_JOBS = ('feeds',)  # the jobs that run below RESERVE_AT calls left too: 
 def shared_pass(force=False):
     """The machine-wide jobs, for every live watch dir, by the one daemon that holds the lease; the others skip them. Each job
     is due every so many seconds across all daemons (its last_run is in the shared state, so a restart doesn't make it due
-    again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy. Forced (startup, a --pass), it runs
+    again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy. Forced (--once, a --pass), it runs
     whatever the budget, and a --pass's jobs have no call cap: it is one requested round, which GitHub's own limit still stops."""
     if level() > RESERVE and not force:
         return
