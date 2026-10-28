@@ -643,6 +643,22 @@ print(out, len(reads), file=sys.stderr)
 ' 2>&1 | tail -1)
 check "a --pass round whose call failed, or that a rate-limit pause cut short, exits 1 and keeps its position; a retry reads the failed thread at once" \
   "[(1, False), (0, True), (1, True)] 2" "$got"
+got=$(py '
+m.PASS, m.PASS_SINCE = True, "2026-10-01T00:00:00Z"
+m.STATE, m.THREADS = os.path.join(m.HERE, "since-state.json"), os.path.join(m.HERE, "since-threads.txt")
+json.dump({"since": m.iso(m.time.time()), "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {"o/r 1": "x"}, "etag": {}}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 3\n")
+asked = []
+m.fetch_thread = lambda repo, num, since, *a, **k: (asked.append(since), (False, "x", [], None, None, None, {}, True, None))[1]
+m.scan_reactions = lambda *a: None
+m.run_scan(everything=True)
+m.JOBS = (("discovery", 0, lambda: (_ for _ in ()).throw(m.PassSpent())),)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.ERRED = False; m.shared_pass(force=True)
+print(asked, m.ERRED, buf.getvalue().strip())
+')
+check "a --pass reads a newly listed thread back to its pass start, though its state saw a later round; a job stopped at its call cap fails the pass" \
+  "['2026-09-30T23:50:00Z'] True WATCH ERROR discovery: stopped at its 40 calls; the next pass goes on from there" "$got"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '

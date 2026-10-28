@@ -893,7 +893,8 @@ def scan(state, jobs):
     """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num) read in full)"""
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
-        dt = datetime.datetime.strptime(state['since_by'].get(key, state['since']), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
+        first = min(state['since'], PASS_SINCE) if PASS_SINCE else state['since']  # a pass's new thread: back to what it hasn't read
+        dt = datetime.datetime.strptime(state['since_by'].get(key, first), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
     ok, fulls, pings, now = True, [], [], time.time()
     state.setdefault('upd', {})
@@ -1605,8 +1606,9 @@ def shared_pass(force=False):
             _pass['left'] = PASS_CALLS
             try:
                 job()
-            except PassSpent:
-                pass  # the rest waits for the next pass
+            except PassSpent:  # the rest waits for the next pass
+                if PASS:
+                    emit(f"WATCH ERROR {name}: stopped at its {PASS_CALLS} calls; the next pass goes on from there")
             except Budget:
                 return
             except Exception as e:
