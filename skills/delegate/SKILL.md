@@ -34,10 +34,10 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 
 ### Continue
 
-Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache. Except the fresh reader (`converge` step 4): always a new agent.
+Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache.
 - **Claude Code:** `SendMessage` to its agent id.
 - **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you.
-- **A review round in T3 Code** (a reviewer's, a post review's, the shape pass's re-rating): a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send` (T3 Code's own rule). That counts as continuing the same reviewer. Elsewhere a review round continues its agent like any other.
+- **A review round in T3 Code:** a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send` (T3 Code's own rule). That counts as continuing the same reviewer.
 - **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two agents run one job, keep the one with the most progress.
 
@@ -56,6 +56,16 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>", "options": {"reasoningEffort": "<effort>"}}, "clientRequestId": "<review>-<round>"}
    ```
    Without them: `codex exec -m <model> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
-- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (out of credits, a rate limit, an error: a failure is not a review).
+- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (out of credits, a rate limit, an error, a timeout, no reply: a failure is not a review).
 
-The prompt is a file with the template filled. The final message is exactly `CLEAN`, or the findings, at most 15 lines; the full list goes in the output file. When one run follows several briefs, each writes its own file, and the final message is `CLEAN` only when none has a finding. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran and what it found (Tier M: in the ledger); on Tier M or L work, re-review on the other company's model once it's back.
+The prompt is a file with the template filled. When one run follows several briefs, each writes its own file. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
+
+### Review rounds
+
+Every review loop:
+- **Severity:** re-rate each label (`agent.md`) yourself; a nit gets no code.
+- **Budget:** 3 rounds (reviewer passes, re-checks included) per loop, renewed for Loops A and B at `converge` step 3 and each return from step 4; 5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there.
+- **From round 2,** the prompt says outside the changes and the open ids only a blocker or a regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
+- **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
+- **Stuck:** a finding the reviewer holds after two replies of yours disputing it, or open at the budget's end, goes to the user, both sides in 2–3 lines. Budget end is not approval. Rule on evidence, never to end the loop.
+- **While a round runs,** leave what it reads unchanged.

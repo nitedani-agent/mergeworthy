@@ -8,11 +8,9 @@ A slice is a part of the PR's code one verifier can hold (core feature, backend 
 
 ## Counting
 
-- A candidate counts by the brief's What counts. A finding that fails code §Earn every line gets the disposition "accepted, not worth code" with its one-line reason; it never becomes code to make a pass come back clean.
-
 **When a pass finds bugs:** fix the root cause with the smallest diff, with a failing repro first, passing code §Phantom gate; re-run the verifier's repro on the fixed build. An area that already had two corrective edits gets rethought as one rule covering every case found, then that rule is implemented. Fixes to base code go in the bottom PR of a stack, then merge up; a merge-up re-opens the top PR's slices that call the changed base code.
 
-**When a slice is done:** a pass with no bug that counts after its last fix. A fix, refactor or revert in a slice's code re-opens it; a finished, unchanged slice isn't run again; a queued pass is never dropped.
+**A finished slice** (`converge` step 1) re-opens when a fix, refactor or revert touches its paths; unchanged, it isn't run again; a queued pass is never dropped.
 
 ## After refactors
 
