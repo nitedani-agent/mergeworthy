@@ -1010,6 +1010,10 @@ for e in ev:
     if e == 'user': w({"type": "user", "message": {"content": "status?"}})
     elif e == 'notice': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 reached a terminal state. Use task_status"}})
     elif e == 'relaunch': res('delegate_task', 'running', 'Loop A', 'loop-a-2')
+    elif e == 'round2': res('delegate_task', 'running', 'Loop A round 2', 'loop-a-r2')
+    elif e == 'followup':  # a message sent to the finished Loop A's thread: a new task of that thread
+        n[0] += 1; w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "f1", "name": "mcp__t3-code__task_status", "input": {}}]}})
+        w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "f1", "content": json.dumps({"taskId": "node:delegated-task:command%3Amcp%3Aabc%3Athread-send%3Aloop-a-1-r2", "childThreadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "status": "running"})}]}})
     elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
@@ -1036,6 +1040,8 @@ rl_tr $'Started Loop A again.
 Running:
 - Loop A on the new head' user notice relaunch; check "a title names its latest task: an earlier finished task of the same title isn't listed" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running other2; check "T3's newer notice (\`Delegated task <id> (<title>) [completed]:\`) is not the user either (the handoff session's 305 blocks)" 0 "$(stop "$T")"
+rl_tr $'Started round 2.\n\nRunning:\n- Loop A round 2' user notice round2; check "a title names the latest task whose title holds it: round 2 of a finished Loop A is running" 0 "$(stop "$T")"
+rl_tr $'Sent round 2 to it.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1)' user notice followup; check "a link to a thread names its latest task: a follow-up sent to a finished task's thread is running" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'

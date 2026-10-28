@@ -140,7 +140,7 @@ if not child and FORK(last) & asked:
 # user's last message, and none has a terminal status.
 running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', last, re.M)  # a `Running:` label or heading
 if running and not child:
-    titles, status, launched, seen = {}, {}, False, set()
+    titles, status, launched, seen, thread = {}, {}, False, set(), {}  # status: in the order last heard of
     for line in lines:
         try: e = json.loads(line)
         except ValueError: continue
@@ -149,7 +149,7 @@ if running and not child:
             # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
             # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
             n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\])', c)
-            if n: status[n.group(1)] = (n.group(2) or 'completed', status.get(n.group(1), ('', ''))[1])
+            if n: status[n.group(1)] = (n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
             elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status)$', b.get('name', '')):
@@ -161,15 +161,22 @@ if running and not child:
                 except ValueError: continue
                 if isinstance(r, dict) and r.get('taskId'):
                     is_read, title = titles[b['tool_use_id']]
-                    old = status.get(r['taskId'], ('', ''))
+                    old = status.pop(r['taskId'], ('', ''))
                     status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
+                    thread[r['taskId']] = str(r.get('childThreadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
                     seen.add(r['taskId'])
     text = running.group(1).lower()
-    # a task is named by its id (its link), else by its title: the last task of that title (an earlier "Memory refresh" is not this one)
-    named = {i: v for i, v in status.items() if i.rsplit('%3A', 1)[-1].lower() in text}
-    last_of = {t.lower(): i for i, (_, t) in status.items() if t}
-    if not named:  # a list that links its tasks names them by link; one with no link, by title
-        named = {i: status[i] for t, i in last_of.items() if t in text}
+    # a link names a task or its thread, whose latest task it is; a list with no link names a task by its title: the latest task whose
+    # title holds that title ("memory refresh" is the refresh just launched, "review" the round r2 of it, not an earlier finished one)
+    by_thread = {}
+    for i in status:
+        if any(re.search(r'(?:%3a|[^\w-])' + re.escape(x.rsplit('%3A', 1)[-1].lower()) + r'(?![\w-])', text) for x in (i, thread.get(i, i))):
+            by_thread[thread.get(i, i).rsplit('%3A', 1)[-1]] = i
+    named = {i: status[i] for i in by_thread.values()}
+    if not named:
+        for t in {t.lower() for _, t in status.values() if t and t.lower() in text}:
+            i = [i for i, (_, u) in status.items() if t in u.lower()][-1]
+            named[i] = status[i]
     done = [t or i for i, (st, t) in named.items() if re.match(r'(completed|failed|cancel+ed|interrupted|error)', st)]
     stale = [t or i for i in named if i not in seen]
     if launched and (done or stale):
