@@ -198,4 +198,4 @@ Before `tests/all.sh`, it refuses a push in which a commit changing `skills/` or
 
 ### `netns-run`
 
-`netns-run <command...>` runs the command in a private network namespace (`unshare -rn`) with internet access through slirp4netns: ports inside are its own, DNS and HTTPS work, and the command's exit status comes back. It needs `slirp4netns` installed (`sudo apt install slirp4netns`).
+`netns-run <command...>` runs the command in a private network namespace (`unshare -rnm`) with internet access through slirp4netns: ports inside are its own, DNS and HTTPS work (its `/etc/resolv.conf` names slirp4netns's forwarder, keeping the host's search domains), and the command's exit status comes back. It needs `slirp4netns` installed (`sudo apt install slirp4netns`).
