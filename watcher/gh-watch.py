@@ -908,6 +908,9 @@ def scan(state, jobs):
             try:
                 is_pr, author, events, pr_state, red, last, validators, full, updated = fut.result()
             except Exception as e:
+                if ROUND and re.search(r'HTTP (?:Error )?(?:404|410)\b', str(e)):  # deleted or private: no later round reads it either
+                    emit(f"note: {key} is gone ({str(e)[:120]}); its line in threads.txt can go")
+                    continue
                 ok = False
                 fail(key, e)
                 s = sched.setdefault(key, {'full': 0, 'act': 0})

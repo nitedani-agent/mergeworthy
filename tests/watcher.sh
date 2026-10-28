@@ -665,6 +665,22 @@ print(out, len(reads), file=sys.stderr)
 check "a --round whose call failed, or that a rate-limit pause cut short, exits 1 and keeps its position; a retry reads the failed thread at once" \
   "[(1, False), (0, True), (1, True)] 2" "$got"
 got=$(py '
+m.ROUND = True
+m.STATE, m.THREADS = os.path.join(m.HERE, "gone-state.json"), os.path.join(m.HERE, "gone-threads.txt")
+open(m.THREADS, "w").write("o/r 1\no/r 2\n")
+m.steward_line = m.shared_pass = m.scan_gitlab = m.scan_reactions = lambda *a, **k: None
+def fetch(repo, num, *a, **k):
+    if num == "2": raise RuntimeError("gh api repos/o/r/issues/2: HTTP 404 {\"message\": \"Not Found\"}")
+    return (False, "x", [], None, None, None, {}, True, None)
+m.fetch_thread, m.ERRED = fetch, False
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    try: m.main()
+    except SystemExit as e: code = e.code
+print(code, "round_since" in json.load(open(m.STATE)), buf.getvalue().startswith("note: o/r#2 is gone"), file=sys.stderr)
+' 2>&1 | tail -1)
+check "a --round where a listed thread is gone (GitHub answers 404) still completes, with a note" "0 True True" "$got"
+got=$(py '
 m.ROUND, m.ROUND_SINCE = True, "2026-10-01T00:00:00Z"
 m.STATE, m.THREADS = os.path.join(m.HERE, "since-state.json"), os.path.join(m.HERE, "since-threads.txt")
 json.dump({"since": m.iso(m.time.time()), "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {"o/r 1": "x"}, "etag": {}}, open(m.STATE, "w"))
