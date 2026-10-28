@@ -33,6 +33,14 @@ if cid:
     if register:
         seen.setdefault(cid, time.time()); json.dump(seen, open(ids, 'w'))
 text = '\n'.join(str(ti.get(k) or '') for k in ('prompt', 'task', 'message', 'description', 'title', 'workspaceStrategy'))
+# A review round's id is `<review>-<round>` (delegate §Reviewers), maybe followed by the date or head SHA the reuse block asks for
+rnd = re.search(r'-(\d{1,2})$', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', cid))
+if not register and ti.get('role') == 'review' and rnd and int(rnd[1]) > 3 and not (
+        int(rnd[1]) <= 5 and re.search(r'\b(security|permissions?|auth|authn|authz|authentication|authorization|data loss|concurrency)\b', text, re.I)):
+    sys.stderr.write(f"BLOCKED: review round {rnd[1]} ('{cid}') is past mergeworthy:delegate §Review rounds' budget: 3 rounds per loop, "
+                     "5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there "
+                     "(name the category in the task). A finding still open at the budget's end goes to the user, both sides in 2-3 lines.\n")
+    sys.exit(2)
 # a ticket is the brief file the agent executes; a file under ~/.mergeworthy (project notes, an installed skill) is a reference
 mw = os.path.abspath(os.path.expanduser('~/.mergeworthy')) + os.sep
 MD = r'(?<![\w.~/-])(~?/[^\s`\'"]+\.md)\b'

@@ -50,10 +50,10 @@ The classes are model families, never versions: the strongest class is the newes
 
 ### Reviewers
 
-Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier note that it was unavailable (memory, a post's badge) is no check:
+Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
 - **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a few-sentence reply). In T3 Code, one `delegate_task` per round, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<review>-<round>"}
+   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<review>-<round>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
 - **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (credits spent, a rate limit, an error, a timeout, no reply: a failure is not a review).

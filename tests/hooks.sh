@@ -764,6 +764,9 @@ check "a new clientRequestId passes" 0 "$(cid r-1)"
 check "a retry of the same clientRequestId within 10 minutes passes" 0 "$(cid r-1)"
 python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-request-ids.json"); d=json.load(open(p)); d["r-1"]=time.time()-3600; json.dump(d,open(p,"w"))'
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
+rnd() { # clientRequestId task [role]
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "review rounds: 3 passes, 4 blocks, 4 naming security passes, 6 naming security blocks, a trailing date is no round, an implementation's -4 is no round, authentication names auth, author doesn't, a head SHA after the round is no escape" "0 2 0 2 0 0 0 2 2 2" "$(rnd post-review-3 'Follow /tmp/x/rr.md') $(rnd post-review-4 'Follow /tmp/x/rr.md') $(rnd authz-review-4 'Follow /tmp/x/rr.md; the security fix') $(rnd authz-review-6 'Follow /tmp/x/rr.md; the security fix') $(rnd post-review-2026-10-28 'Follow /tmp/x/rr.md') $(rnd fix-4 'Follow /tmp/x/rr.md' implementation) $(rnd login-review-5 'Follow /tmp/x/rr.md; the authentication bypass') $(rnd words-review-4 'Review author wording. Follow /tmp/x/rr.md') $(rnd post-review-4-96ef442 'Follow /tmp/x/rr.md') $(rnd authz-review-6-96ef442 'Follow /tmp/x/rr.md; the security fix')"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
