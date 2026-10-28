@@ -9,7 +9,7 @@
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
-- Machine-wide work (those two) runs in one daemon at a time (shared_pass). Every call goes through request(), which keeps the
+- Machine-wide work (those two) runs in one daemon, or a --pass, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
@@ -114,13 +114,13 @@ def shared_update(fn):
 
 @contextlib.contextmanager
 def lease():
-    """The machine-wide runner: the daemon holding this lock for a pass runs the shared jobs for every live watch dir; one that
-    doesn't get it skips them (it never waits). The kernel drops the lock if the holder dies."""
+    """The machine-wide runner: the daemon holding this lock for a pass runs the shared jobs for every live watch dir; a daemon that
+    doesn't get it skips them, a --pass waits for it. The kernel drops the lock if the holder dies."""
     os.makedirs(os.path.dirname(shared_path()), exist_ok=True)
     f = open(shared_path('shared-watch.lease'), 'a')
     try:
         try:
-            fcntl.flock(f, fcntl.LOCK_EX | (0 if PASS else fcntl.LOCK_NB))  # a pass waits its turn: it runs the shared jobs once
+            fcntl.flock(f, fcntl.LOCK_EX | (0 if PASS else fcntl.LOCK_NB))
         except OSError:
             yield False
             return
@@ -1047,15 +1047,16 @@ def poll_feed(url, repo_of, watched, size):
     page = items = resp.json()
     oldest = PASS_SINCE or (min(before.values()) if before else '')
     pages = 1
-    while resp.next() and pages < FEED_PAGES and page and (PASS_SINCE or before) and page[-1]['updated_at'] > oldest and (PASS_SINCE or before.get(key(page[-1])) != page[-1]['updated_at']):
+    more = lambda page: page and page[-1]['updated_at'] > oldest and (PASS_SINCE or before and before.get(key(page[-1])) != page[-1]['updated_at'])
+    while resp.next() and pages < FEED_PAGES and more(page):
         resp = request(resp.next())
         page = resp.json()
         items, pages = items + page, pages + 1
     seen = {key(i): i['updated_at'] for i in items}
     moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
-    recent = {k for k, u in seen.items() if u >= oldest} if PASS_SINCE else set()
+    act = moved | ({k for k, u in seen.items() if u >= oldest} if PASS_SINCE else set())
     for i in items:  # before the feed is recorded: a pass that ran out of calls finds them again, and claims keep each once
-        if key(i) in moved | recent:
+        if key(i) in act:
             moved_thread(repo_of(i), i, (PASS_SINCE or key(i) not in before) and (i.get('created_at') or '') >= oldest)
     now = time.time()
     def put(s):
@@ -1111,7 +1112,7 @@ def first_line(path):
 
 def live_dirs():
     """The watch dirs whose daemon runs, then a pass's own dir (--pass): it has no daemon, but its round is the one reading."""
-    return [d for d in dict.fromkeys(watch_dirs()) if live(d) and not (PASS and d == HERE)] + [HERE] * PASS
+    return [d for d in dict.fromkeys(watch_dirs()) if live(d) and not (PASS and d == HERE)] + ([HERE] if PASS else [])
 
 
 def repo_lines(d):
@@ -1806,6 +1807,28 @@ def agent_jobs_pass():
             emit(f"### AGENT DONE {j['key']}: read its result (task_status / its report), then agent-job done {k}")
 
 
+def pass_round():
+    """One round with no daemon (--pass) -> its exit status. The shared jobs first: a thread that moved in a repo watched whole
+    joins threads.txt, and the scan reads it. Only a complete round moves pass_since: a failed one is read again from the same point."""
+    global PASS_SINCE
+    started = time.time()
+    with locked():
+        PASS_SINCE = load_state().get('pass_since') or iso(started - PASS_LOOKBACK)
+    steward_line()
+    shared_pass(force=True)
+    run_scan(everything=True)
+    scan_gitlab()
+    if shared_read()['pause_until'] > time.time():
+        emit(f"WATCH ERROR API budget: paused until {iso(shared_read()['pause_until'])}, so this pass didn't read everything")
+    if ERRED:
+        return 1
+    with locked():
+        state = load_state()
+        state['pass_since'] = iso(started - 600)  # overlaps by 10 minutes, as discovery does
+        save_state(state)
+    return 0
+
+
 def main():
     if '--stats' in sys.argv:
         print(stats_text())
@@ -1814,23 +1837,8 @@ def main():
         run_scan(everything=True)
         shared_pass(force=True)
         return
-    if PASS:  # the shared jobs first: a thread that moved in a repo watched whole joins threads.txt, and the scan reads it
-        global PASS_SINCE
-        started = time.time()
-        with locked():
-            PASS_SINCE = load_state().get('pass_since') or iso(started - PASS_LOOKBACK)
-        steward_line()
-        shared_pass(force=True)
-        run_scan(everything=True)
-        scan_gitlab()
-        if shared_read()['pause_until'] > time.time():
-            emit(f"WATCH ERROR API budget: paused until {iso(shared_read()['pause_until'])}, so this pass didn't read everything")
-        if not ERRED:  # only a complete pass moves its position: a failed one is read again from the same point
-            with locked():
-                state = load_state()
-                state['pass_since'] = iso(started - 600)  # overlaps by 10 minutes, as discovery does
-                save_state(state)
-        sys.exit(1 if ERRED else 0)
+    if PASS:
+        sys.exit(pass_round())
     global DAEMON
     DAEMON = True
     while True:

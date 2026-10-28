@@ -1,5 +1,5 @@
 #!/bin/bash
-# gh-watch-start [--main] <dir> [owner/repo [N|all]]...: the one way to start watching (mergeworthy:task step 5). Idempotent.
+# gh-watch-start [--main|--pass] <dir> [owner/repo [N|all]]...: the one way to start watching (mergeworthy:task step 5). Idempotent.
 # - --main: this dir gets your /ai calls, and /agent calls no dir claims, on threads no watcher watches (default: the first live dir).
 # - <dir> is the session's work folder; it gets links to the daemon (../watcher/), threads.txt and repos.txt.
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`);
