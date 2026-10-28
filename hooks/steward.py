@@ -17,42 +17,65 @@ def passed_by(wd):
     except (OSError, IndexError):
         return None
 
-def threads(session_id):
-    """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""
-    out = []
+# The statuses T3 Code counts as active: a run's (its orchestration_v2_projection_runs_recovery_idx) and a delegated task's (its binary's widest set)
+ACTIVE_RUNS = ('queued', 'preparing', 'starting', 'running', 'waiting')
+ACTIVE_TASKS = ('pending', 'starting', 'running', 'waiting')
+
+def _thread(session_id):
+    """(read-only connection to T3 Code's state, the T3 thread a Claude session runs in), or None."""
     try:
         c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
         r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
                       (session_id,)).fetchone()
-        while r and r[0] not in out and len(out) < 8:
-            out.append(r[0])
-            r = c.execute('select thread_id from orchestration_v2_projection_subagents where child_thread_id = ?', (r[0],)).fetchone()
+        return (c, r[0]) if r else None
+    except sqlite3.Error:
+        return None
+
+def _in(values):
+    return f"({','.join('?' * len(values))})"
+
+def threads(session_id):
+    """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""
+    t, out = _thread(session_id), []
+    if not t: return out
+    c, tid = t
+    try:
+        while tid and tid not in out and len(out) < 8:
+            out.append(tid)
+            r = c.execute('select thread_id from orchestration_v2_projection_subagents where child_thread_id = ?', (tid,)).fetchone()
+            tid = r and r[0]
     except sqlite3.Error:
         pass
     return out
 
+def _busy(c, tid):
+    return bool(c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone()
+                or c.execute(f"select 1 from orchestration_v2_projection_subagents where thread_id = ? and status in {_in(ACTIVE_TASKS)}", (tid, *ACTIVE_TASKS)).fetchone())
+
+def busy(session_id):
+    """True when the Claude session's T3 thread has an active run, or a task it delegated still active: T3 will act on it again."""
+    t = _thread(session_id)
+    try: return bool(t) and _busy(*t)
+    except sqlite3.Error: return False
+
 def task_done(session_id):
-    """True when the Claude session is a T3 delegated task that completed, with no run of its thread queued or running and no
-    task it delegated still running: T3 won't wake it again."""
+    """True when the Claude session is a T3 delegated task that completed and isn't busy: T3 won't wake it again."""
+    t = _thread(session_id)
+    if not t: return False
+    c, tid = t
     try:
-        c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
-        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
-                      (session_id,)).fetchone()
-        return bool(r) and c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", r).fetchone() == ('completed',) \
-            and not c.execute("select 1 from orchestration_v2_projection_runs where thread_id = ? and status in ('queued', 'running')", r).fetchone() \
-            and not c.execute("select 1 from orchestration_v2_projection_subagents where thread_id = ? and status = 'running'", r).fetchone()
+        return c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone() == ('completed',) \
+            and not _busy(c, tid)
     except sqlite3.Error:
         return False
 
 def is_task(session_id):
     """True when the Claude session is a T3 delegated task (a child agent), not a main session."""
-    try:
-        c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
-        r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
-                      (session_id,)).fetchone()
-        return bool(r) and bool(c.execute("select 1 from orchestration_v2_projection_subagents where child_thread_id = ?", r).fetchone())
-    except sqlite3.Error:
-        return False
+    t = _thread(session_id)
+    if not t: return False
+    c, tid = t
+    try: return bool(c.execute("select 1 from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone())
+    except sqlite3.Error: return False
 
 def first(path):
     try: return open(path).read().split()[0]
