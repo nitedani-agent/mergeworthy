@@ -439,7 +439,7 @@ if status:
         findings.append("status: no reviewer worked on it, so the badge names only the writer")
     _st = VISIBLE(text)
     _times = [datetime.datetime.fromisoformat(f"{t[1]}T{t[2]}:{t[3]}+00:00") for t in re.finditer(r'\b(\d{4}-\d\d-\d\d)T(\d\d):(\d\d)(?::\d\d)?Z\b', _st)]  # upper case only: stop-lint parses no other
-    for t in re.finditer(r'(?<![\d:T-])\d{1,2}:\d\d(?![\d:])(?:\s*(?:UTC|Z)\b)?', _st, re.I):  # stop-lint would read it as today, whatever date stands beside it
+    for t in re.finditer(r'(?<![\d:T-])\d{1,2}:\d\d(?![\d:])(?:\s*(?:UTC|Z)\b)?', _st, re.I):  # stop-lint would read it as its next occurrence, whatever date stands beside it
         findings.append(f"status: {t[0]!r} is a time of day: write the deadline as an ISO time in UTC ('by 2026-10-28T16:00Z')")
     if re.search(r'\b(?:tomorrow|tonight|later today|in (?:about |around |roughly |under |less than )?(?:an?|\d+|a few|a couple of) (?:hours?|minutes?|days?))\b', _st, re.I):
         findings.append("status: a relative time ('tomorrow', 'in an hour'): write the deadline as an ISO time in UTC ('by 2026-10-28T16:00Z')")
