@@ -88,7 +88,7 @@ def need_watch(repo):
     if setting('WATCHER', 'on') != 'on' or not repo: return
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
-    # a dir this session's steward pass read in the last day covers too (gh-watch-start --pass): its next pass reads the thread
+    # a dir this session's steward pass read in the last day covers too (gh-watch-start --round): its next pass reads the thread
     reg, sid = os.path.expanduser('~/.claude/gh-watch-dirs.txt'), d.get('session_id')
     passed = [w for w in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if sid and steward.passed_by(w) == sid]
     covering = [d for d in watch_dirs() + passed if any(l.split()[:1] == [repo] for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]

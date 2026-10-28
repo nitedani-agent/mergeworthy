@@ -97,8 +97,8 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post, first):
 
 def scan(state, threads, report, emit, agent_post, every, since=None):
     """Read each GitLab thread that is due. report: gh-watch's handle_comment; agent_post(body): a gated post of the agent's;
-    every: gh-watch's seconds between looks by 'open' and 'closed'; since: a --pass's start (PASS_SINCE): every thread is read
-    now, and one never read before back to it, as the pass reads GitHub's."""
+    every: gh-watch's seconds between looks by 'open' and 'closed'; since: a --round's start (ROUND_SINCE): every thread is read
+    now, and one never read before back to it, as the round reads GitHub's."""
     gl, now = state.setdefault('gl', {}), time.time()
     for key, proj, kind, iid in threads:
         t = gl.setdefault(key, {})

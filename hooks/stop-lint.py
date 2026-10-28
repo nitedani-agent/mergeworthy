@@ -162,7 +162,7 @@ watcher_on = (os.environ.get('MERGEWORTHY_WATCHER') or ('off' if 'MERGEWORTHY_WA
 headless = any('"entrypoint":"sdk-cli"' in l for l in lines[-20:])
 # The user paused the work: nothing is to be watched or answered until they resume
 paused = re.search(r'\bpause\b', last_user, re.I) is not None
-# A steward pass (gh-watch-start --pass, mergeworthy:steward) leaves nothing running: the next pass reads the replies. A round that ran
+# A steward pass (gh-watch-start --round, mergeworthy:steward) leaves nothing running: the next pass reads the replies. A round that ran
 # names its session in <dir>/passed; that dir's owed lines hold the session's turn as a live watcher's do
 pass_dirs = {wd for wd in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if d.get('session_id') and steward.passed_by(wd) == d['session_id']}
 own_dirs |= pass_dirs

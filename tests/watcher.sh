@@ -450,12 +450,12 @@ got=$(glpy '
 notes[("issues", "8")] = [{"id": 81, "author": {"username": "alice", "id": 81}, "body": "A reply from two hours ago", "updated_at": m.iso(m.time.time() - 7200), "system": False}]
 thread("issues", "8", "opened")
 s = m.load_state(); s["since"] = m.iso(m.time.time()); s.setdefault("gl", {})["gitlab.com/ns/sub/proj#8"] = {"next": m.time.time() + 3600}; m.save_state(s)
-m.PASS, m.PASS_SINCE = True, m.iso(m.time.time() - 86400)
+m.ROUND, m.ROUND_SINCE = True, m.iso(m.time.time() - 86400)
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf): m.scan_gitlab()
 print(buf.getvalue().count("### gitlab.com/ns/sub/proj#8 note 81 by alice"))
 ')
-check "GitLab in a --pass: a thread not due yet is read, one never read back to the pass start, though the state saw a later round" 1 "$got"
+check "GitLab in a --round: a thread not due yet is read, one never read back to the pass start, though the state saw a later round" 1 "$got"
 sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
@@ -503,26 +503,26 @@ chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/cro
 PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
-# --pass (the steward skill): one round of gh-watch.py --pass into events.log, no supervisor, no daemon, a passed mark
+# --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
-out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r all < /dev/null 2>&1)
-check "gh-watch-start --pass runs one round into events.log, starts no daemon, marks the dir passed by its session" "pass: 1 new lines|### stub round --pass|o/r all|no pid|sess-p" \
-  "$(echo "$out" | grep -o '^pass: [0-9]* new lines')|$(cat "$T/passwatch/events.log")|$(cat "$T/passwatch/repos.txt")|$([ -e "$T/passwatch/gh-watch.pid" ] && echo pid || echo no pid)|$(cat "$T/passwatch/passed")"
+out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null 2>&1)
+check "gh-watch-start --round runs one round into events.log, starts no daemon, marks the dir passed by its session" "round: 1 new lines|### stub round --round|o/r all|no pid|sess-p" \
+  "$(echo "$out" | grep -o '^round: [0-9]* new lines')|$(cat "$T/passwatch/events.log")|$(cat "$T/passwatch/repos.txt")|$([ -e "$T/passwatch/gh-watch.pid" ] && echo pid || echo no pid)|$(cat "$T/passwatch/passed")"
 printf 'import sys\nsys.exit(3)\n' > "$GI/watcher/gh-watch.py"; rm "$T/passwatch/passed"
-PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r all < /dev/null > /dev/null 2>&1
-check "gh-watch-start --pass exits with a failed round's status and doesn't mark the dir passed" "3 not passed" "$? $([ -e "$T/passwatch/passed" ] && echo passed || echo not passed)"
+PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null > /dev/null 2>&1
+check "gh-watch-start --round exits with a failed round's status and doesn't mark the dir passed" "3 not passed" "$? $([ -e "$T/passwatch/passed" ] && echo passed || echo not passed)"
 bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$T/passwatch/gh-watch.pid"; echo sess-d > "$T/passwatch/session"
-PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" x/y all < /dev/null > /dev/null 2>&1
-check "gh-watch-start --pass refuses a dir whose daemon runs, leaving its session and repos as they were" "1 sess-d o/r all" "$? $(cat "$T/passwatch/session") $(echo $(cat "$T/passwatch/repos.txt"))"
+PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" x/y all < /dev/null > /dev/null 2>&1
+check "gh-watch-start --round refuses a dir whose daemon runs, leaving its session and repos as they were" "1 sess-d o/r all" "$? $(cat "$T/passwatch/session") $(echo $(cat "$T/passwatch/repos.txt"))"
 kill "$(cat "$T/passwatch/gh-watch.pid")"; rm "$T/passwatch/gh-watch.pid"
 LW="$T/livewatch"; mkdir -p "$LW"; echo 'o/r 7' > "$LW/threads.txt"; echo "$LW" >> "$HOME/.claude/gh-watch-dirs.txt"
 bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$LW/gh-watch.pid"; printf 'import sys\nprint("### stub round")\n' > "$GI/watcher/gh-watch.py"
-err=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --pass "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
-check "gh-watch-start --pass skips a thread a live dir watches, with a note, and reads the rest" "0|skipped o/r 7: $LW watches it|o/r 8" \
+err=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
+check "gh-watch-start --round skips a thread a live dir watches, with a note, and reads the rest" "0|skipped o/r 7: $LW watches it|o/r 8" \
   "$rc|$err|$(grep -x 'o/r [78]' "$T/passwatch/threads.txt" | tr '\n' ' ' | sed 's/ $//')"
 kill "$(cat "$LW/gh-watch.pid")"
 got=$(py '
-m.PASS = True
+m.ROUND = True
 m.STATE, m.THREADS = os.path.join(m.HERE, "pass-state.json"), os.path.join(m.HERE, "pass-threads.txt")
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 X = os.path.join(os.path.dirname(m.HERE), "livex"); os.makedirs(X, exist_ok=True)
@@ -534,7 +534,7 @@ m.scan_reactions = lambda state, threads: None
 m.run_scan(everything=True)
 print(",".join(seen))
 ')
-check "a --pass round doesn't read a thread a live daemon's dir lists, though an earlier pass listed it" 1 "$got"
+check "a --round doesn't read a thread a live daemon's dir lists, though an earlier pass listed it" 1 "$got"
 
 # `owner/repo all` in repos.txt: a moved thread of the repo joins that dir (unless another dir lists it), a new one is reported unless
 # it carries the badge, and /agent at the start of a new body is an agent command (routed to the dir watching the repo whole, else main_dir)
@@ -598,7 +598,7 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
-# a --pass dir has no daemon: each pass reads a list itself back to its last complete pass (a week the first time), though a daemon
+# a --round dir has no daemon: each pass reads a list itself back to its last complete pass (a week the first time), though a daemon
 # polled it between (its validator, its baseline), and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"
 got=$(py "$WHOLE"'
@@ -615,28 +615,28 @@ def fake_request(path, *a, **k):  # GitHub answers 304 to a validator for an unc
     return type("A", (), {"status": 304 if unchanged else 200, "json": lambda self: list(feed), "next": lambda self: None})()
 m.request, m.paged, m.react_eyes = fake_request, (lambda *a, **k: []), (lambda *a: None)
 poll = lambda: m.poll_feed("repos/p/q/issues?state=all", lambda i: "p/q", set(), 30)
-daemon = lambda: (setattr(m, "PASS", False), setattr(m, "PASS_SINCE", None), poll())
+daemon = lambda: (setattr(m, "ROUND", False), setattr(m, "ROUND_SINCE", None), poll())
 first = m.iso(time.time())
 daemon()  # the baseline, which reached no reader of the pass dir
-m.PASS, m.PASS_SINCE = True, m.iso(time.time() - 7 * 86400); poll()
+m.ROUND, m.ROUND_SINCE = True, m.iso(time.time() - 7 * 86400); poll()
 feed.insert(0, it(4, 0, 0)); daemon(); daemon()  # a new issue: a daemon polls it, then gets a 304
-m.PASS, m.PASS_SINCE = True, first; poll()
+m.ROUND, m.ROUND_SINCE = True, first; poll()
 m.agent_command("p/q", 5, "comment", {"id": 77, "body": "/agent fix it", "user": {"login": m.ME}, "html_url": "<c77>", "updated_at": m.iso(time.time())})
 for d in ("all", "other", "bare"): os.remove(os.path.join(WH, d, "gh-watch.pid"))  # no daemon runs: main_dir is the pass dir
 m.agent_command("u/v", 9, "comment", {"id": 78, "body": "/agent and this", "user": {"login": m.ME}, "html_url": "<c78>", "updated_at": m.iso(time.time())})
 print(" ".join(open(os.path.join(m.HERE, "threads.txt")).read().split()))
 ')
-check "--pass rounds: a thread moved since the last pass joins the pass dir, a new one is reported once, an older one not, whatever a daemon polled; /agent goes to the pass dir" \
+check "--round, round after round: a thread moved since the last pass joins the pass dir, a new one is reported once, an older one not, whatever a daemon polled; /agent goes to the pass dir" \
   "p/q 1 p/q 2 p/q 4 p/q 5|### NEW ISSUE p/q#1|### NEW ISSUE p/q#4|### AGENT COMMAND p/q#5|### UNROUTED /agent u/v#9|" "$got|$(grep -oE '^### [A-Z ]+(/agent )?[a-z/]+#[0-9]+' "$WH/pass/events.log" | tr '\n' '|')"
 got=$(py "$WHOLE"'
-m.PASS, m.HERE = True, os.path.join(WH, "pass")
+m.ROUND, m.HERE = True, os.path.join(WH, "pass")
 open(os.path.expanduser("~/.claude/gh-watch-dirs.txt"), "w").write("\n".join([m.HERE] + [os.path.join(WH, d) for d in ("all", "other", "bare")]) + "\n")
 print(" ".join(os.path.basename(d) for d in m.live_dirs()), os.path.basename(m.main_dir()))
 ')
-check "a --pass dir comes after every live dir, though registered first, and a live dir stays main_dir" "all other bare pass all" "$got"
+check "a --round dir comes after every live dir, though registered first, and a live dir stays main_dir" "all other bare pass all" "$got"
 printf '%s\n' "$WH/all" "$WH/other" "$WH/bare" "$WH/pass" > "$HOME/.claude/gh-watch-dirs.txt"
 got=$(py '
-m.PASS = True
+m.ROUND = True
 m.STATE, m.THREADS = os.path.join(m.HERE, "erred-state.json"), os.path.join(m.HERE, "erred-threads.txt")
 open(m.THREADS, "w").write("o/r 1\n")
 m.steward_line = m.shared_pass = m.scan_gitlab = m.scan_reactions = lambda *a, **k: None
@@ -644,7 +644,7 @@ reads = []
 def run(fetch):
     m.fetch_thread, m.ERRED = fetch, False
     try: m.main()
-    except SystemExit as e: return e.code, "pass_since" in json.load(open(m.STATE))
+    except SystemExit as e: return e.code, "round_since" in json.load(open(m.STATE))
 def boom(*a, **k): raise RuntimeError("HTTP 500")
 ok = lambda *a, **k: (reads.append(1), (False, "x", [], None, None, None, {}, True, None))[1]
 with contextlib.redirect_stdout(io.StringIO()):
@@ -653,10 +653,10 @@ with contextlib.redirect_stdout(io.StringIO()):
     m.shared_update(lambda s: s.__setitem__("pause_until", 0))
 print(out, len(reads), file=sys.stderr)
 ' 2>&1 | tail -1)
-check "a --pass round whose call failed, or that a rate-limit pause cut short, exits 1 and keeps its position; a retry reads the failed thread at once" \
+check "a --round whose call failed, or that a rate-limit pause cut short, exits 1 and keeps its position; a retry reads the failed thread at once" \
   "[(1, False), (0, True), (1, True)] 2" "$got"
 got=$(py '
-m.PASS, m.PASS_SINCE = True, "2026-10-01T00:00:00Z"
+m.ROUND, m.ROUND_SINCE = True, "2026-10-01T00:00:00Z"
 m.STATE, m.THREADS = os.path.join(m.HERE, "since-state.json"), os.path.join(m.HERE, "since-threads.txt")
 json.dump({"since": m.iso(m.time.time()), "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {"o/r 1": "x"}, "etag": {}}, open(m.STATE, "w"))
 open(m.THREADS, "w").write("o/r 3\n")
@@ -669,22 +669,22 @@ def job():
     for _ in range(m.PASS_CALLS + 10): m.spend(); calls.append(1)
 m.JOBS = (("discovery", 0, job),)
 m.shared_pass(force=True); in_pass = len(calls)
-m.PASS = False; calls.clear(); m.shared_pass(force=True)
+m.ROUND = False; calls.clear(); m.shared_pass(force=True)
 print(asked, in_pass, len(calls))
 ')
-check "a --pass reads a newly listed thread back to its pass start, though its state saw a later round; its shared jobs finish past a daemon's per-job call cap" \
+check "a --round reads a newly listed thread back to its pass start, though its state saw a later round; its shared jobs finish past a daemon's per-job call cap" \
   "['2026-09-30T23:50:00Z'] 50 40" "$got"
 got=$(py '
 import subprocess, fcntl
 hold = subprocess.Popen([sys.executable, "-c", "import fcntl, sys, time; f = open(sys.argv[1], \"a\"); fcntl.flock(f, fcntl.LOCK_EX); print(1, flush=True); time.sleep(1)", m.shared_path("shared-watch.lease")], stdout=subprocess.PIPE, text=True)
 hold.stdout.readline()  # a daemon holds the lease for a second
 ran = []
-m.JOBS = (("feeds", 0, lambda: ran.append(m.PASS)),)
-m.PASS = False; m.shared_pass(force=True)
-m.PASS = True; m.shared_pass(force=True)
+m.JOBS = (("feeds", 0, lambda: ran.append(m.ROUND)),)
+m.ROUND = False; m.shared_pass(force=True)
+m.ROUND = True; m.shared_pass(force=True)
 hold.wait(); print(ran)
 ')
-check "the shared jobs: a daemon skips them while another holds the lease; a --pass waits its turn and runs them" "[True]" "$got"
+check "the shared jobs: a daemon skips them while another holds the lease; a --round waits its turn and runs them" "[True]" "$got"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '

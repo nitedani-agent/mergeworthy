@@ -4,7 +4,7 @@ the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <f
 that `round` writes <folder>'s watcher files, `metrics` appends its records to <folder>/metrics.jsonl and `done` appends
 `<UTC time> <summary>` to <folder>/passes.txt.
 
-- round: `gh-watch-start --pass <folder> nitedani/mergeworthy all` plus every open PR of yours: one watcher round, no daemon.
+- round: `gh-watch-start --round <folder> nitedani/mergeworthy all` plus every open PR of yours: one watcher round, no daemon.
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
   lines not done nor held (a holding or drafting line whose ETA is ahead), FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
   One `<folder> (<watcher>, <session>)\t<kind>\t<line>` per item.
@@ -299,11 +299,11 @@ def main(a):
         return sessions(epoch(since[-1]) if since else folder and last_pass(folder) or NOW - 7 * 86400)
     if a[:1] == ['metrics'] and folder:
         return metrics(folder, epoch(since[-1]) if since else last_pass(folder) or NOW - 60 * 86400, opt('--author'))
-    if a[:1] == ['round'] and folder:  # the steward's repo whole and every open PR of yours, one watcher round (gh-watch-start --pass)
+    if a[:1] == ['round'] and folder:  # the steward's repo whole and every open PR of yours, one watcher round (gh-watch-start --round)
         prs = gh('search', 'prs', '--author', '@me', '--state', 'open', '--limit', '1000', '--json', 'repository,number')
         threads = [x for p in prs for x in (p['repository']['nameWithOwner'], str(p['number']))]
         start = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'gh-watch-start')
-        sys.exit(subprocess.run([start, '--pass', folder, 'nitedani/mergeworthy', 'all', *threads]).returncode)
+        sys.exit(subprocess.run([start, '--round', folder, 'nitedani/mergeworthy', 'all', *threads]).returncode)
     if a[:1] == ['done'] and folder and a[2:3]:
         with open(os.path.join(folder, 'passes.txt'), 'a') as f:  # the next pass's window starts here
             f.write(f"{iso(NOW)} {' '.join(a[2:])}\n")

@@ -9,7 +9,7 @@
 - MAINTAINER REVIEW: a maintainer's review (not a bare approval) on your PR, sent to the steward like FOLLOW-UP: every defect it names is sorted.
 - FOLLOW-UP: later commits by others to the lines of your merged PRs, and PRs that reference them (see follow_ups), for 60 days after the merge.
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
-- Machine-wide work (those two) runs in one daemon, or a --pass, at a time (shared_pass). Every call goes through request(), which keeps the
+- Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
 - Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
@@ -34,9 +34,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'gh-watch-state.json')
 THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
-PASS = '--pass' in sys.argv  # one round without a daemon (gh-watch-start --pass, mergeworthy:steward): it records what it reports, as a daemon's round does
-PASS_LOOKBACK = 7 * 86400  # a pass's first round reads back this far: no earlier round recorded where to start
-PASS_SINCE = None  # a pass reads the issue lists' threads updated since its dir's last complete pass (main), whatever other readers saw
+ROUND = '--round' in sys.argv  # one round without a daemon (gh-watch-start --round, mergeworthy:steward): it records what it reports, as a daemon's round does
+ROUND_LOOKBACK = 7 * 86400  # a dir's first --round reads back this far: no earlier round recorded where to start
+ROUND_SINCE = None  # a --round reads the issue lists' threads updated since its dir's last complete round (one_round), whatever other readers saw
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -58,7 +58,7 @@ class PassSpent(Exception):
 OK, RESERVE, LOW, PAUSED = range(4)  # level(): how much budget is left
 RESERVE_AT, LOW_AT = 1500, 500  # remaining calls: below RESERVE_AT only the daemons' own threads are scanned; below LOW_AT only the notifications fast path
 IDLE_DISCOVERY = 1800  # seconds after which a repo's comment feeds (and the search backup) are read although nothing is known to have moved in it
-PASS_CALLS, STABLE = 40, 86400  # calls one shared job may make per daemon pass (a --pass has no cap); seconds a polled URL's `since` stays the same, so its ETag still matches
+PASS_CALLS, STABLE = 40, 86400  # calls one shared job may make per daemon pass (a --round has no cap); seconds a polled URL's `since` stays the same, so its ETag still matches
 POLL_DEFAULT = 60  # seconds between polls of the notifications, your events feed and the repos' issue lists, unless GitHub's X-Poll-Interval says longer
 _pass = {'left': None}
 
@@ -115,12 +115,12 @@ def shared_update(fn):
 @contextlib.contextmanager
 def lease():
     """The machine-wide runner: the daemon holding this lock for a pass runs the shared jobs for every live watch dir; a daemon that
-    doesn't get it skips them, a --pass waits for it. The kernel drops the lock if the holder dies."""
+    doesn't get it skips them, a --round waits for it. The kernel drops the lock if the holder dies."""
     os.makedirs(os.path.dirname(shared_path()), exist_ok=True)
     f = open(shared_path('shared-watch.lease'), 'a')
     try:
         try:
-            fcntl.flock(f, fcntl.LOCK_EX | (0 if PASS else fcntl.LOCK_NB))
+            fcntl.flock(f, fcntl.LOCK_EX | (0 if ROUND else fcntl.LOCK_NB))
         except OSError:
             yield False
             return
@@ -580,11 +580,11 @@ def main_dir():
         m = ''
     if m and live(m):
         return m
-    return next((d for d in watch_dirs() if live(d)), HERE if PASS else None)
+    return next((d for d in watch_dirs() if live(d)), HERE if ROUND else None)
 
 
 ERRORS = {}  # WATCH ERROR line -> when it was last printed
-ERRED = False  # a call failed: a pass exits 1, so gh-watch-start --pass doesn't mark its dir passed
+ERRED = False  # a call failed: a --round exits 1, so gh-watch-start --round doesn't mark its dir passed
 
 
 def emit(line):
@@ -880,7 +880,7 @@ def plan(state, threads, lvl=OK, everything=False):
         if s is None and key in state['since_by']:
             t = iso_epoch(state['since_by'][key])
             s = sched[key] = {'full': t, 'act': 0, 'next': t + spread(key, CHECK[thread_kind(state, key, now)])}  # act 0: what was published since that scan is unread
-        if s and now < s.get('retry', 0) and not PASS:  # a pass is one requested round: it reads what failed before too
+        if s and now < s.get('retry', 0) and not ROUND:  # a --round is one requested round: it reads what failed before too
             continue
         if s is None and (lvl <= RESERVE or a) or s and a > s.get('act', 0):
             out.append((repo, num, 'full', a))
@@ -893,7 +893,7 @@ def scan(state, jobs):
     """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num) read in full)"""
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
-        first = min(state['since'], PASS_SINCE) if PASS_SINCE else state['since']  # a pass's new thread: back to what it hasn't read
+        first = min(state['since'], ROUND_SINCE) if ROUND_SINCE else state['since']  # a --round's new thread: back to what it hasn't read
         dt = datetime.datetime.strptime(state['since_by'].get(key, first), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
     ok, fulls, pings, now = True, [], [], time.time()
@@ -1038,26 +1038,26 @@ def poll_feed(url, repo_of, watched, size):
     """One issue list, most recently updated first, with its validator. A watched thread whose update time moved since the last poll is
     published as activity, and its repo is marked for discovery (see discover_agent_commands). The first poll of a list only records.
     More pages are read while the page just read still shows moved threads: it ends on one the last poll saw changed, newer than the oldest
-    it saw, and FEED_PAGES isn't reached. A pass reads the list itself back to PASS_SINCE instead: what moved since reached no reader of its dir."""
+    it saw, and FEED_PAGES isn't reached. A --round reads the list itself back to ROUND_SINCE instead: what moved since reached no reader of its dir."""
     pending, before = {}, shared_read()['feeds'].get(url)
     key = lambda i: f"{repo_of(i)}#{i['number']}"
-    resp = request(url, store=shared_read()['etags'], pending=pending, fresh=PASS, newest_first=True)
+    resp = request(url, store=shared_read()['etags'], pending=pending, fresh=ROUND, newest_first=True)
     if resp.status == 304:
         return
     page = items = resp.json()
-    oldest = PASS_SINCE or (min(before.values()) if before else '')
+    oldest = ROUND_SINCE or (min(before.values()) if before else '')
     pages = 1
-    more = lambda page: page and page[-1]['updated_at'] > oldest and (PASS_SINCE or before and before.get(key(page[-1])) != page[-1]['updated_at'])
+    more = lambda page: page and page[-1]['updated_at'] > oldest and (ROUND_SINCE or before and before.get(key(page[-1])) != page[-1]['updated_at'])
     while resp.next() and pages < FEED_PAGES and more(page):
         resp = request(resp.next())
         page = resp.json()
         items, pages = items + page, pages + 1
     seen = {key(i): i['updated_at'] for i in items}
     moved = set() if before is None else {k for k, u in seen.items() if before.get(k) != u}
-    act = moved | ({k for k, u in seen.items() if u >= oldest} if PASS_SINCE else set())
+    act = moved | ({k for k, u in seen.items() if u >= oldest} if ROUND_SINCE else set())
     for i in items:  # before the feed is recorded: a pass that ran out of calls finds them again, and claims keep each once
         if key(i) in act:
-            moved_thread(repo_of(i), i, (PASS_SINCE or key(i) not in before) and (i.get('created_at') or '') >= oldest)
+            moved_thread(repo_of(i), i, (ROUND_SINCE or key(i) not in before) and (i.get('created_at') or '') >= oldest)
     now = time.time()
     def put(s):
         s['feeds'][url] = dict(list(seen.items())[:size])  # one page's worth: the next poll reads back to its oldest
@@ -1111,8 +1111,8 @@ def first_line(path):
 
 
 def live_dirs():
-    """The watch dirs whose daemon runs, then a pass's own dir (--pass): it has no daemon, but its round is the one reading."""
-    return [d for d in dict.fromkeys(watch_dirs()) if live(d) and not (PASS and d == HERE)] + ([HERE] if PASS else [])
+    """The watch dirs whose daemon runs, then a --round's own dir: it has no daemon, but its round is the one reading."""
+    return [d for d in dict.fromkeys(watch_dirs()) if live(d) and not (ROUND and d == HERE)] + ([HERE] if ROUND else [])
 
 
 def repo_lines(d):
@@ -1226,7 +1226,7 @@ def discover_agent_commands():
     one lists. A feed is read with its ETag, newest first, only back to where the last read of that repo stopped. A failed call leaves
     the position, so it is retried."""
     started = iso(time.time())
-    first = iso_epoch(shared_read()['agent_since'] or iso(time.time() - (PASS_LOOKBACK if PASS else 3600)))
+    first = iso_epoch(shared_read()['agent_since'] or iso(time.time() - (ROUND_LOOKBACK if ROUND else 3600)))
     etags, ok = shared_read()['etags'], True
     repos, dirty, disc = watched_repos(), shared_read()['dirty'], shared_read()['disc']
     for repo in sorted(repos):
@@ -1252,7 +1252,7 @@ def discover_agent_commands():
             pending = {}
             query = urllib.parse.quote(f'commenter:{ME} updated:>={day}', safe='')
             found, items = request(f"search/issues?q={query}&sort=updated&order=desc&per_page=100", store=etags, pending=pending, newest_first=True), []
-            while found.status != 304:  # every page: a pass's week can hold more threads than one
+            while found.status != 304:  # every page: a --round's week can hold more threads than one
                 items += found.json()['items']
                 if not found.next():
                     break
@@ -1572,7 +1572,7 @@ def locked():
 def run_scan(everything=False):
     """Read what is due now (everything: every listed thread, in full); the reactions of what was read in full."""
     threads = read_threads()
-    if PASS:  # a thread a live daemon watches is its dir's, though an earlier pass listed it here
+    if ROUND:  # a thread a live daemon watches is its dir's, though an earlier round listed it here
         taken = set().union(*(listed_threads(d) for d in live_dirs() if d != HERE))
         threads = [t for t in threads if f"{t[0]}#{t[1]}" not in taken]
     with locked():
@@ -1597,8 +1597,8 @@ RESERVE_JOBS = ('feeds',)  # the jobs that run below RESERVE_AT calls left too: 
 def shared_pass(force=False):
     """The machine-wide jobs, for every live watch dir, by the one daemon that holds the lease; the others skip them. Each job
     is due every so many seconds across all daemons (its last_run is in the shared state, so a restart doesn't make it due
-    again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy. Forced (--once, a --pass), it runs
-    whatever the budget, and a --pass's jobs have no call cap: it is one requested round, which GitHub's own limit still stops."""
+    again), makes at most PASS_CALLS calls per pass, and runs only while the budget is healthy. Forced (--once, a --round), it runs
+    whatever the budget, and a --round's jobs have no call cap: it is one requested round, which GitHub's own limit still stops."""
     if level() > RESERVE and not force:
         return
     with lease() as mine:
@@ -1610,7 +1610,7 @@ def shared_pass(force=False):
             if not force and time.time() - (shared_read()['jobs'].get(name) or {}).get('last_run', 0) < (every() if callable(every) else every):
                 continue
             shared_update(lambda s: s['jobs'].__setitem__(name, {'last_run': time.time()}))  # at the start: a failing job waits its turn too
-            _pass['left'] = None if PASS else PASS_CALLS  # a pass finishes its jobs: no later pass of this daemon goes on from there
+            _pass['left'] = None if ROUND else PASS_CALLS  # a --round finishes its jobs: no later pass of a daemon goes on from there
             try:
                 job()
             except PassSpent:
@@ -1768,7 +1768,7 @@ def scan_gitlab():
     if threads:
         with locked():
             state = load_state()
-            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK, PASS_SINCE)
+            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK, ROUND_SINCE)
             save_state(state)
 
 
@@ -1807,24 +1807,24 @@ def agent_jobs_pass():
             emit(f"### AGENT DONE {j['key']}: read its result (task_status / its report), then agent-job done {k}")
 
 
-def pass_round():
-    """One round with no daemon (--pass) -> its exit status. The shared jobs first: a thread that moved in a repo watched whole
-    joins threads.txt, and the scan reads it. Only a complete round moves pass_since: a failed one is read again from the same point."""
-    global PASS_SINCE
+def one_round():
+    """One round with no daemon (--round) -> its exit status. The shared jobs first: a thread that moved in a repo watched whole
+    joins threads.txt, and the scan reads it. Only a complete round moves round_since: a failed one is read again from the same point."""
+    global ROUND_SINCE
     started = time.time()
     with locked():
-        PASS_SINCE = load_state().get('pass_since') or iso(started - PASS_LOOKBACK)
+        ROUND_SINCE = load_state().get('round_since') or iso(started - ROUND_LOOKBACK)
     steward_line()
     shared_pass(force=True)
     run_scan(everything=True)
     scan_gitlab()
     if shared_read()['pause_until'] > time.time():
-        emit(f"WATCH ERROR API budget: paused until {iso(shared_read()['pause_until'])}, so this pass didn't read everything")
+        emit(f"WATCH ERROR API budget: paused until {iso(shared_read()['pause_until'])}, so this round didn't read everything")
     if ERRED:
         return 1
     with locked():
         state = load_state()
-        state['pass_since'] = iso(started - 600)  # overlaps by 10 minutes, as discovery does
+        state['round_since'] = iso(started - 600)  # overlaps by 10 minutes, as discovery does
         save_state(state)
     return 0
 
@@ -1837,8 +1837,8 @@ def main():
         run_scan(everything=True)
         shared_pass(force=True)
         return
-    if PASS:
-        sys.exit(pass_round())
+    if ROUND:
+        sys.exit(one_round())
     global DAEMON
     DAEMON = True
     while True:

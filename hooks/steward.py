@@ -10,7 +10,7 @@ def read():
     return os.path.expanduser(wd).rstrip('/'), tid
 
 def passed_by(wd):
-    """The session whose watcher round in wd passed in the last day (gh-watch-start --pass writes <wd>/passed), or None."""
+    """The session whose watcher round in wd passed in the last day (gh-watch-start --round writes <wd>/passed), or None."""
     try:
         p = os.path.join(wd, 'passed')
         return open(p).read().split()[0] if time.time() - os.path.getmtime(p) < 86400 else None

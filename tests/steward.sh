@@ -95,7 +95,7 @@ check "sessions <folder>: the window starts at the folder's last pass" 2 "$(pyth
 touch -d '-1 minute' "$HOME/.claude/projects/p/s1.jsonl" "$HOME/.codex/sessions/2026/c1.jsonl"  # written before the pass ends
 PATH="$T/bin:$PATH" python3 "$R/bin/steward" done "$S" 2 replies, 1 PR
 check "done: the pass's time and summary end passes.txt, and the next window starts there" "2 replies, 1 PR|0" "$(tail -1 "$S/passes.txt" | cut -d' ' -f2-)|$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
-# round: gh-watch-start --pass on the folder with the mergeworthy repo whole and each open PR of yours
+# round: gh-watch-start --round on the folder with the mergeworthy repo whole and each open PR of yours
 SB="$T/sbin"; mkdir -p "$SB"; cp "$R/bin/steward" "$SB/"; printf '#!/bin/sh
 echo "$@" > "%s/args"
 ' "$T" > "$SB/gh-watch-start"; chmod +x "$SB/gh-watch-start"
@@ -103,7 +103,7 @@ printf '#!/bin/sh
 echo %s
 ' "'[{\"repository\":{\"nameWithOwner\":\"o/r\"},\"number\":5},{\"repository\":{\"nameWithOwner\":\"x/y\"},\"number\":9}]'" > "$T/bin/gh"
 PATH="$T/bin:$PATH" python3 "$SB/steward" round "$S"
-check "round: one watcher round on the folder, the mergeworthy repo whole and each open PR" "--pass $(readlink -f "$S") nitedani/mergeworthy all o/r 5 x/y 9" "$(cat "$T/args")"
+check "round: one watcher round on the folder, the mergeworthy repo whole and each open PR" "--round $(readlink -f "$S") nitedani/mergeworthy all o/r 5 x/y 9" "$(cat "$T/args")"
 echo "failures: $fails"
 rm -rf "$T"
 [ "$fails" -eq 0 ]
