@@ -1015,6 +1015,24 @@ python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started
 done_events > "$T/ev4"; touch -d '5 minutes ago' "$JD/grand.jsonl"; done_events > "$T/ev5"
 check "a quiet agent whose own agent still runs is not done; it is once that one is" "0 1" "$(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev4") $(grep -c "AGENT DONE $T/jobs/parent-ticket.md" "$T/ev5")"
 python3 "$R/bin/agent-job" done "$T/jobs/parent-ticket.md" >/dev/null; python3 "$R/bin/agent-job" done "$T/jobs/grand-ticket.md" >/dev/null
+# a quiet agent whose T3 thread still has a run going (a turn waiting on a background command) hasn't finished either
+mkdir -p "$HOME/.t3/userdata"; python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+c.execute('create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)')
+c.execute('create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text, status text)')
+c.execute('create table orchestration_v2_projection_runs (run_id text, thread_id text, status text)')
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('p1', 'busy-1', '{"nativeThreadRef":{"driver":"claudeAgent","nativeId":"t3busy"}}')""")
+c.execute("insert into orchestration_v2_projection_runs values ('r1', 'busy-1', 'waiting')"); c.commit()  # waiting on an approval: as active as running
+EOF2
+reg "Execute $T/jobs/t3busy-ticket.md exactly"; child_log "$JD/t3busy.jsonl" "Execute $T/jobs/t3busy-ticket.md exactly" 5 text
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "t3busy-ticket" in open(f).read()]'
+t3db() { python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(sys.argv[2]); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" "$1"; }
+done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status = 'completed'"
+t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"; done_events > "$T/ev8"
+check "a quiet agent whose T3 run is still active (waiting), or whose delegated task is (pending), is not done; it is once both ended" "0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8")"
+python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
