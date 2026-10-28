@@ -21,24 +21,26 @@ def passed_by(wd):
 ACTIVE_RUNS = ('queued', 'preparing', 'starting', 'running', 'waiting')
 ACTIVE_TASKS = ('pending', 'starting', 'running', 'waiting')
 
-def _thread(session_id):
-    """(read-only connection to T3 Code's state, the T3 thread a Claude session runs in), or None."""
+def _ask(session_id, ask, default):
+    """ask(read-only connection to T3 Code's state, the T3 thread a Claude session runs in), or default without that thread or on
+    an error. The connection is closed after: an unclosed one stays open until the cycle collector runs, so a watcher that asks
+    for days runs out of file handles."""
+    try: c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
+    except sqlite3.Error: return default
     try:
-        c = sqlite3.connect(f"file:{os.path.expanduser('~/.t3/userdata/statev2.sqlite')}?mode=ro", uri=True, timeout=2)
         r = c.execute("select thread_id from orchestration_v2_projection_provider_threads where json_extract(payload_json, '$.nativeThreadRef.nativeId') = ?",
                       (session_id,)).fetchone()
-        return (c, r[0]) if r else None
+        return ask(c, r[0]) if r else default
     except sqlite3.Error:
-        return None
+        return default
+    finally:
+        c.close()
 
 def _in(values):
     return f"({','.join('?' * len(values))})"
 
-def threads(session_id):
-    """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""
-    t, out = _thread(session_id), []
-    if not t: return out
-    c, tid = t
+def _chain(c, tid):
+    out = []
     try:
         while tid and tid not in out and len(out) < 8:
             out.append(tid)
@@ -48,34 +50,26 @@ def threads(session_id):
         pass
     return out
 
+def threads(session_id):
+    """The T3 thread a Claude session runs in, then the threads that delegated it, read from T3 Code's state."""
+    return _ask(session_id, _chain, [])
+
 def _busy(c, tid):
     return bool(c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone()
                 or c.execute(f"select 1 from orchestration_v2_projection_subagents where thread_id = ? and status in {_in(ACTIVE_TASKS)}", (tid, *ACTIVE_TASKS)).fetchone())
 
 def busy(session_id):
     """True when the Claude session's T3 thread has an active run, or a task it delegated still active: T3 will act on it again."""
-    t = _thread(session_id)
-    try: return bool(t) and _busy(*t)
-    except sqlite3.Error: return False
+    return _ask(session_id, _busy, False)
 
 def task_done(session_id):
     """True when the Claude session is a T3 delegated task that completed and isn't busy: T3 won't wake it again."""
-    t = _thread(session_id)
-    if not t: return False
-    c, tid = t
-    try:
-        return c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone() == ('completed',) \
-            and not _busy(c, tid)
-    except sqlite3.Error:
-        return False
+    return _ask(session_id, lambda c, tid: c.execute("select status from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone()
+                == ('completed',) and not _busy(c, tid), False)
 
 def is_task(session_id):
     """True when the Claude session is a T3 delegated task (a child agent), not a main session."""
-    t = _thread(session_id)
-    if not t: return False
-    c, tid = t
-    try: return bool(c.execute("select 1 from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone())
-    except sqlite3.Error: return False
+    return _ask(session_id, lambda c, tid: bool(c.execute("select 1 from orchestration_v2_projection_subagents where child_thread_id = ?", (tid,)).fetchone()), False)
 
 def first(path):
     try: return open(path).read().split()[0]

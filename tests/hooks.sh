@@ -1052,6 +1052,14 @@ done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
 t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"; done_events > "$T/ev8"
 check "a quiet agent whose T3 run is still active (waiting), or whose delegated task is (pending), is not done; it is once both ended" "0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8")"
+# the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
+check "T3 state lookups leave no connection open" 0 "$(python3 -c '
+import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
+for _ in range(40): steward.busy("t3busy"); steward.task_done("t3busy"); steward.is_task("t3busy"); steward.threads("t3busy"); steward.busy("nobody")
+def name(f):
+    try: return os.readlink("/proc/self/fd/" + f)
+    except OSError: return ""
+print(sum("statev2" in name(f) for f in os.listdir("/proc/self/fd")))' "$R/hooks")"
 python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
