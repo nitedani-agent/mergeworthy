@@ -447,6 +447,8 @@ if status:
         elif int(t[1]) < 24:
             _times.append(now.replace(hour=int(t[1]), minute=int(t[2]), second=0, microsecond=0))
     _times += [None] if re.search(r'\b(?:tomorrow|tonight|later today|in an? (?:hour|minute)|in \d+ (?:hours?|minutes?))\b', _st, re.I) else []
+    for d in re.finditer(r'\b\d{4}-\d\d-\d\d\b(?!T\d)|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b|\b\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b', _st, re.I):
+        findings.append(f"status: {d[0]!r} is a date outside an ISO time, which this check and stop-lint read as today: write the time with it ('by 2026-10-28T16:00Z')")
     if None in _times:
         findings.append("status: a relative time ('tomorrow', 'in an hour'): write the time in UTC, with its date when it isn't today")
     for at in (x for x in _times if x and x <= now):
