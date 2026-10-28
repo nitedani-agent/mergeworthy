@@ -1020,6 +1020,7 @@ for e in ev:
     elif e == 'queue':  # t3_thread_send in queue mode: a new task of that thread, named by threadId, not childThreadId
         w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "q1", "name": "mcp__t3-code__t3_thread_send", "input": {}}]}})
         w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "q1", "content": json.dumps({"threadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "taskId": "node:delegated-task:command%3Amcp%3Aabc%3Athread-send%3A5676", "status": "running"})}]}})
+    elif e == 'continued': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:provider-continuation%3Amessage%3Athread%3Athread%253Adelegated-task%253Acommand%25253Amcp%25253Aabc%25253Adelegate-task%25253Aloop-a-1%3Aordinal%3A1%3Aff (Loop A) [completed]: The e2e lanes are still running; I'll continue when they finish."}})
     elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
     elif e == 'waiting': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]: The gates are still running; I'll continue when they finish."}})
@@ -1058,6 +1059,7 @@ rl_tr $'Done for now.
 
 Running:
 - Loop A on the head' user status:running waiting; check "a sub-agent whose turn ended while its gates still run (T3 says completed, it says it continues) is still running" 0 "$(stop "$T")"
+rl_tr $'Done for now.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1) (e2e gates)' user status:running notice continued status:completed; check "a thread T3 continued on its own, waiting on its gates, is running even after a read of its first task says completed" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
@@ -1934,6 +1936,7 @@ check "a commit on a branch that shares no history with origin's default (a PR's
   "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
 check "a push from a checkout the command makes first passes when it goes to a local path or the local repo it was cloned from, or is a dry run" "0 0 0 2" \
   "$(bg 'T=$(mktemp -d); cd $T; git init -q --bare o.git; git init -q r; cd r; git push -q ../o.git main' "$T") $(bg 'git clone -q /tmp/o.git seed; cd seed; git push -q origin HEAD:main' "$T") $(bg 'git worktree add -q --detach ../wt HEAD; cd ../wt; git push --dry-run https://github.com/vikejs/vike.git HEAD:x' "$T") $(bg 'git clone -q https://github.com/vikejs/vike.git v; cd v; git push origin HEAD:x' "$T")"
+check "a draft path through a variable the command set (D=...; --body-file \$D/x.md) is the path written out" 1   "$(MERGEWORTHY_WATCHER=off bg "X=$T/vdir; gh issue create --repo o/r --title t --body-file \$X/nogate.md" "$T" >/dev/null; grep -c "no gate record for $T/vdir/nogate.md" "$T/err")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
     'direnv exec . git push' 'flock /tmp/l git push' 'taskset 0x1 git push' 'chronic git push' "su -c 'git push' me" "script -qc 'git push' /dev/null" "fish -c 'git push'" 'parallel -k git push ::: x'; do printf '%s ' "$(pushes "$c")"; done | xargs)"

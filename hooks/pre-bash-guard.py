@@ -36,6 +36,10 @@ def setting(name, default):
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 cwd = d.get('cwd') or os.getcwd()
+def expandvars(p):
+    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in."""
+    return re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), p)
+
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
 
@@ -43,7 +47,7 @@ def short_has(t, letter):  # -f, -9f, -fu ...
     return re.match(r'^-[A-Za-z0-9]*' + letter + r'[A-Za-z0-9]*$', t) is not None
 
 def gated_file(p, has_cd, create=False):
-    p = os.path.expandvars(os.path.expanduser(p))
+    p = os.path.expanduser(expandvars(p))
     if not os.path.isabs(p):
         if has_cd:
             block(f"relative draft path {p} after a cd: use an absolute path")
@@ -171,7 +175,7 @@ def check_finality(repo, num, files):
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
     if len(rounds) < 2: return
     for f in files:
-        f = os.path.expandvars(os.path.expanduser(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = os.path.expanduser(expandvars(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: continue
@@ -217,7 +221,7 @@ def check_context(thread, files):
     if not thread: return
     tc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
     for f in files:
-        f = os.path.expandvars(os.path.expanduser(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = os.path.expanduser(expandvars(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: flags = []
@@ -662,7 +666,7 @@ def check(t, has_cd):
                 draft = '--draft' in rest or '-d' in rest
                 w = post_words.words((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
                 for f in files:
-                    f = os.path.join(cwd, os.path.expandvars(os.path.expanduser(f)))
+                    f = os.path.join(cwd, os.path.expanduser(expandvars(f)))
                     lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
                     lead = lines[1:2] if lines[:1] and lines[0].startswith('<img') else lines[:1]  # under the badge
                     if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):

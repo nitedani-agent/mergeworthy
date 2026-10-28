@@ -170,19 +170,21 @@ if running and not child:
                     thread[r['taskId']] = str(r.get('childThreadId') or r.get('threadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
                     seen.add(r['taskId'])
     text = running.group(1).lower()
-    # a link names a task or its thread, whose latest task it is; a list with no link names a task by its title: the latest task whose
-    # title holds that title ("memory refresh" is the refresh just launched, "review" the round r2 of it, not an earlier finished one)
-    by_thread = {}
-    for i in status:
-        if any(re.search(r'(?:%3a|[^\w-])' + re.escape(x.rsplit('%3A', 1)[-1].lower()) + r'(?![\w-])', text) for x in (i, thread.get(i, i))):
-            by_thread[thread.get(i, i).rsplit('%3A', 1)[-1]] = i
-    named = {i: status[i] for i in by_thread.values()}
+    # a link names a thread, and a list with no link names a thread by a title its tasks hold ("memory refresh" is the refresh just
+    # launched). A thread is all its tasks: the first, each message sent to it, each turn T3 continues on its own (provider-continuation).
+    # It is finished only when every task of it is; it is current when one of them was heard of since the user's last message.
+    def name_of(i):
+        m = re.search(r'%25253A([^%]+)%3Aordinal', i)  # a continuation's id holds its thread's, encoded twice
+        return (m[1] if m else thread.get(i, i).rsplit('%3A', 1)[-1]).lower()
+    threads = {}
+    for i in status: threads.setdefault(name_of(i), []).append(i)
+    named = [g for n, g in threads.items() if re.search(r'(?:%3a|[^\w-])' + re.escape(n) + r'(?![\w-])', text)]
     if not named:
         for t in {t.lower() for _, t in status.values() if t and t.lower() in text}:
-            i = [i for i, (_, u) in status.items() if t in u.lower()][-1]
-            named[i] = status[i]
-    done = [t or i for i, (st, t) in named.items() if re.match(r'(completed|failed|cancel+ed|interrupted|error)', st)]
-    stale = [t or i for i in named if i not in seen]
+            named.append(threads[name_of([i for i, (_, u) in status.items() if t in u.lower()][-1])])
+    label = lambda g: next((status[i][1] for i in g if status[i][1]), g[0])
+    done = [label(g) for g in named if all(re.match(r'(completed|failed|cancel+ed|interrupted|error)', status[i][0]) for i in g)]
+    stale = [label(g) for g in named if not set(g) & seen]
     if launched and (done or stale):
         print(f"Your Running list names {', '.join(done)}, whose task status is terminal." if done else
               f"Your Running list names {', '.join(stale)}, not read from T3 since the user's last message.", "Read task_status for each agent you list "
