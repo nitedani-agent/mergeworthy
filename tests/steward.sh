@@ -52,20 +52,24 @@ check "sessions: text the harness injects (a skill's, isMeta) is no turn and no 
 check "sessions: a log older than --since is left out" 0 "$(python3 "$R/bin/steward" sessions --since "$(iso '+1 hour')" | grep -c jsonl)"
 
 # ---------- metrics: two PRs of the window (one merged first pass, one reworked), one of the window before, one without a badge ----------
-C1=$(iso '-3 days'); M1=$(iso '-2 days'); C2=$(iso '-4 days'); R2=$(iso '-3 days'); M2=$(iso '-1 days'); C3=$(iso '-7 days'); M3=$(iso '-6 days')
+C1=$(iso '-3 days'); M1=$(iso '-2 days'); C10=$(iso '-8 days'); R10=$(iso '-3 days'); B10=$(iso '-2 days'); M10=$(iso '-1 days'); C9=$(iso '-1 days'); C2=$(iso '-4 days'); R2=$(iso '-3 days'); M2=$(iso '-1 days'); C3=$(iso '-7 days'); M3=$(iso '-6 days')
 cat > "$T/bin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
   "api user") echo '{"login":"me"}' ;;
+  *is:open*) echo '{"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
   *search/issues*) cat <<'J'
 {"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
 {"number":6,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
 {"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},
-{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}
+{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"},
+{"number":10,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}
 J
   ;;
-  *n=5*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$M1","comments":{"totalCount":0}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C1"}}]}}}}}' ;;
-  *n=6*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C2","mergedAt":"$M2","author":{"login":"me"},"timelineItems":{"nodes":[{"createdAt":"$C2"}]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"MEMBER","state":"CHANGES_REQUESTED","submittedAt":"$R2","comments":{"totalCount":3}},{"author":{"login":"me"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$R2","comments":{"totalCount":1}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C2"}},{"commit":{"committedDate":"$M2"}}]}}}}}' ;;
+  *n=10*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C10","mergedAt":"$M10","closedAt":"$M10","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$R10","comments":{"totalCount":0}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C10","parents":{"totalCount":1}}},{"commit":{"committedDate":"$B10","parents":{"totalCount":2}}}]}}}}}' ;;
+  *n=9*) echo '{"data":{"repository":{"pullRequest":{"state":"OPEN","merged":false,"createdAt":"$C9","mergedAt":null,"closedAt":null,"author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
+  *n=5*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$M1","comments":{"totalCount":0}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C1","parents":{"totalCount":1}}}]}}}}}' ;;
+  *n=6*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C2","mergedAt":"$M2","author":{"login":"me"},"timelineItems":{"nodes":[{"createdAt":"$C2"}]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"MEMBER","state":"CHANGES_REQUESTED","submittedAt":"$R2","comments":{"totalCount":3}},{"author":{"login":"me"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$R2","comments":{"totalCount":1}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C2","parents":{"totalCount":1}}},{"commit":{"committedDate":"$M2","parents":{"totalCount":1}}}]}}}}}' ;;
   *n=7*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C3","mergedAt":"$M3","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
   *) echo "unexpected gh \$*" >&2; exit 1 ;;
 esac
@@ -79,11 +83,13 @@ printf '%s\n' '{"type":"user","message":{"role":"user","content":"review https:/
 out=$(PATH="$T/bin:$PATH" python3 "$R/bin/steward" metrics "$S"); rc=$?
 rm "$HOME/.claude/projects/p/tie.jsonl"  # naming #5 and #6 once each, it is neither one's cost
 rec() { python3 -c 'import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; p=[x for x in r if x["pr"]==sys.argv[2]][-1]; print(*(p[k] for k in sys.argv[3:]))' "$S/metrics.jsonl" "$@"; }
-check "metrics: exits 0 and records the three badge PRs, not the user's own" "0 3" "$rc $(wc -l < "$S/metrics.jsonl")"
+check "metrics: exits 0 and records the five badge PRs (one still open), not the user's own" "0 5" "$rc $(wc -l < "$S/metrics.jsonl")"
 check "metrics: a merge with only an approval is first-pass; its tokens (no cache reads) come from the session naming it; its TASTE and the MISS of a follow-up naming it and #6 counted" "merged True 0 0 24.0 150 this 2" "$(rec o/r#5 outcome first_pass change_requests commits_after_review hours_to_merge tokens window followup_miss_taste)"
 check "metrics: a change request and a commit after it: not first-pass; the author's own review isn't a maintainer's; its MISS counted" "False 1 1 1 3 None 1" "$(rec o/r#6 first_pass review_rounds change_requests commits_after_review review_comments tokens followup_miss_taste)"
-check "metrics: a PR created before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
-check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 1/2 (50%) |" "$(echo "$out" | grep 'north star')"
+check "metrics: a PR merged before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
+check "metrics: a PR created before --since and merged after it counts in this window; a merge of the base after approval isn't rework" "this True 0" "$(rec o/r#10 window first_pass commits_after_review)"
+check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
+check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 2/3 (66%) |" "$(echo "$out" | grep 'north star')"
 
 check "sessions <folder>: the window starts at the folder's last pass" 2 "$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
 touch -d '-1 minute' "$HOME/.claude/projects/p/s1.jsonl" "$HOME/.codex/sessions/2026/c1.jsonl"  # written before the pass ends

@@ -10,9 +10,10 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
   One `<folder> (<watcher>, <session>)\t<kind>\t<line>` per item.
 - sessions: this machine's Claude Code and Codex logs written since --since (default: the folder's last pass, else 7 days):
   tokens, turns, hours, the PRs they name, and each user message that corrects the agent, with its line. Paths relative to ~.
-- metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) created since --since
-  (default: the last line of <folder>/passes.txt, else 60 days), and the window as long before it: outcome, hours to merge,
-  first-pass acceptance (merged with no change request and no commit after the first maintainer review), review rounds,
+- metrics: the PRs the author opened (default: you; only those whose body starts with an agent's badge) settled (merged or closed)
+  since --since (default: the last line of <folder>/passes.txt, else 60 days), in the window as long before it, and still open:
+  outcome, hours to merge, first-pass acceptance (merged with no change request and no commit after the first maintainer review
+  but a merge of the base), review rounds,
   FOLLOW-UP MISS/TASTE verdicts, and the tokens (cache reads left out) of the local sessions that name the PR more than any other
   (unknown when none does).
 """
@@ -176,10 +177,10 @@ def gh(*args):
 
 
 QUERY = '''query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
- state merged createdAt mergedAt author{login}
+ state merged createdAt mergedAt closedAt author{login}
  timelineItems(itemTypes:[READY_FOR_REVIEW_EVENT],first:1){nodes{... on ReadyForReviewEvent{createdAt}}}
  reviews(first:100){nodes{author{login} authorAssociation state submittedAt comments{totalCount}}}
- commits(last:100){nodes{commit{committedDate}}}}}}'''
+ commits(last:100){nodes{commit{committedDate parents{totalCount}}}}}}}'''
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 
 
@@ -189,11 +190,11 @@ def pr_record(repo, num):
     revs = [v for v in p['reviews']['nodes'] if (v.get('author') or {}).get('login') != (p.get('author') or {}).get('login')
             and v['authorAssociation'] in MAINTAINER and v.get('submittedAt')]
     first = min((v['submittedAt'] for v in revs), default=None)
-    after = sum(1 for c in p['commits']['nodes'] if first and c['commit']['committedDate'] > first)
+    after = sum(1 for c in p['commits']['nodes'] if first and c['commit']['committedDate'] > first and c['commit']['parents']['totalCount'] < 2)  # a merge of the base isn't rework
     ready = (p['timelineItems']['nodes'] or [{}])[0].get('createdAt') or p['createdAt']
     changes = sum(v['state'] == 'CHANGES_REQUESTED' for v in revs)
     hours = lambda a: round((epoch(p['mergedAt']) - epoch(a)) / 3600, 1) if p['merged'] else None
-    return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
+    return {'pr': f"{repo}#{num}", 'created': p['createdAt'], 'settled': p['mergedAt'] or p['closedAt'], 'outcome': 'merged' if p['merged'] else p['state'].lower(),
             'hours_to_merge': hours(p['createdAt']), 'hours_ready_to_merge': hours(ready), 'review_rounds': len(revs),
             'change_requests': changes, 'review_comments': sum(v['comments']['totalCount'] for v in revs),
             'commits_after_review': after, 'first_pass': bool(p['merged'] and not changes and not after)}
@@ -217,54 +218,66 @@ def summary(rows):
     first = sum(r['first_pass'] for r in merged)
     med = lambda xs: round(statistics.median(xs), 1) if xs else '-'
     tokens = [r['tokens'] for r in merged if r['tokens'] is not None]
-    return [str(len(rows)), str(len(merged)), f"{first}/{len(merged)}" + (f" ({100 * first // len(merged)}%)" if merged else ''),
-            str(med([r['hours_to_merge'] for r in merged])), str(med(tokens)) + (f" ({len(tokens)} known)" if merged else ''),
-            str(sum(r['followup_miss_taste'] for r in rows))]
+    return [('PRs settled (merged or closed)', len(rows)), ('merged', len(merged)),
+            ('first-pass acceptance (north star)', f"{first}/{len(merged)}" + (f" ({100 * first // len(merged)}%)" if merged else '')),
+            ('median hours to merge', med([r['hours_to_merge'] for r in merged])),
+            ('median tokens per merged PR', f"{med(tokens)}" + (f" ({len(tokens)} known)" if merged else '')),
+            ('FOLLOW-UP MISS/TASTE', sum(r['followup_miss_taste'] for r in rows))]
+
+
+def search(q):
+    items, page = [], 1
+    while True:
+        got = gh('api', '-X', 'GET', 'search/issues', '-f', f'q={q}', '-F', 'per_page=100', '-F', f'page={page}')['items']
+        items += got
+        if len(got) < 100:
+            return items
+        page += 1
+
+
+def costs(since):
+    """{PR key: [tokens, turns, session hours]} of the local sessions since then, each counted for the PR it names more than any other."""
+    cost = {}
+    for p in logs(since):
+        s = session(p)
+        most = [pr for pr, n in s['prs'].items() if n == max(s['prs'].values())]
+        if len(most) == 1:  # an orchestrator naming many PRs isn't each one's cost
+            c = cost.setdefault(most[0], [0, 0, 0.0])
+            c[0] += s['tokens']; c[1] += s['turns']; c[2] += s['hours'] or 0
+    return cost
 
 
 def metrics(folder, since, authors):
-    windows = (since - (NOW - since), since)
+    """A PR counts in the window it settled in (merged or closed), so a window isn't judged by the fast merges of PRs still open."""
+    start = since - (NOW - since)
     me = gh('api', 'user')['login']
-    items = []
-    for a in authors or [me]:
-        q = f"is:pr author:{a} created:>={iso(windows[0])[:10]}"
-        page = 1
-        while True:
-            got = gh('api', '-X', 'GET', 'search/issues', '-f', f'q={q}', '-F', 'per_page=100', '-F', f'page={page}')['items']
-            items += got
-            if len(got) < 100:
-                break
-            page += 1
     badge = re.compile(r'\A\s*(?:<img [^>]*alt="(?:Claude|Codex)"[^>]*>\s*)+')
-    items = [i for i in items if badge.match(i.get('body') or '') or i['user']['login'] != me]
-    fu = followups()
-    cost = {}
-    for p in logs(windows[0] - 86400):
-        s = session(p)
-        most = [pr for pr, n in s['prs'].items() if n == max(s['prs'].values())]
-        if len(most) == 1:  # a session counts for the PR it names more than any other: an orchestrator naming many PRs isn't each one's cost
-            c = cost.setdefault(most[0], [0, 0, 0.0])
-            c[0] += s['tokens']; c[1] += s['turns']; c[2] += s['hours'] or 0
-    rows = []
+    items = [i for a in authors or [me] for q in (f"closed:>={iso(start)[:10]}", "is:open") for i in search(f"is:pr author:{a} {q}")
+             if badge.match(i.get('body') or '') or i['user']['login'] != me]
+    fu, cost, rows = followups(), costs(start - 86400), []
     for i in items:
-        repo = i['repository_url'].split('/repos/', 1)[1]
-        r = pr_record(repo, i['number'])
-        if epoch(r['created']) < windows[0]:
+        r = pr_record(i['repository_url'].split('/repos/', 1)[1], i['number'])
+        if r['settled'] and epoch(r['settled']) < start:
             continue  # the search matches by day
         c = cost.get(r['pr'])
         r.update(tokens=c[0] if c else None, turns=c[1] if c else None, session_hours=round(c[2], 1) if c else None,
-                 followup_miss_taste=sum(v in ('MISS', 'TASTE') for v in fu.get(r['pr'], [])), window='this' if epoch(r['created']) >= since else 'previous')
+                 followup_miss_taste=sum(v in ('MISS', 'TASTE') for v in fu.get(r['pr'], [])),
+                 window='open' if not r['settled'] else 'this' if epoch(r['settled']) >= since else 'previous')
         rows.append(r)
     with open(os.path.join(folder, 'metrics.jsonl'), 'a') as f:
         for r in rows:
             f.write(json.dumps({'pass': iso(NOW), **r}) + '\n')
-    names = ['PRs opened', 'merged', 'first-pass acceptance (north star)', 'median hours to merge', 'median tokens per merged PR', 'FOLLOW-UP MISS/TASTE']
-    prev, this = summary([r for r in rows if r['window'] == 'previous']), summary([r for r in rows if r['window'] == 'this'])
-    print(f"| Since {iso(since)[:10]} vs the {round((NOW - since) / 86400)} days before | previous | this |\n|---|---|---|")
-    for n, a, b in zip(names, prev, this):
-        print(f"| {n} | {a} | {b} |")
+    print_tables(rows, since)
+
+
+def print_tables(rows, since):
+    window = lambda w: [r for r in rows if r['window'] == w]
+    print(f"| Settled since {iso(since)[:10]} vs the {round((NOW - since) / 86400)} days before | previous | this |\n|---|---|---|")
+    for (name, a), (_, b) in zip(summary(window('previous')), summary(window('this'))):
+        print(f"| {name} | {a} | {b} |")
+    print(f"\nOpen now: {len(window('open'))}")
     print("\n| PR | outcome | rounds | change requests | commits after review | hours to merge | tokens |\n|---|---|---|---|---|---|---|")
-    for r in sorted((r for r in rows if r['window'] == 'this'), key=lambda r: r['created']):
+    for r in sorted(window('this'), key=lambda r: r['settled']):
         print(f"| {r['pr']} | {r['outcome']} | {r['review_rounds']} | {r['change_requests']} | {r['commits_after_review']} | {r['hours_to_merge'] if r['hours_to_merge'] is not None else '-'} | {r['tokens'] if r['tokens'] is not None else 'unknown'} |")
 
 
