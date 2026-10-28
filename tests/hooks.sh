@@ -1180,6 +1180,42 @@ tr_file 'The work is done: https://github.com/o/r/pull/7'
 check "a done message whose linked PR is ready and green passes" 0 "$(stop "$T")"
 tr_file 'It is not done: https://gitlab.com/g/p/-/merge_requests/96 still needs green CI.'
 check "a message saying it is not done passes" 0 "$(stop "$T")"
+tr_file 'Ezek nincsenek még kész: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file "It isn't ready for review: https://gitlab.com/g/p/-/merge_requests/96 still needs green CI."
+check "a done word negated in Hungarian or English is no claim" "0 0" "$a $(stop "$T")"
+tr_file 'It is not quite yet ready for review: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Once it is ready for review, I will send https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Amint kész, szólok: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'A review-ig kész lesz: https://gitlab.com/g/p/-/merge_requests/96'
+check "a negation, condition or plan anywhere earlier in the done word's clause is no claim" "0 0 0 0" "$a $(stop "$T")"
+tr_file 'It will be ready for review tomorrow: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész lesz délre: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Majd kész, ha átment a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a future anywhere in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+tr_file 'It would be ready for review if CI passed: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'It would be ready for review with green CI: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
+tr_file 'Kész lenne, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a conditional in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
+tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
+tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a claim after a quoted line" 2 "$(stop "$T")"
+tr_file 'A „kész” jelzés még a régi futásé: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'The `ready for review` step comes next: https://gitlab.com/g/p/-/merge_requests/96'
+check "a done word in quotes or code is no claim" "0 0" "$a $(stop "$T")"
+echo '{"state":"open","draft":true,"head":{"sha":"h8"}}' > "$FX/repos_o_r_pulls_8"
+echo '{"check_runs":[{"name":"test","conclusion":"success"}]}' > "$FX/repos_o_r_commits_h8_check-runs"
+tr_file $'A https://github.com/o/r/pull/7 már ready for review állapotban van.\n\nA https://github.com/o/r/pull/8 még vázlat.'
+check "a claim about one PR is checked against that PR, not another linked draft" 0 "$(stop "$T")"
+tr_file $'Ezek vannak még hátra:\n- https://github.com/o/r/pull/8 (vázlat):\n  1. a kész állapotú leírás átnézése.'
+check "a done word past the opening sentence is no claim" 0 "$(stop "$T")"
+tr_file 'All done: https://github.com/o/r/pull/8 is up.'
+check "BLOCK: a claim about a draft PR" "2 1" "$(stop "$T") $(grep -c 'pull/8 (draft)' "$T/err")"
+tr_file $'All done.\n\nhttps://github.com/o/r/pull/8 needs a look.'
+check "BLOCK: an opening sentence calling the work done, naming no PR, is about every linked PR" 2 "$(stop "$T")"
 echo '{"check_runs":[{"name":"test","conclusion":null}]}' > "$FX/repos_o_r_commits_h1_check-runs"
 tr_file 'All done, https://github.com/o/r/pull/7 is ready for review.'
 check "BLOCK: a PR whose checks are still running" 2 "$(stop "$T")"

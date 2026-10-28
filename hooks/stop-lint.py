@@ -143,7 +143,7 @@ working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds or
 # the check-in asks only where work can still be waiting after the answer: a work folder it worked in, an agent it started, a Monitor
 may_wait = delegated or bool(task_dirs or monitor_cmds or t3_dirs)
 # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
-own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|^>.*$', ' ', last, flags=re.S | re.M)
+own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>[^\n]*$', ' ', last, flags=re.S | re.M)
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
 OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
          r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"
@@ -218,15 +218,28 @@ if running and not child:
               f"Your Running list names {', '.join(stale)}, not read from T3 since the user's last message.", "Read task_status for each agent you list "
               "and list only the ones still working (mergeworthy:writing §Reports to the user).", file=sys.stderr)
         sys.exit(2)
-# A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready)
-DONE = r"(?<!not )(?<!nem )\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
-if not child and re.search(DONE, own.strip()[:300], re.I):
+# A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready).
+# The opening sentence is about the PRs it links ("#1 is ready for review", while #26 is a draft); one linking none, about all of them
+DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
+# a negation or a condition earlier in the done word's clause: "isn't quite ready", "once it is ready", "amint kész"
+NOT_NOW = re.compile(r"\b(?:not|nem|nincs(?:enek)?|\w+n['’]t|once|when|if|until|after|ha|amint|amikor|mihelyt|amíg|\w+-ig)\b", re.I)
+# a future or a conditional anywhere in its clause: "it will be ready for review tomorrow", "holnapra kész lesz", "kész lenne"
+FUTURE = re.compile(r"\b(?:will|would|\w+['’]ll|going to|tomorrow|later|soon|lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan)\b", re.I)
+# a clause ends at a comma, semicolon or colon, or before a conjunction: "the tests are not flaky | and the work is done"
+CLAUSE = re.compile(r"[,;:]|(?=\b(?:and|but|so|és|de|ezért|viszont|majd)\b)", re.I)
+LINK = r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)'
+SENTENCE = r'(?<=[.!?])\s+|\n+'
+first = re.split(SENTENCE, own.strip())[0]
+def is_claim(m):
+    before, after = CLAUSE.split(first[:m.start()])[-1], CLAUSE.split(first[m.start():])[0]
+    return not NOT_NOW.search(before) and not FUTURE.search(before + after)
+if not child and any(map(is_claim, re.finditer(DONE, first, re.I))):
     import subprocess, urllib.parse
     def api(cmd):
         try: return json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout or 'null')
         except (OSError, ValueError, subprocess.SubprocessError): return None
     unfinished = []
-    for host, path, n in list(dict.fromkeys(re.findall(r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)', last)))[:10]:
+    for host, path, n in list(dict.fromkeys(re.findall(LINK, first) or re.findall(LINK, last)))[:10]:
         url = f'https://{host}/{path}/{"pull" if host == "github.com" else "-/merge_requests"}/{n}'
         if host == 'github.com':
             pr = api(['gh', 'api', f'repos/{path}/pulls/{n}'])
@@ -279,7 +292,7 @@ if not child and last.strip():
         return out
     url_repos = re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', last)
     states, wrong = {}, []
-    for sentence in re.split(r'(?<=[.!?])\s+|\n+', own):
+    for sentence in re.split(SENTENCE, own):
         for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I) and not LATER.search(re.split(r'[,;:]', sentence[:m.start()])[-1] + sentence[m.start():])]:
             key = (m['r1'] or m['r2'], m['n1'] or m['n2'])
             if key not in states:
