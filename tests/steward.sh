@@ -37,7 +37,8 @@ with open(os.path.join(home, '.claude/projects/p/s1.jsonl'), 'w') as f:
               {'type': 'assistant', 'timestamp': t0, 'message': {'id': 'm1', 'content': [{'type': 'thinking'}], 'usage': {'input_tokens': 100, 'output_tokens': 50, 'cache_read_input_tokens': 1000}}},
               {'type': 'assistant', 'timestamp': t0, 'message': {'id': 'm1', 'content': [{'type': 'tool_use'}], 'usage': {'input_tokens': 100, 'output_tokens': 50, 'cache_read_input_tokens': 1000}}},
               {'type': 'user', 'timestamp': t1, 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'content': 'why did it fail'}]}},
-              {'type': 'user', 'timestamp': t1, 'message': {'role': 'user', 'content': "why did you skip the tests? that's wrong"}}]:
+              {'type': 'user', 'timestamp': t1, 'message': {'role': 'user', 'content': "why did you skip the tests? that's wrong"}},
+              {'type': 'user', 'isMeta': True, 'timestamp': t1, 'message': {'role': 'user', 'content': [{'type': 'text', 'text': 'Base directory for this skill: stop if it is wrong'}]}}]:
         f.write(json.dumps(e) + '\n')
 with open(os.path.join(home, '.codex/sessions/2026/c1.jsonl'), 'w') as f:
     for e in [{'timestamp': t0, 'type': 'event_msg', 'payload': {'type': 'user_message', 'message': 'nem jó, revert it'}},
@@ -47,6 +48,7 @@ EOF
 out=$(python3 "$R/bin/steward" sessions --since "$(iso '-1 day')")
 check "sessions: the Claude log's hours, turns, tokens (one message's two content-block lines counted once) and PR; a tool result is no turn" "1" "$(echo "$out" | grep -c $'^~/.claude/projects/p/s1.jsonl\t.*\t1.0h\t2 turns\t150 tokens\to/r#5$')"
 check "sessions: the correction, with its line; the Codex log's tokens (cache reads left out) and correction" "1 1 1" "$(echo "$out" | grep -c 's1.jsonl:5'$'\t''why did you skip') $(echo "$out" | grep -c $'\t1 turns\t4000 tokens') $(echo "$out" | grep -c 'c1.jsonl:1')"
+check "sessions: text the harness injects (a skill's, isMeta) is no turn and no correction" 0 "$(echo "$out" | grep -c 's1.jsonl:6')"
 check "sessions: a log older than --since is left out" 0 "$(python3 "$R/bin/steward" sessions --since "$(iso '+1 hour')" | grep -c jsonl)"
 
 # ---------- metrics: two PRs of the window (one merged first pass, one reworked), one of the window before, one without a badge ----------

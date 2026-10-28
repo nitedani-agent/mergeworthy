@@ -104,6 +104,8 @@ def owed():
 def typed(e):
     """The text a person typed in one log line: Claude Code's user message (not a tool result or a hook's), Codex's user message."""
     m = e.get('message') if isinstance(e.get('message'), dict) else {}
+    if e.get('isMeta'):
+        return ''  # text the harness injects (a skill's), not the user's
     if e.get('type') == 'user' and m.get('role', 'user') == 'user':
         c = m.get('content')
         t = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in c or [] if isinstance(x, dict) and x.get('type') == 'text')
