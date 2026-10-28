@@ -1,5 +1,5 @@
-"""The block log, ~/.mergeworthy/hooks-fired.log: `<UTC day> <hook> <check>` the first time on that day a check blocks, the check
-being the source line that wrote its message. failclosed records it; `steward fired` reads it against each hook's `checks`."""
+"""The block log, ~/.mergeworthy/hooks-fired.log: `<UTC day> <hook> <check>` the first time on that day a check blocks (`sys.exit(2)`),
+the check being the source line that wrote its message. failclosed records it; `steward fired` reads it against each hook's `checks`."""
 import fcntl, os, time
 
 LOG = os.path.expanduser('~/.mergeworthy/hooks-fired.log')

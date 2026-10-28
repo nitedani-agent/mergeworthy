@@ -1,6 +1,6 @@
 """Imported first by every hook: an exception a hook doesn't handle blocks (exit 2, the traceback on stderr). Claude Code lets an
-action through on any other exit code, so a check that crashed would pass everything it was there to stop. A block (exit 2) is
-recorded in the block log (blocklog.py) by the line that wrote its message."""
+action through on any other exit code, so a check that crashed would pass everything it was there to stop. A check's block
+(`sys.exit(2)`, not a crash) is recorded in the block log (blocklog.py) by the line that wrote its message."""
 import os, sys
 import blocklog
 
