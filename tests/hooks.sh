@@ -1854,6 +1854,12 @@ check "a later commit of the same push with the trailer covers them" 0 "$(crpush
 echo four > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: four' -m "Cold-read: $T/coldread.md"
 echo five > "$T/cr/skills/a/SKILL.md"; git -C "$T/cr" commit -qam 'skill: five'
 check "BLOCK: on a pushed branch, a skill commit after the last trailer, naming only it" "1 0 1" "$(crpush) $(grep -c 'skill: four' "$T/cr.out") $(grep -c 'skill: five' "$T/cr.out")"
+git -C "$T/cr" checkout -qb f origin/main; mkdir -p "$T/cr/skills/b"; echo six > "$T/cr/skills/b/SKILL.md"; git -C "$T/cr" add skills
+git -C "$T/cr" commit -qm 'skill: six' -m "Cold-read: $T/coldread.md"; git -C "$T/cr" push -q origin f
+git clone -q -b main "$T/cr.git" "$T/cr2"; echo squash > "$T/cr2/skills/a/SKILL.md"; git -C "$T/cr2" commit -qam 'skill: squash (#1)'; git -C "$T/cr2" push -q origin main
+git -C "$T/cr" fetch -q; git -C "$T/cr" merge -q origin/main -m 'Merge main'
+check "a merged main's squash commit, already on a remote-tracking ref, needs no trailer of the push" "0 Merge main" \
+  "$(git -C "$T/cr" push -q origin f > "$T/cr.out" 2>&1; echo $?) $(git -C "$T/cr.git" log -1 --format=%s f)"
 # ---------- fail closed: a check that can't run blocks; the vikejs/vike#3671 session ("Fix CI"), replayed command by command ----------
 # shellcmd.parse lexes the whole command as bash does: that session's commit messages and PR body spanned lines, the old
 # line-by-line split raised, and its fallback saw only `cd`, so every check after it was skipped
