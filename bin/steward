@@ -4,8 +4,8 @@ the numbers and lists one on-demand steward pass reads (mergeworthy:steward), <f
 that `round` writes <folder>'s watcher files, `metrics` appends its records to <folder>/metrics.jsonl and `done` appends
 `<UTC time> <summary>` to <folder>/passes.txt.
 
-- fired [--days N]: the hook checks hooks/run logged as blocking, each with its last day, and the hooks with no block in N days
-  (default 60): the removal candidates.
+- fired [--days N]: the hook checks the block log (hooks/blocklog.py) holds, each with its last day, and the checks of the hooks
+  with no block in N days (default 60): the removal candidates.
 - round: `gh-watch-start --round <folder> nitedani/mergeworthy` (covered, for its rule PRs) with every open PR of yours whose body starts
   with an agent's badge: one watcher round, no daemon; the round watches
   nitedani/mergeworthy whole only when ~/.mergeworthy/steward names <folder> (gh-watch.py's steward_line).
@@ -286,24 +286,27 @@ def print_tables(rows, since):
 
 
 def fired(days):
-    """The hook checks that blocked, from hooks/run's log: each one's last day and on how many days it blocked; then the removal
-    candidates, once the log is at least `days` old: each hook, and each logged check, with no block in that window."""
-    rows = {}
-    for l in read(os.path.join(HOME, '.mergeworthy', 'hooks-fired.log')).splitlines():
-        day, hook, *msg = l.split(' ')
-        r = rows.setdefault((hook, ' '.join(msg)), [day, day, 0])
-        r[0], r[1], r[2] = min(r[0], day), max(r[1], day), r[2] + 1
-    start = min((r[0] for r in rows.values()), default=None)
+    """Each check in the block log: its last day and on how many days it blocked; then the removal candidates, once the log
+    is at least `days` old: the checks of the hooks in hooks.json with no block in that window."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'hooks'))
+    import blocklog
+    blocked = {}
+    for l in read(blocklog.LOG).splitlines():
+        day, hook, check = l.split(' ', 2)
+        blocked.setdefault((hook, check), set()).add(day)
+    start = min((min(d) for d in blocked.values()), default=None)
     print(f"# the log starts {start or 'today: nothing logged yet'}")
-    for (hook, msg), (_, last, n) in sorted(rows.items(), key=lambda x: x[1][1], reverse=True):
-        print(f"{last}\t{n} days\t{hook}\t{msg}")
+    for (hook, check), d in sorted(blocked.items(), key=lambda x: max(x[1]), reverse=True):
+        print(f"{max(d)}\t{len(d)} days\t{hook}\t{check}")
     cutoff = iso(NOW - days * 86400)[:10]
     if not start or start > cutoff:
         return print(f"# no removal candidate yet: the log covers less than {days} days")
-    hooks = sorted(set(re.findall(r'hooks/run ([\w.-]+)', read(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks', 'hooks.json')))))
-    quiet = [h for h in hooks if not any(k[0] == h and r[1] >= cutoff for k, r in rows.items())]
-    quiet += [f"{h}: {m}" for (h, m), r in rows.items() if r[1] < cutoff and h not in quiet]
-    print(f"# removal candidates, no block in {days} days: {'; '.join(quiet) or 'none'}")
+    hooks = os.path.dirname(os.path.realpath(blocklog.__file__))
+    print(f"# removal candidates, no block in {days} days:")
+    for h in sorted(set(re.findall(r'hooks/run ([\w.-]+)', read(os.path.join(hooks, 'hooks.json'))))):
+        for check, line in blocklog.checks(os.path.join(hooks, h)).items():
+            if max(blocked.get((h, check), {''})) < cutoff:
+                print(f"{h}:{line}\t{check}")
 
 
 def last_pass(folder):

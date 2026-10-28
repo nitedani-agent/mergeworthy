@@ -1,26 +1,14 @@
 #!/bin/bash
 # Runs hook script $1. An installed copy runs it from ~/.mergeworthy/current, the installed version, so an update reaches
 # sessions already running (only a change to hooks.json or this file needs a restart); a checkout (claude --plugin-dir) runs its own.
-# A block (exit 2) is logged once a day per hook and message start in ~/.mergeworthy/hooks-fired.log, the evidence
-# `steward fired` reads for which checks still catch something.
 d=$(dirname "$0")
 case "$d" in */plugins/cache/*) [ -f "$HOME/.mergeworthy/current/hooks/$1" ] && d=$HOME/.mergeworthy/current/hooks;; esac
 s=$1; shift
 # Claude Code lets the action through on any exit code but 2, and when the hook outlives its timeout (hooks.json: 600s):
 # a hook that crashed, couldn't start or ran too long has no verdict, so the action waits
 limit=${MERGEWORTHY_HOOK_SECONDS:-540}
-run() { if command -v timeout >/dev/null; then timeout -k 5 "$limit" python3 "$d/$s" "$@"; else python3 "$d/$s" "$@"; fi; }
-err=$(mktemp 2>/dev/null) || { run "$@"; rc=$?; err=; }
-if [ -n "$err" ]; then
-  run "$@" 2>"$err"; rc=$?
-  cat "$err" >&2
-  if [ "$rc" = 2 ]; then
-    l="$(date -u +%F) $s $(head -1 "$err" | tr -s '[:space:]' ' ' | cut -d' ' -f1-8)"
-    log="$HOME/.mergeworthy/hooks-fired.log"
-    { grep -qxF "$l" "$log" || echo "$l" >> "$log"; } 2>/dev/null  # no ~/.mergeworthy: nothing logged, the message unchanged
-  fi
-  rm -f "$err"
-fi
+if command -v timeout >/dev/null; then timeout -k 5 "$limit" python3 "$d/$s" "$@"; else python3 "$d/$s" "$@"; fi
+rc=$?
 case $rc in 0|2) exit $rc;; esac
 echo "BLOCKED by $s: it exited $rc$([ $rc = 124 ] && echo " after ${limit}s") without a verdict. Retry once; if it fails again, tell the user and do other work meanwhile." >&2
 exit 2
