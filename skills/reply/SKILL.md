@@ -9,13 +9,13 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
 
 ## Steps
 
-1. **Read `events.log` past the line in `events.cursor`;** move the cursor as you handle each event. After any resume, or whenever nothing was armed, do this first; re-arm an expired Monitor when its notice wakes you. Never poll GitHub in a loop. Work in this order: the user's chat message (a `/ai` comment counts as one), red CI on your PR, a maintainer's comment, the critical path, side work.
+1. **Read `events.log` past the line in `events.cursor`;** move the cursor as you handle each event. After any resume, or whenever nothing was armed, do this first; re-arm an expired Monitor when its notice wakes you. Never poll GitHub in a loop. Work in this order: the user's chat message, red CI on your PR, a maintainer's comment, the critical path, side work.
    Open: `<work folder>/events.log` · Record: `events.cursor`
 2. **Route each event** by its row of §Events.
    Open: §Events · Hook: the watcher
 3. **A comment that takes more than ~15 minutes to answer:** post a holding reply first through `post`'s fast form, carrying what you've found so far and when the answer comes, and make its owed line `holding: <URL> <ETA>`; while a drafter works, `drafting: <comment URL> <ETA>`. Before acting on any comment, check that its reason fits the line it's anchored to; if it fits another line better, ask before changing anything.
    Open: `post` · Record: the line in `replies-owed.md` · Hook: stop-lint
-4. **Decide what it asks,** yourself, not an agent: an instruction, a question about your work's quality, a decision question, an acknowledgement, a 👍 or 👎, "I don't understand", a bot's finding (§Kinds of comment). An instruction on a ready PR: 80 lines or fewer and adding no behavior, do it and carry the pass (`converge §Batching`); otherwise a holding reply with the pipeline's ETA.
+4. **Decide what it asks,** yourself, not an agent: an instruction, a question about your work's quality, a decision question, an acknowledgement, a 👍 or 👎, "I don't understand", a bot's finding (§Kinds of comment). An instruction on a ready PR: one that carries the pass (`converge §Batching`), do it; otherwise a holding reply with the pipeline's ETA.
    Open: §Kinds of comment
 5. **A decision question or a design point:** `design` steps 1–3 before any answer. Anything else: do the work it asks (code through an implementer, then `merging` step 1).
    Open: `design`; `delegate/implementer.md`
@@ -33,7 +33,7 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
 | a comment you answer (§Which comments) | steps 3–7 |
 | `### CI … red=` on your PR | Fix it first. When the red isn't the PR's doing (a secret forks don't get, a flaky job), one PR comment through `post` with the cause and the evidence (the workflow line, or the same failure on another PR or `main`), at once. |
 | `### MAINTAINER COMMITS` | §Maintainer commits |
-| `### ACK` | step 4 as an acknowledgement: it answers your last open proposal, which is now an instruction |
+| `### ACK` | step 4 as an acknowledgement |
 | `### THUMBS UP` / `### THUMBS DOWN` | §Reactions |
 | `WAIT PING DUE` | §Wait ping |
 | `### DEPENDENT of merged …`, or a release you wait on | In the same step, apply what waited on it and post the progress on the dependent PR. Check releases and unwatched PRs in `waiting-on.txt` yourself at every wakeup. |
@@ -64,7 +64,7 @@ Answer these, and nothing else:
 
 ### Maintainer commits
 
-Fetch, fast-forward your local PR branch to the PR's head, and run the gates (the project file's Gates, `task §Files`) on it. Then one table through `post`, `| Commit | What it does, and the idea behind it | Rating |`, rated N/10: the middle column one short sentence, written from that commit's `git show <sha>` (its files, renames and wording); under the table, one line with the CI state from `gh pr checks <N>`, run after their last commit (and again at `post` step 4); a rating below 10 carries its reason (`8/10 (invalid keys untested now)`); 10/10 only when nothing could be better; findings with the exact fix. A change past `converge §Batching`'s size goes to the PR's Loop B agent (`converge` step 2) for its review and re-rating. Never just "looks good", and don't push onto the branch while they're committing unless asked.
+On `### MAINTAINER COMMITS`, start a review at once, one at a time, pinned to the PR's head: fetch, fast-forward your local PR branch to it, and run the gates (the project file's Gates, `task §Files`). It covers their commits no earlier review covered; `post` step 4 checks its claims against the pin, not the current head. A newer head `post` step 4's fetch finds within 5 minutes of that start becomes the pin: fast-forward to it, its commits get rows, gates run again, and `post` steps 2–4 repeat. A head found later is the next review, started once this one posts, continuing its agents (`delegate §Continue`). Then one table through `post`, `| Commit | What it does, and the idea behind it | Rating |`, rated N/10: the middle column one short sentence, written from that commit's `git show <sha>` (its files, renames and wording); under the table, `CI on <pin's full SHA>: <state>`, read at `post` step 4 from `gh api repos/<base>/commits/<pin>/check-runs?per_page=100` and `gh api repos/<base>/commits/<pin>/statuses?per_page=100` (`<base>`: the PR's base repository; `<state>`: `green`, `red: <failing checks>`, `pending: <checks>` or `none`); a rating below 10 carries its reason (`8/10 (invalid keys untested now)`); findings with the exact fix. A change past `converge §Batching`'s size goes to the PR's Loop B agent (`converge` step 2). Never just "looks good".
 
 ### Reactions
 

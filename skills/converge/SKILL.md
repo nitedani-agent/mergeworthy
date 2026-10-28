@@ -9,7 +9,7 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 ## Steps
 
-0. **The shape is agreed and the area is clean.** A new API, protocol or behavior is built only once the maintainer OK'd its shape (`design` step 9); in the user's own repos, once the walkthrough is posted. Code being reshaped, or a change that can't be made cleanly because of past patches: `finality`. Size the batch first (§Batching): a change of 80 lines or fewer that adds no behavior carries the pass, unless a maintainer asked for a pass since.
+0. **The shape is agreed and the area is clean.** A new API, protocol or behavior is built only once the maintainer OK'd its shape (`design` step 9); in the user's own repos, once the walkthrough is posted. Code being reshaped, or a change that can't be made cleanly because of past patches: `finality`. Size the batch first (§Batching).
    Open: §Batching; `finality` · Hook: pre-bash-guard
 1. **Loop A: does it break anything?** One verifier per slice (§Running the agents), kept for the loop's whole life. You decide each reproduced bug's root-cause fix; an implementer lands it; the same verifier gets the commits. Under each `## Dropped` line `delegate/verifier.md` marks, you write `RULED: <candidate>: <ruling>`: a bug to fix, or why it isn't one ("main does the same" is a reason only outside the code this change edits). A bug outside the functions this change edits gets its `task §Dispositions` and never re-opens this one. Done when every slice has a pass with no bugs after its last fix, and its file ends `NO BUGS`.
    Open: `delegate/verifier.md`; `delegate/implementer.md` · Run: `pr-steps verify <its file>` · Hook: pre-bash-guard
@@ -28,14 +28,14 @@ A change of at most 60 lines outside tests, docs (any `.md` included) and lockfi
 
 ### Batching
 
-- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), then converge the whole PR once, before its push; then the PR is done. A maintainer's commits get one review once they stop (`reply §Maintainer commits`).
+- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), then converge the whole PR once, before its push.
 - **Carry the pass:** a change of 80 lines or fewer that adds no behavior (tests, docs, wording) gets the quick gates and the lanes it touches, and its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for a pass, the shape pass runs and records instead, on the unchanged head too. Anything else gets the loops on the whole PR diff from its merge-base, then one fresh read of it.
 - **The shape pass goes stale** past 80 changed lines since its last full pass (tests and lockfiles excluded; the watcher's `### SHAPE STALE`): a fresh agent runs it on the whole diff before the next "Done" reply.
 
 ### Running the agents
 
 - **Continue, don't restart** (`delegate §Continue`): after a fix that doesn't carry the pass, its slice's verifier re-checks what changed and the Loop B agent re-rates. Loop A and Loop B get separate agents, except a Tier S PR under ~300 lines, where one agent runs both.
-- **A long list of Loop B findings** goes to one implementer in its own worktree, taking the slices one after the other. Review its diff before cherry-picking; cherry-pick onto the PR branch, run the full gates and the lanes the changes touch, then continue the Loop A verifier with the commits.
+- **A long list of Loop B findings** goes to one implementer in its own worktree, taking the slices one after the other. Review its diff before cherry-picking; cherry-pick onto the PR branch, run the full gates and the lanes the changes touch.
 - **Slices:** a diff over about 1500 lines is split (`delegate/verifier.md` §Slices); each slice gets its own verifier, and an implementer only when the slices don't fit one context; one Loop B agent covers the whole PR in one shape report (step 2).
 - **What they read:** the head's code in full at the brief's pinned SHAs. A finality graph is only an index.
 - **A new loop agent,** given the last report, once its context passes about 100k tokens. A changed decision in `decisions/*.md` goes to the running agent.
