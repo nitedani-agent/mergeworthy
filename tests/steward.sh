@@ -105,6 +105,62 @@ echo %s
 ' "'[{\"repository\":{\"nameWithOwner\":\"o/r\"},\"number\":5,\"body\":\"<img src=x alt=\\\"Claude\\\"> *y*\"},{\"repository\":{\"nameWithOwner\":\"x/y\"},\"number\":9,\"body\":\"<img src=x alt=\\\"Codex\\\"> *y*\"},{\"repository\":{\"nameWithOwner\":\"u/v\"},\"number\":3,\"body\":\"a PR the user wrote\"}]'" > "$T/bin/gh"
 PATH="$T/bin:$PATH" python3 "$SB/steward" round "$S"
 check "round: one watcher round on the folder with each open PR an agent wrote, not the user's own; mergeworthy covered for its rule PRs, not watched whole" "--round $(readlink -f "$S") nitedani/mergeworthy o/r 5 x/y 9" "$(cat "$T/args")"
+# round, end to end in the declared steward's folder with no watcher state yet: the PRs' old comments, red CI and a wait ping due, and an issue opened in
+# the mergeworthy repo half an hour before, are where it starts, not owed, also on the retry of a first round cut short by a failed call; a comment posted
+# or a maintainer's review submitted after it is, in the retry and in later rounds alike, as is the red CI of a PR the rounds after it read first
+F="$T/first"; mkdir -p "$T/stub" "$F"
+cat > "$T/stub/gh" <<'EOF'
+#!/usr/bin/env python3
+import datetime, json, os, re, sys
+a, d = sys.argv[1:], os.path.dirname(os.path.realpath(__file__))
+open(os.path.join(d, 'calls'), 'a').write(' '.join(a) + '\n')
+at = lambda days: datetime.datetime.fromtimestamp(int(open(os.path.join(d, 'now')).read()) - days * 86400, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+def c(i, who, days, body):
+    return {'id': i, 'databaseId': i, 'user': {'login': who}, 'author': {'login': who}, 'author_association': 'OWNER' if who == 'boss' else 'NONE',
+            'updated_at': at(days), 'createdAt': at(days), 'html_url': f'https://github.com/o/r/pull/5#issuecomment-{i}', 'url': f'https://github.com/o/r/pull/5#issuecomment-{i}', 'body': body}
+comments = {5: [c(501, 'boss', 3, 'Is this still needed?'), {**c(601, 'me', 2, '<img src="https://github.com/claude.png" alt="Claude"> *Claude* Yes: see the test.'), 'reactions': {'-1': 1}}],
+            6: [c(701, 'boss', 4, 'And here?')]}
+def review(i, at_, state, body):
+    return {'id': i, 'user': {'login': 'boss'}, 'author_association': 'OWNER', 'submitted_at': at_, 'state': state, 'body': body, 'html_url': f'https://github.com/o/r/pull/5#pullrequestreview-{i}'}
+reviews = [review(801, at(3 / 1440), 'CHANGES_REQUESTED', 'An already addressed finding')]
+reviews += [review(802, at((int(open(os.path.join(d, 'now')).read()) - int(open(os.path.join(d, 'new6')).read())) / 86400), 'COMMENTED', 'A new finding')] if os.path.exists(os.path.join(d, 'new6')) else []
+comments[6] += [c(702, 'boss', (int(open(os.path.join(d, 'now')).read()) - int(open(os.path.join(d, 'new6')).read())) / 86400, 'Still there?')] if os.path.exists(os.path.join(d, 'new6')) else []
+comments[5] += [c(502, 'boss', 0, 'One more thing?')] if os.path.exists(os.path.join(d, 'later')) else []
+def num(x):  # the PR a call is about: its REST path or its GraphQL variable
+    m = re.fullmatch(r'repos/o/r/(?:issues|pulls)/(\d+)(?:/.*)?|n=(\d+)', x.split('?')[0])
+    return m and int(m[1] or m[2])
+pr = int(a[2]) if a[:2] == ['pr', 'checks'] else next(filter(None, map(num, a)), None)
+if a[:2] == ['search', 'prs']:
+    print(json.dumps([{'repository': {'nameWithOwner': 'o/r'}, 'number': n, 'body': '<img src=x alt="Claude"> *y*'} for n in (5, 6, 7)[:3 if os.path.exists(os.path.join(d, 'later')) else 2]]))
+elif pr == 6 and os.path.exists(os.path.join(d, 'fail')):
+    print('HTTP/2.0 500 Internal Server Error\n\n{}'); sys.exit(1)
+elif a[:2] == ['pr', 'checks']:
+    print('test\tfail\t1m\thttps://x'); sys.exit(1)
+elif a[:1] == ['api']:
+    path = a[-1].split('?')[0]  # every answer holds all of a list, as GitHub's rounded `since` does
+    body = ({'data': {'repository': {'issueOrPullRequest': {'state': 'OPEN', 'comments': {'nodes': comments.get(pr, [])[-2:]}, 'participants': {'nodes': [{'login': 'boss'}, {'login': 'me'}]}, 'timelineItems': {'nodes': []}}}}} if path == 'graphql'
+            else {'user': {'login': 'me'}, 'pull_request': {}, 'number': pr, 'updated_at': at(0), 'reactions': {}} if path == f'repos/o/r/issues/{pr}'
+            else {'head': {'sha': f'abcdef1234{pr}'}, 'state': 'open', 'merged': False, 'mergeable_state': 'clean', 'updated_at': at(0)} if path == f'repos/o/r/pulls/{pr}'
+            else [{'id': 40, 'number': 40, 'user': {'login': 'eve'}, 'title': 'An idea', 'body': '', 'html_url': 'https://github.com/nitedani/mergeworthy/issues/40',
+                   'created_at': at(1 / 48), 'updated_at': at(1 / 48)}] if path == 'repos/nitedani/mergeworthy/issues'
+            else comments.get(pr, []) if path == f'repos/o/r/issues/{pr}/comments' else reviews if path == 'repos/o/r/pulls/5/reviews' else {'items': []} if path == 'search/issues' else [{'id': 9, 'user': {'login': 'boss'}, 'content': '-1', 'created_at': at(1)}] if path == 'repos/o/r/issues/comments/601/reactions'
+            else {} if path.endswith('/reactions') else [])
+    print('HTTP/2.0 200 OK\n\n' + json.dumps(body))
+EOF
+chmod +x "$T/stub/gh"; date -u +%s > "$T/stub/now"; : > "$T/stub/fail"; echo "$F tid" > "$HOME/.mergeworthy/steward"
+python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' '<img src="https://github.com/claude.png" alt="Claude"> *Claude* Yes: see the test.' > "$HOME/.claude/gated-posts.txt"
+sround() { env -u CLAUDE_CODE_SESSION_ID PATH="$T/stub:$PATH" GH_HOST=github.com GH_WATCH_ME=me GH_WATCH_EYES=boss python3 "$R/bin/steward" round "${1:-$F}" 2>&1; }
+sround > /dev/null; rc=$?; rm "$T/stub/fail"; echo $(( $(date -u +%s) + 1 )) > "$T/stub/new6"; sround > /dev/null; rc="$rc $?"
+check "round in the steward's folder with no watcher state, cut short by a failed call, then retried: exits 1 then 0, each saying where it starts; only the comment and review posted after its start are reported, owed and the comment reacted to, the review sent for sorting, not the old comments, review, red CI, wait ping, 👎 or issue" \
+  "1 0 2|### o/r#5 review 802 by boss|### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-802 by|### o/r#6 comment 702 by boss|o/r#5 review 802 by boss|o/r#6 comment 702 by boss|1 1" \
+  "$rc $(grep -c '^note: rounds in .* start at .*, its first; until one completes, nothing older is recorded as owed or as an event$' "$F/events.log")|$(grep '^###' "$F/events.log" | cut -d' ' -f1-6 | tr '\n' '|')$(grep -v '^#' "$F/replies-owed.md" | cut -d' ' -f1-5 | tr '\n' '|')$(grep -c ' -X POST .*reactions' "$T/stub/calls") $(grep -c ' -X POST .*comments/702/reactions' "$T/stub/calls")"
+n=$(wc -l < "$F/events.log"); sround > /dev/null; : > "$T/stub/later"; sround > /dev/null
+check "round: the rounds after it report only what is new since: the later comment, owed, with its reaction, and the red CI of a PR opened since" \
+  "### o/r#5 comment 502 by boss|### CI o/r#7: red=['test']: fix it,|1|o/r#5 comment 502 by boss|1" \
+  "$(tail -n +$((n + 1)) "$F/events.log" | grep '^###' | cut -d' ' -f1-6 | tr '\n' '|')$(grep -c 'comment 502' "$F/replies-owed.md")|$(tail -1 "$F/replies-owed.md" | cut -d' ' -f1-5)|$(grep -c ' -X POST .*comments/502/reactions' "$T/stub/calls")"
+rm "$HOME/.mergeworthy/steward"
+G="$T/daemoned"; mkdir -p "$G"; echo '{"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}}' > "$G/gh-watch-state.json"; sround "$G" > /dev/null
+check "round in a folder whose daemon ran but no round did: it reports as the daemon would" "0 1" "$(grep -c '^note: rounds' "$G/events.log") $(grep -c '^### o/r#5 comment 501 ' "$G/events.log")"
 # ---------- fired: failclosed logs each block once a day by the line that wrote it; `steward fired` reads that log against the hooks ----------
 guard() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$T" | bash "$R/hooks/run" pre-bash-guard.py; }
 gate='block(f"no gate record for {p}: run post-lint'; changed='block(f"{p} changed after its gate'; LOG="$HOME/.mergeworthy/hooks-fired.log"

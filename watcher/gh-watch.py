@@ -36,8 +36,9 @@ STATE = os.path.join(HERE, 'gh-watch-state.json')
 THREADS = os.path.join(HERE, 'threads.txt')  # one "owner/repo number" per line
 ONCE = '--once' in sys.argv  # a manual check: prints events but doesn't consume them or react, so the daemon still logs them
 ROUND = '--round' in sys.argv  # one round without a daemon (gh-watch-start --round, mergeworthy:steward): it records what it reports, as a daemon's round does
-ROUND_LOOKBACK = 7 * 86400  # a dir's first --round reads back this far: no earlier round recorded where to start
+ROUND_LOOKBACK = 7 * 86400  # a --round reads the /agent feed back this far when no reader on the machine recorded where to start
 ROUND_SINCE = None  # a --round reads the issue lists' threads updated since its dir's last complete round (one_round), whatever other readers saw
+SEED = None  # the dir's first --round start while none of its rounds has completed: what is older is where it started, not news (one_round)
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
 EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
@@ -549,6 +550,8 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='',
         return
     edited = sk in state['seen']
     state['seen'][sk] = upd
+    if before_seed(upd):
+        return
     indented = '\n'.join('    ' + l for l in body.splitlines())  # no body line can start with ### and pass as an event
     emit(f"### {key} {kind}{' (edited)' if edited else ''} {cid} by {login} {upd} {extra} {url}\n{indented}\n")
     if edited:
@@ -587,6 +590,10 @@ def main_dir():
 
 ERRORS = {}  # WATCH ERROR line -> when it was last printed
 ERRED = False  # a call failed: a --round exits 1, so gh-watch-start --round doesn't mark its dir passed
+
+
+def before_seed(t):
+    return bool(SEED) and t < SEED
 
 
 def emit(line):
@@ -803,6 +810,8 @@ def scan_reactions(state, threads):
                     if content not in ('+1', '-1') or who not in EYES_FOR or f"{who}:{content}" in seen.get(sk, []):
                         continue
                     seen.setdefault(sk, []).append(f"{who}:{content}")
+                    if before_seed(r.get('created_at') or ''):
+                        continue
                     if content == '-1':
                         emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")
                     else:
@@ -908,6 +917,8 @@ def emit_wait_ping(state, key, last, events):
     if since(quiet) < WAIT_PING_HOURS or c['databaseId'] in done:
         return
     done[:] = [c['databaseId']]  # only the latest comment matters
+    if before_seed(iso(iso_epoch(quiet) + WAIT_PING_HOURS * 3600)):
+        return
     emit(f"### WAIT PING DUE {key}: no reply for {int(hours)} h since {c['url']}; nudge whoever it waits on with the open question, only when it blocks your next step now (mergeworthy:reply §Wait ping)")
     append_owed(f"{key} wait-ping {c['databaseId']} since {c['url']}: no reply for {int(hours)} h; nudge whoever it waits on")  # the Stop hook holds the turn until it's done
 
@@ -1000,7 +1011,7 @@ def scan(state, jobs):
                         emit_refactor_stale(repo, key, pr_state['head'])
                 state['prs'][key] = pr_state
             if red is not None:
-                if red != state['ci'].get(key, []):
+                if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it
                     emit(f"### CI {key}: red={red}: fix it, or if it is not this PR's doing, say why on the PR now with the evidence (mergeworthy:reply §Events)" if red else f"### CI {key}: no longer red")
                 state['ci'][key] = red
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
@@ -1010,7 +1021,7 @@ def scan(state, jobs):
                     note_refactor_ask(repo, key, user, url, body, upd, pr_state['head'])
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
                     handle_comment(state, repo, key, kind, cid, upd, user['login'], url, body, extra)
-                maintainer_review(key, author, kind, cid, user, url, extra)
+                maintainer_review(key, author, kind, cid, user, url, extra, upd)
             for r in last['renames'] if last and is_pr and author == ME else ():
                 pr_renamed(key, [HERE], *r)
             pings.append((key, last, events))
@@ -1512,9 +1523,13 @@ def emit_to(d, line):
         f.write(line + '\n')
 
 
-def maintainer_review(key, author, kind, cid, user, url, state):
-    """A maintainer's review of your PR, other than a bare approval, goes to the steward (else here) once, for the sort of each defect it names."""
+def maintainer_review(key, author, kind, cid, user, url, state, upd):
+    """A maintainer's review of your PR, other than a bare approval, goes to the steward (else here) once, for the sort of each defect it names.
+    One submitted before the dir's first round start is claimed, not reported (one_round)."""
     if kind == 'review' and author == ME and user.get('login') != ME and user.get('assoc') in MAINTAINER and state != 'APPROVED':
+        if before_seed(upd):
+            claim(f"mreview:{cid}")
+            return
         follow_emit(f"mreview:{cid}", [HERE], f"### MAINTAINER REVIEW {key}: {url} by {user['login']} reviews your PR  at {iso(time.time())}")
 
 
@@ -1883,11 +1898,19 @@ def agent_jobs_pass():
 
 def one_round():
     """One round with no daemon (--round) -> its exit status. The shared jobs first: a thread that moved in a repo watched whole
-    joins threads.txt, and the scan reads it. Only a complete round moves round_since: a failed one is read again from the same point."""
-    global ROUND_SINCE
+    joins threads.txt, and the scan reads it. Only a complete round moves round_since: a failed one is read again from the same point.
+    A dir's first round starts every scan position at its own start, and the rounds stay SEED until one completes."""
+    global ROUND_SINCE, SEED
     started = time.time()
     with locked():
-        ROUND_SINCE = load_state().get('round_since') or iso(started - ROUND_LOOKBACK)
+        state = load_state()
+        if not os.path.exists(STATE):
+            state['since'] = state['seed'] = iso(started)
+            save_state(state)
+        SEED = 'round_since' not in state and state.get('seed')
+        if SEED:
+            emit(f"note: rounds in {HERE} start at {SEED}, its first; until one completes, nothing older is recorded as owed or as an event")
+        ROUND_SINCE = state.get('round_since') or state['since']
     steward_line()
     shared_pass(force=True)
     run_scan(everything=True)

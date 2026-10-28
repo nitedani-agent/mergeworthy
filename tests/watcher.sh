@@ -324,12 +324,12 @@ got=$(follow '
 sd = os.path.join(os.path.dirname(m.HERE), "stew2"); os.makedirs(sd, exist_ok=True); open(os.path.join(sd, "events.log"), "w").close()
 open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(sd + " t1\n"); open(os.path.join(sd, "gh-watch.pid"), "w").write(str(os.getpid()))
 mt = {"login": "magne", "assoc": "MEMBER"}
-m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED")
-m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED")
-m.maintainer_review("o/r#5", "me", "review", 72, mt, "<rv72>", "APPROVED")
-m.maintainer_review("o/r#5", "me", "review", 73, {"login": "rando", "assoc": "NONE"}, "<rv73>", "COMMENTED")
-m.maintainer_review("o/r#6", "other", "review", 74, mt, "<rv74>", "CHANGES_REQUESTED")
-m.maintainer_review("o/r#5", "me", "comment", 75, mt, "<c75>", "")
+m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED", "2026-10-14T10:00:00Z")
+m.maintainer_review("o/r#5", "me", "review", 71, mt, "<rv71>", "COMMENTED", "2026-10-14T10:00:00Z")
+m.maintainer_review("o/r#5", "me", "review", 72, mt, "<rv72>", "APPROVED", "2026-10-14T10:00:00Z")
+m.maintainer_review("o/r#5", "me", "review", 73, {"login": "rando", "assoc": "NONE"}, "<rv73>", "COMMENTED", "2026-10-14T10:00:00Z")
+m.maintainer_review("o/r#6", "other", "review", 74, mt, "<rv74>", "CHANGES_REQUESTED", "2026-10-14T10:00:00Z")
+m.maintainer_review("o/r#5", "me", "comment", 75, mt, "<c75>", "", "2026-10-14T10:00:00Z")
 os.remove(os.path.expanduser("~/.mergeworthy/steward"))
 print("|".join(l.split("  at ")[0] for l in open(os.path.join(sd, "events.log")).read().splitlines()))
 ')
@@ -733,7 +733,7 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
-# a --round dir has no daemon: each pass reads a list itself back to its last complete pass (a week the first time), though a daemon
+# a --round dir has no daemon: each pass reads a list itself back to its last complete pass, though a daemon
 # polled it between (its validator, its baseline), and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"
 got=$(py "$WHOLE"'
@@ -803,7 +803,7 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     try: m.main()
     except SystemExit as e: code = e.code
-print(code, "round_since" in json.load(open(m.STATE)), buf.getvalue().startswith("note: o/r#2 is gone"), file=sys.stderr)
+print(code, "round_since" in json.load(open(m.STATE)), "note: o/r#2 is gone" in buf.getvalue(), file=sys.stderr)
 ' 2>&1 | tail -1)
 check "a --round where a listed thread is gone (GitHub answers 404) still completes, with a note" "0 True True" "$got"
 got=$(py '
