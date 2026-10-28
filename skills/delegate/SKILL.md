@@ -12,7 +12,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 1. **One job, one agent.** An agent already on the job gets a message, not a twin (§Continue). At most 3 agents at a time without asking the user, except the agents a step names to run together, each brief holding its exact line `Fan-out: finality step 2` (the mappers), `Fan-out: finality step 3` (the branch agents) or `Fan-out: converge §Running the agents` (one verifier per slice); they still count against an agent without it; implementers count toward the 3; only the main session starts agents. Start a browser-heavy agent only while the 1-minute load average (`uptime`) is below the core count (`nproc`). Stop an agent as soon as its question is settled.
    Hook: pre-agent-dedupe
 2. **Model class and effort.**
-   Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides · Hook: route.py
+   Open: §Model class; reviews: §Reviewers; the project file's `## Agents` section overrides
 3. **The brief.** Paste the role's template from the installed copy each time (a copy saved earlier drifts) and fill every `<…>`: the pinned current head (never a moving branch), the project file's path, the standards by path, `agent.md`, the critical-path item it unblocks, and a time budget for a long job.
    Open: `delegate/<role>.md`; §Brief · Record: the brief file · Hook: pre-agent-dedupe (pins, `Fan-out:`, the project file, its repo study within 30 days for authors and fresh readers, `Topic:`)
 4. **Launch in the background;** its completion wakes you.
@@ -50,13 +50,13 @@ The classes are model families, never versions: the strongest class is the newes
 
 ### Reviewers
 
-Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order:
-- **First, a model from another company than the main session's:** Codex for a Claude session, a Claude agent for a Codex session, the strongest model of that provider the user hasn't excluded, at the effort chosen per call (high for a full review, medium for a quick check of a short reply). Start it through the orchestration tools: in T3 Code one `delegate_task` per round, the model from `orchestrator_capabilities`:
+Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier note that it was unavailable (memory, a post's badge) is no check:
+- **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a few-sentence reply). In T3 Code, one `delegate_task` per round, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "codex", "model": "<model>", "options": {"reasoningEffort": "<effort>"}}, "clientRequestId": "<review>-<round>"}
+   {"task": "Follow <prompt file>; output to <out>", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<review>-<round>"}
    ```
-   Without them: `codex exec -m <model> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`.
-- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (out of credits, a rate limit, an error, a timeout, no reply: a failure is not a review).
+   Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
+- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (credits spent, a rate limit, an error, a timeout, no reply: a failure is not a review).
 
 The prompt is a file with the template filled. When one run follows several briefs, each writes its own file. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
 
