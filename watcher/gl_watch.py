@@ -60,7 +60,7 @@ def award_eyes(base, nid, emit):
         emit(f"WATCH ERROR eyes {base} note {nid}: {e}")
 
 
-def read(state, t, key, proj, kind, iid, report, emit, agent_post):
+def read(state, t, key, proj, kind, iid, report, emit, agent_post, first):
     base = f"projects/{proj}/{kind}/{iid}"
     th = api(base)
     me = state.get('gl_me') or state.setdefault('gl_me', api('user')['username'])
@@ -79,7 +79,7 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post):
     elif t.get('state') and t['state'] != now_state:
         emit(f"### ISSUE CHANGED {key}: {t['state']} -> {now_state}")
     t['state'], t['upd'] = now_state, epoch(th['updated_at'])
-    floor = iso(epoch(t.get('since') or state['since']) - 600)  # scans overlap by 10 minutes, as GitHub's do
+    floor = iso(epoch(t.get('since') or first) - 600)  # scans overlap by 10 minutes, as GitHub's do
     own, notes = th['author']['username'] == me, []
     for n in api(f"{base}/notes?sort=desc&order_by=updated_at&per_page=100"):
         upd = n['updated_at'][:19] + 'Z'
@@ -95,16 +95,17 @@ def read(state, t, key, proj, kind, iid, report, emit, agent_post):
                react=lambda _key, _kind, cid: award_eyes(base, cid, emit))
 
 
-def scan(state, threads, report, emit, agent_post, every):
+def scan(state, threads, report, emit, agent_post, every, since=None):
     """Read each GitLab thread that is due. report: gh-watch's handle_comment; agent_post(body): a gated post of the agent's;
-    every: gh-watch's seconds between looks by 'open' and 'closed'."""
+    every: gh-watch's seconds between looks by 'open' and 'closed'; since: a --pass's start (PASS_SINCE): every thread is read
+    now, and one never read before back to it, as the pass reads GitHub's."""
     gl, now = state.setdefault('gl', {}), time.time()
     for key, proj, kind, iid in threads:
         t = gl.setdefault(key, {})
-        if now < t.get('next', 0):
+        if now < t.get('next', 0) and not since:
             continue
         try:
-            read(state, t, key, urllib.parse.quote(proj, safe=''), kind, iid, report, emit, agent_post)
+            read(state, t, key, urllib.parse.quote(proj, safe=''), kind, iid, report, emit, agent_post, since or state['since'])
         except Exception as e:
             emit(f"WATCH ERROR {key}: {e}")
             t['next'] = now + 300

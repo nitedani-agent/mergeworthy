@@ -445,6 +445,18 @@ owed = open(os.path.join(m.HERE, "replies-owed.md")).read()
 print(out.count("### gitlab.com/ns/sub/proj#4 note 1 by alice"), out.count(" note 2 "), out.count(" note 3 "), open(os.path.join(os.environ["GLFX"], "awards")).read().split(), owed.count(" note 1 by alice "))
 ')
 check "GitLab: a human note is reported once, with :eyes:; the badge note and a system note aren't" "1 0 0 ['projects/ns%2Fsub%2Fproj/issues/4/notes/1/award_emoji'] 1" "$got"
+echo 'gitlab.com/ns/sub/proj 8' >> "$GLW/threads.txt"
+got=$(glpy '
+notes[("issues", "8")] = [{"id": 81, "author": {"username": "alice", "id": 81}, "body": "A reply from two hours ago", "updated_at": m.iso(m.time.time() - 7200), "system": False}]
+thread("issues", "8", "opened")
+s = m.load_state(); s["since"] = m.iso(m.time.time()); s.setdefault("gl", {})["gitlab.com/ns/sub/proj#8"] = {"next": m.time.time() + 3600}; m.save_state(s)
+m.PASS, m.PASS_SINCE = True, m.iso(m.time.time() - 86400)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.scan_gitlab()
+print(buf.getvalue().count("### gitlab.com/ns/sub/proj#8 note 81 by alice"))
+')
+check "GitLab in a --pass: a thread not due yet is read, one never read back to the pass start, though the state saw a later round" 1 "$got"
+sed -i '/^gitlab.com\/ns\/sub\/proj 8$/d' "$GLW/threads.txt"
 got=$(glpy '
 thread("issues", "4", "opened"); thread("merge_requests", "9", "merged")
 out = run(m.scan_gitlab)

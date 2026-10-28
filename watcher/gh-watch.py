@@ -1767,7 +1767,7 @@ def scan_gitlab():
     if threads:
         with locked():
             state = load_state()
-            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK)
+            gl_watch.scan(state, threads, handle_comment, emit, lambda body: _norm(body) in agent_post_hashes(), CHECK, PASS_SINCE)
             save_state(state)
 
 
