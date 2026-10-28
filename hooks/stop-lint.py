@@ -102,10 +102,10 @@ def runs(rx):  # the simple commands of this session's commands that rx finds a 
         parsed.update(zip(todo, ex.map(segments, todo)))
     return [prog(t) for c in commands if re.search(rx, c) for t in parsed[c]]
 acted = posted or any(t[:3] in (['gh', 'pr', 'create'], ['gh', 'issue', 'create']) or t[:1] == ['git'] and git_argv(t, cwd_d or '.')[2] == 'push'
-                      for t in runs(r'(?:git|gh)'))
+                      for t in runs(r'\b(?:git|gh)\b'))
 # the folders it works in: its cwd, and where its commands cd, write, run git or the step tools; one it only read isn't
 worked = [cwd_d]
-for t in runs(r'\.mergeworthy/work|-work'):
+for t in runs(r'\.mergeworthy/work|-work\b'):
     name = os.path.basename(t[0]) if t else ''
     worked += [x for x in t[1:] if not x.startswith('-')] if name in (
         'cd', 'pushd', 'mkdir', 'gh-watch-start', 'gate-pass', 'pr-steps', 'memory-prep', 'post-lint', 'thread-context') else []
@@ -148,8 +148,10 @@ if running and not child:
         if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
             # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
             # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
-            n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\])', c)
-            if n: status[n.group(1)] = (n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
+            n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)', c)
+            # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
+            waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
+            if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
             elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status|thread_send)$', b.get('name', '')):
@@ -160,12 +162,12 @@ if running and not child:
                 try: r = json.loads(r)
                 except ValueError: continue
                 if isinstance(r, dict) and r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
-                    r = {'taskId': r['threadId'] + '#sent', 'childThreadId': r['threadId'], 'status': 'running'}
+                    r = {'taskId': r['threadId'] + '#sent', 'childThreadId': r['threadId'], 'status': r.get('status') or 'running'}
                 if isinstance(r, dict) and r.get('taskId'):
                     is_read, title = titles[b['tool_use_id']]
                     old = status.pop(r['taskId'], ('', ''))
                     status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
-                    thread[r['taskId']] = str(r.get('childThreadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
+                    thread[r['taskId']] = str(r.get('childThreadId') or r.get('threadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
                     seen.add(r['taskId'])
     text = running.group(1).lower()
     # a link names a task or its thread, whose latest task it is; a list with no link names a task by its title: the latest task whose

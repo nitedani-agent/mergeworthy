@@ -1017,8 +1017,12 @@ for e in ev:
     elif e == 'send':  # t3_thread_send to the finished Loop A's thread: it runs again
         w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "s1", "name": "mcp__t3-code__t3_thread_send", "input": {}}]}})
         w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "s1", "content": json.dumps({"threadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1"})}]}})
+    elif e == 'queue':  # t3_thread_send in queue mode: a new task of that thread, named by threadId, not childThreadId
+        w({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "q1", "name": "mcp__t3-code__t3_thread_send", "input": {}}]}})
+        w({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "q1", "content": json.dumps({"threadId": "thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1", "taskId": "node:delegated-task:command%3Amcp%3Aabc%3Athread-send%3A5676", "status": "running"})}]}})
     elif e == 'feedback': w({"type": "user", "message": {"content": "Stop hook feedback: [stop-lint.py]: check once"}})
     elif e == 'other': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 reached a terminal state."}})
+    elif e == 'waiting': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1 (Loop A) [completed]: The gates are still running; I'll continue when they finish."}})
     elif e == 'other2': w({"type": "user", "message": {"content": "Delegated task node:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aother-9 (Review round 2) [completed]:\nCLEAN"}})
     else: res('task_status', e.split(':')[1])
 w({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
@@ -1046,6 +1050,14 @@ rl_tr $'Done for now.\n\nRunning:\n- Loop A on the head' user status:running oth
 rl_tr $'Started round 2.\n\nRunning:\n- Loop A round 2' user notice round2; check "a title names the latest task whose title holds it: round 2 of a finished Loop A is running" 0 "$(stop "$T")"
 rl_tr $'Sent round 2 to it.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1)' user notice followup; check "a link to a thread names its latest task: a follow-up sent to a finished task's thread is running" 0 "$(stop "$T")"
 rl_tr $'Asked it for its report.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1)' user notice send; check "a message sent to a finished task's thread with t3_thread_send runs it again: its Running list passes" 0 "$(stop "$T")"
+rl_tr $'Queued a message for it.
+
+Running:
+- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1)' user notice queue; check "a message queued to a finished task's thread is a new task of that thread: its Running list passes" 0 "$(stop "$T")"
+rl_tr $'Done for now.
+
+Running:
+- Loop A on the head' user status:running waiting; check "a sub-agent whose turn ended while its gates still run (T3 says completed, it says it continues) is still running" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
@@ -1941,6 +1953,8 @@ check "a commit in a checkout of a GitLab repo isn't held to gh's account" 0 "$(
 check "GitLab: ssh://git@gitlab.com:22/ is the same own namespace" 0 "$(bg 'git push ssh://git@gitlab.com:22/me/app.git HEAD:scratch' "$GL")"
 check "GitLab: a push to its own namespace with no MR passes; to a group's repo, or an open MR's branch, it is blocked, naming why" "0 2 1 2 1" \
   "$(bg 'git push origin HEAD:scratch' "$GL") $(bg 'git push git@gitlab.com:acme/app.git HEAD:scratch' "$GL") $(grep -c "acme/app isn't me's" "$T/err") $(echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/4","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; bg 'git push origin HEAD:scratch' "$GL") $(grep -c 'updates https://gitlab.com/me/app/-/merge_requests/4' "$T/err")"
+tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
+check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 # a plain question answered (no task, work folder, push, post, watcher or agent) is no mergeworthy work: no check-in, no hand-back check
 qa() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"can you access ssh the opensource machine?"}}))
