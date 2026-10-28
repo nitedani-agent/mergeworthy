@@ -217,7 +217,9 @@ threads = {  # number -> (body, comments, timeline)
 calls = []
 Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data, "next": lambda self: None})()
 def fake_request(path, *a, **k):
-    if path.startswith("search/issues"):  # lags: it never returns the o/r threads, only x/y#411
+    if path.startswith("search/issues"):  # its first page: a thread of a watched repo, which the feeds cover; x/y#411 is on the second
+        return type("A", (), {"status": 200, "json": lambda self: {"items": [{"number": 1, "repository_url": "https://api.github.com/repos/o/r"}]}, "next": lambda self: "search-page-2"})()
+    if path == "search-page-2":
         return Answer({"items": [{"number": 411, "repository_url": "https://api.github.com/repos/x/y"}]})
     return Answer({"body": threads[int(path.rsplit("/", 1)[1])][0]})
 def fake_paged(path, *a, **k):
@@ -243,7 +245,7 @@ agent_cmds 'print(1)' >/dev/null 2>"$T/agentcalls"
 got="alpha: $(grep '^###' "$AD/alpha/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' | tr '\n' '|')"
 check "/agent in unlisted threads: alpha gets the reference by body" "alpha: ### AGENT COMMAND o/r#407 comment 11 by me <u11>|" "$got"
 got="beta: $(grep '^###' "$AD/beta/events.log" | sed 's/ [0-9T:Z-]*  <u/ <u/' | tr '\n' '|')"
-check "/agent: beta gets the named, the unrouted (main_dir) and the cross-referenced one, each once, no gated post / other author / mid-line; x/y#411, no one lists its repo, comes from the search backup" "beta: ### AGENT COMMAND o/r#408 comment 12 by me <u12>|### UNROUTED /agent o/r#409 comment 13 by me <u13>|### AGENT COMMAND o/r#410 comment 17 by me <u17>|### UNROUTED /agent x/y#411 comment 19 by me <u19>|" "$got"
+check "/agent: beta gets the named, the unrouted (main_dir) and the cross-referenced one, each once, no gated post / other author / mid-line; x/y#411, no one lists its repo, comes from the search backup, on its second page" "beta: ### AGENT COMMAND o/r#408 comment 12 by me <u12>|### UNROUTED /agent o/r#409 comment 13 by me <u13>|### AGENT COMMAND o/r#410 comment 17 by me <u17>|### UNROUTED /agent x/y#411 comment 19 by me <u19>|" "$got"
 check "discovery lists both comment feeds of the watched repo in a pass after something moved in it (and the first), sorted by update, with since; a pass with nothing moved reads none" "feeds: 4 True" "$(grep '^feeds' "$T/agentcalls")"
 check "a routed thread joins its dir's threads.txt, an unrouted one does not" "o/r 1 o/r 407|o/r 2 o/r 408 o/r 410|" "$(echo $(cat "$AD/alpha/threads.txt"))|$(echo $(cat "$AD/beta/threads.txt"))|"
 

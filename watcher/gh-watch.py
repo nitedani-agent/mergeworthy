@@ -1250,8 +1250,13 @@ def discover_agent_commands():
         try:
             pending = {}
             query = urllib.parse.quote(f'commenter:{ME} updated:>={day}', safe='')
-            found = request(f"search/issues?q={query}&sort=updated&order=desc&per_page=50", store=etags, pending=pending, newest_first=True)
-            for i in ([] if found.status == 304 else found.json()['items']):
+            found, items = request(f"search/issues?q={query}&sort=updated&order=desc&per_page=100", store=etags, pending=pending, newest_first=True), []
+            while found.status != 304:  # every page: a pass's week can hold more threads than one
+                items += found.json()['items']
+                if not found.next():
+                    break
+                found = request(found.next())
+            for i in items:
                 repo, num = i['repository_url'].split('/repos/')[-1], i['number']
                 if repo in repos:
                     continue
