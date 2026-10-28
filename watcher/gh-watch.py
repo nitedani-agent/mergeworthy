@@ -1592,7 +1592,7 @@ def follow_ups():
             shared_update(lambda s: s['followups'][k].update(files={}))  # past the window: kept as a marker so the PR isn't recorded again
     for (repo, base), keys in groups.items():
         entries = {k: json.loads(json.dumps(fu[k])) for k in keys}  # worked on here, written back when the group is done or stops
-        gk, pending, done = f"{repo}@{base}", {}, False
+        gk, pending, done, moved = f"{repo}@{base}", {}, False, None
         floor, since = min(e['scanned'] for e in entries.values()), min(e['merged'] for e in entries.values())
         url = f"repos/{repo}/commits?sha={base}&since={since}&per_page=100"
         bk = shared_read()['backlog'].get(gk)  # a commit list longer than a pass, kept page by page: this pass continues it
@@ -1602,7 +1602,12 @@ def follow_ups():
         try:
             while bk['next']:  # newest first, down to what was already read
                 first = bk['next'] == url
-                resp = request(bk['next'], store=shared_read()['etags'] if first else None, pending=pending if first else None, fresh=bk['fresh'], newest_first=True)
+                try:
+                    resp = request(bk['next'], store=shared_read()['etags'] if first else None, pending=pending if first else None, fresh=bk['fresh'], newest_first=True)
+                except RuntimeError as ex:
+                    if first and re.search(r'HTTP 404\b', str(ex)):  # the base branch was deleted after the merge (a PR into another PR's branch): the default branch is followed instead
+                        moved = request(f"repos/{repo}").json()['default_branch']
+                    raise
                 page = [] if resp.status == 304 else resp.json()
                 bk['queue'] += [{'sha': c['sha'], 'html_url': c['html_url'], 'parents': [0] * len(c.get('parents') or []), 'author': c.get('author') and {k: c['author'].get(k) for k in ('login', 'type')},
                                  'commit': {'committer': {'date': c['commit']['committer']['date']}, 'author': {k: c['commit']['author'].get(k) for k in ('name', 'email')}}} for c in page]
@@ -1637,11 +1642,14 @@ def follow_ups():
         except (Budget, PassSpent):
             raise
         except Exception as ex:
-            fail(f"follow-up {repo}", ex)
+            if not moved:
+                fail(f"follow-up {repo}", ex)
         finally:
             for e in entries.values():
                 e['checked'] = now  # done or not, the group goes to the back of the line: a long backlog doesn't hold up the other repos
-            shared_update(lambda s: (s['followups'].update(entries), s['etags'].update(pending if done else {}), s['backlog'].pop(gk, None) if done else s['backlog'].__setitem__(gk, bk)))
+                if moved:  # followed there from the next pass, first in line and as never read: another group's ETag for that list doesn't cover these PRs
+                    e.update(base=moved, checked=0)
+            shared_update(lambda s: (s['followups'].update(entries), s['etags'].update(pending if done else {}), s['backlog'].pop(gk, None) if done or moved else s['backlog'].__setitem__(gk, bk)))
 
 
 def locked():
