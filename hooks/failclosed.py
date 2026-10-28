@@ -1,6 +1,8 @@
 """Imported first by every hook: an exception a hook doesn't handle blocks (exit 2, the traceback on stderr). Claude Code lets an
-action through on any other exit code, so a check that crashed would pass everything it was there to stop."""
+action through on any other exit code, so a check that crashed would pass everything it was there to stop. A check's block
+(`sys.exit(2)`, not a crash) is recorded in the block log (blocklog.py) by the line that wrote its message."""
 import os, sys
+import blocklog
 
 
 def _blocked(kind, value, tb):
@@ -14,3 +16,34 @@ def _blocked(kind, value, tb):
 
 
 sys.excepthook = _blocked
+
+
+class _Stderr:
+    """sys.stderr, noting the line that writes first: the check whose message it is (a `block()` helper writes for its caller)."""
+    def __init__(self, out):
+        self.out, self.at = out, None
+
+    def write(self, s):
+        if self.at is None:
+            f = sys._getframe(1)
+            while f.f_code.co_name == 'block' and f.f_back:
+                f = f.f_back
+            self.at = f.f_code.co_filename, f.f_lineno
+        return self.out.write(s)
+
+    def __getattr__(self, k):
+        return getattr(self.out, k)
+
+
+_stderr, _sys_exit = _Stderr(sys.stderr), sys.exit
+
+
+def _exit(code=None):
+    if code == 2 and _stderr.at:
+        import linecache
+        path, lineno = _stderr.at
+        blocklog.record(os.path.basename(path), blocklog.name(linecache.getlines(path), lineno))
+    _sys_exit(code)
+
+
+sys.stderr, sys.exit = _stderr, _exit

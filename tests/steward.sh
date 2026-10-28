@@ -3,6 +3,7 @@
 # Temp HOME with work folders and session logs, a stub gh answering the user, the PR search and one GraphQL query per PR.
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
+export MERGEWORTHY_PYDEPS=${MERGEWORTHY_PYDEPS:-$HOME/.mergeworthy/pydeps}  # the shell parser the hooks run, installed once outside the temp HOME
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude/projects/p" "$HOME/.codex/sessions/2026" "$HOME/.mergeworthy/work" "$T/bin"
 fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
@@ -104,6 +105,23 @@ echo %s
 ' "'[{\"repository\":{\"nameWithOwner\":\"o/r\"},\"number\":5,\"body\":\"<img src=x alt=\\\"Claude\\\"> *y*\"},{\"repository\":{\"nameWithOwner\":\"x/y\"},\"number\":9,\"body\":\"<img src=x alt=\\\"Codex\\\"> *y*\"},{\"repository\":{\"nameWithOwner\":\"u/v\"},\"number\":3,\"body\":\"a PR the user wrote\"}]'" > "$T/bin/gh"
 PATH="$T/bin:$PATH" python3 "$SB/steward" round "$S"
 check "round: one watcher round on the folder with each open PR an agent wrote, not the user's own; mergeworthy covered for its rule PRs, not watched whole" "--round $(readlink -f "$S") nitedani/mergeworthy o/r 5 x/y 9" "$(cat "$T/args")"
+# ---------- fired: failclosed logs each block once a day by the line that wrote it; `steward fired` reads that log against the hooks ----------
+guard() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$T" | bash "$R/hooks/run" pre-bash-guard.py; }
+gate='block(f"no gate record for {p}: run post-lint'; changed='block(f"{p} changed after its gate'; LOG="$HOME/.mergeworthy/hooks-fired.log"
+guard "gh api -X POST repos/o/r/releases -F body=@$T/a.md" 2>"$T/err"; rc=$?; guard "gh api -X POST repos/o/r/releases -F body=@$T/b.md" 2>/dev/null; guard ls
+check "a block keeps its exit code and message and is logged once a day by the line that wrote it, whichever draft it names; a pass isn't logged" \
+  "2|1|1|1" "$rc|$(grep -c "no gate record for $T/a.md" "$T/err")|$(wc -l < "$LOG")|$(grep -cF "$(date -u +%F) pre-bash-guard.py $gate" "$LOG")"
+echo x > "$T/c.md"; echo 0 > "$T/c.md.gate"; guard "gh api -X POST repos/o/r/releases -F body=@$T/c.md" 2>/dev/null
+check "another check of the same hook is its own line" "2|1" "$(wc -l < "$LOG")|$(grep -cF "pre-bash-guard.py $changed" "$LOG")"
+HOME="$T/nohome" guard "gh api -X POST repos/o/r/releases -F body=@$T/a.md" 2>"$T/err2"; rc=$?
+check "without ~/.mergeworthy: the block's message alone, its exit code kept, nothing created" "1|2|no" "$(wc -l < "$T/err2")|$rc|$([ -e "$T/nohome" ] && echo yes || echo no)"
+check "fired: a log younger than 60 days names no candidate" 1 "$(python3 "$R/bin/steward" fired | grep -c '^# no removal candidate yet')"
+grep -F "$gate" "$LOG" | sed 's/^[0-9-]*/2026-01-01/' >> "$LOG"
+out=$(python3 "$R/bin/steward" fired)
+check "fired: each check with its last day and the days it blocked, the log's start" "1 1 1" \
+  "$(echo "$out" | grep -cF "$(date -u +%F)"$'\t2 days\tpre-bash-guard.py\t'"$gate") $(echo "$out" | grep -cF "$(date -u +%F)"$'\t1 days\tpre-bash-guard.py\t'"$changed") $(echo "$out" | grep -c '^# the log starts 2026-01-01')"
+check "fired: once the log is 60 days old, a check with no block since is a candidate; one that blocked, and a hook that never blocks, aren't" "1 0 0" \
+  "$(echo "$out" | grep -cE $'^pre-bash-guard.py:[0-9]+\tblock\\(f"relative draft path') $(echo "$out" | grep -E $'^pre-bash-guard.py:[0-9]+\t' | grep -cF -e "$gate" -e "$changed" -e '{msg}') $(echo "$out" | grep -cE '^(post-bash-register|session-memory)')"
 echo "failures: $fails"
 rm -rf "$T"
 [ "$fails" -eq 0 ]
