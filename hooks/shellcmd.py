@@ -21,9 +21,12 @@ def branch_record(d, kind):
 
 
 def no_preflight(d):
-    """Why code can't start yet in d's repo and branch, or '' (outside git, nothing to check)."""
+    """Why code can't start yet in d's repo and branch, or '' (outside git, nothing to check; a branch sharing no history with
+    the remote's default branch, such as one holding a PR's screenshots, holds no code of the product)."""
     rec = branch_record(d, 'preflight')
     if not rec or os.path.exists(rec):
+        return ''
+    if subprocess.run(['git', '-C', d, 'merge-base', 'HEAD', 'refs/remotes/origin/HEAD'], capture_output=True).returncode == 1:
         return ''
     return ("no `pr-steps preflight` record for this repo and branch. Before any code, start the app, then run "
             "`pr-steps preflight <its URL> [Chrome flags]` (or `<PNG the session's browser MCP just took>`), "

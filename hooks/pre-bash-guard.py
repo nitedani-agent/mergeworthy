@@ -84,6 +84,8 @@ def gh_login():
 def check_commit_identity(overrides, git_dir):
     """Commits are authored as the GitHub account that pushes them, never the global git identity (a user checkout's worktrees share its config).
     While gh can't name the account (offline, never read), or the command computes the identity, a commit passes: it stays local, and can be amended."""
+    if 'github.com' not in subprocess.run(['git', '-C', git_dir, 'remote', '-v'], capture_output=True, text=True).stdout:
+        return  # a checkout of no GitHub repo is pushed with another account (GitLab's), which gh doesn't name
     name = overrides.get('user.name') or subprocess.run(['git', '-C', git_dir, 'config', 'user.name'], capture_output=True, text=True).stdout.strip()
     who = gh_login()
     if not who:

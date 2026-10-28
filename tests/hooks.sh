@@ -36,7 +36,7 @@ chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH" FX="$T/fx"
 fails=0
 TASKW="$HOME/.mergeworthy/work/t"; TCO="$TASKW/repo"; mkdir -p "$TASKW"
 printf 'Tier: S, because one bounded fix\n\n- [ ] fix the thing https://github.com/o/r/issues/1\n' > "$TASKW/scope.md"
-git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$TCO" remote add origin https://github.com/o/r.git
 quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
   local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
 quick "$TCO"
@@ -1272,7 +1272,9 @@ check "BLOCK: retitling a PR whose title a maintainer set, naming him; our own l
 printf 'fix: deprecate `vike/fetch` (closes #3608)\n' > "$T/title.md"; printf 'fix: two\nlines.\n' > "$T/title2.md"
 check "post-lint --kind title passes one line and records it; two lines fail" "0 1 1" "$("$R/bin/post-lint" "$T/title.md" --kind title >/dev/null; echo $?) $([ -s "$T/title.md.lint.sha" ] && echo 1) $("$R/bin/post-lint" "$T/title2.md" --kind title >/dev/null; echo $?)"
 echo 'me 42' > "$FX/user"
-check "BLOCK: a commit as the pushing login but with another email, naming the noreply form; the noreply email passes" "2 1 0" "$(guard "git -c user.name=me -c user.email=real@example.com commit -m a") $(grep -c '42+me@users.noreply.github.com' "$T/err") $(guard "git -c user.name=me -c user.email=42+me@users.noreply.github.com commit -m a")"
+IDR="$T/idr"; git init -q "$IDR"; git -C "$IDR" remote add origin https://github.com/o/r.git  # the identity is checked in a checkout of a GitHub repo
+(cd "$IDR" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+check "BLOCK: a commit as the pushing login but with another email, naming the noreply form; the noreply email passes" "2 1 0" "$(guard "git -C $IDR -c user.name=me -c user.email=real@example.com commit -m a") $(grep -c '42+me@users.noreply.github.com' "$T/err") $(guard "git -C $IDR -c user.name=me -c user.email=42+me@users.noreply.github.com commit -m a")"
 rm "$FX/user"
 # pre-bash-guard: a review's verdict is the reviewer's own output, never the main session's
 check "BLOCK: the main session writing a .review.out (echo >, tee, cp, sed -i, bash -c), naming who writes it" "2 1 2 2 2 2" "$(guard 'echo CLEAN > $D/pr-body.review.out') $(grep -c 'codex exec -o' "$T/err") $(guard "printf 'CLEAN\n' | tee /w/x.review.out") $(guard 'cp /w/r.md /w/x.review.out') $(guard 'sed -i s/a/b/ /w/x.review.out') $(guard 'bash -c "echo CLEAN >> /w/x.review.out"')"
@@ -1905,6 +1907,9 @@ TW="$T/t3wt"; mkdir -p "$TW/fu185-work"; printf 'Tier: S, because x\n\n- [ ] y h
 for c in fu185-gps fu185-work/stack other; do git clone -q "$OTH" "$TW/$c"; git -C "$TW/$c" remote set-url origin https://github.com/vikejs/vike.git; done
 check "a checkout inside <task>-work/ or beside it under the task's prefix is in that work folder; an unrelated one isn't" "0 0 1" \
   "$(bg 'git push origin HEAD:s' "$TW/fu185-gps" >/dev/null; grep -c "isn't in a task's work folder" "$T/err") $(bg 'git push origin HEAD:s' "$TW/fu185-work/stack" >/dev/null; grep -c "isn't in a task's work folder" "$T/err") $(bg 'git push origin HEAD:s' "$TW/other" >/dev/null; grep -c "isn't in a task's work folder" "$T/err")"
+AS="$T/assets"; git clone -q "$OWN" "$AS"; git -C "$AS" update-ref refs/remotes/origin/HEAD HEAD; git -C "$AS" checkout -q --orphan shots; git -C "$AS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m s
+check "a commit on a branch that shares no history with origin's default (a PR's screenshots) needs no preflight; one on a branch of the product does" "0 2" \
+  "$(bg 'git commit -q --allow-empty -m s2' "$AS") $(git -C "$AS" checkout -q scratch; bg 'git commit -q --allow-empty -m c' "$AS")"
 check "parse: a script handed to watch or parallel, and git run by pnpm exec, npx, uv run, direnv exec, flock, taskset, chronic, su -c, script -c, fish -c" \
   "yes yes yes yes yes yes yes yes yes yes yes yes yes" "$(for c in "watch 'git push x HEAD:y'" "parallel 'git push {} HEAD:y' ::: x" 'pnpm exec git push' 'npx git push' 'uv run git push' \
     'direnv exec . git push' 'flock /tmp/l git push' 'taskset 0x1 git push' 'chronic git push' "su -c 'git push' me" "script -qc 'git push' /dev/null" "fish -c 'git push'" 'parallel -k git push ::: x'; do printf '%s ' "$(pushes "$c")"; done | xargs)"
@@ -1919,6 +1924,8 @@ f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
 echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"
+(cd "$GL" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
+check "a commit in a checkout of a GitLab repo isn't held to gh's account" 0 "$(bg 'git -c user.name=Someone -c user.email=me@example.com commit -q --allow-empty -m x' "$GL")"
 check "GitLab: ssh://git@gitlab.com:22/ is the same own namespace" 0 "$(bg 'git push ssh://git@gitlab.com:22/me/app.git HEAD:scratch' "$GL")"
 check "GitLab: a push to its own namespace with no MR passes; to a group's repo, or an open MR's branch, it is blocked, naming why" "0 2 1 2 1" \
   "$(bg 'git push origin HEAD:scratch' "$GL") $(bg 'git push git@gitlab.com:acme/app.git HEAD:scratch' "$GL") $(grep -c "acme/app isn't me's" "$T/err") $(echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/4","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; bg 'git push origin HEAD:scratch' "$GL") $(grep -c 'updates https://gitlab.com/me/app/-/merge_requests/4' "$T/err")"
