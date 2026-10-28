@@ -451,7 +451,7 @@ if status:
     if fence_spans(text):
         findings.append("status: a code block is output to check: post it as a reply, through the review (post step 3)")
     _claim = re.search(r'^\s*\|.*\||\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b|/(?:commit|blob|tree|compare|files)\b|\b\d+(?:\.\d+)?\s*(?:%|ms\b|MB\b|GB\b|tests?\b|files?\b|lines?\b|calls?\b)|\d\s*(?:⇒|=>)\s*\d|\b\d+/10\b'
-                       r'|\b(?:fixed|fixes|works|passe[sd]|fail(?:s|ed|ing)?|broke|breaks|reproduced|verified|confirmed|caus(?:es|ed)|returns|regression|bug|done in)\b', _st, re.I | re.M)
+                       r'|\b(?:fixed|fixes|works|passe[sd]|fail(?:s|ed|ing)?|broke|breaks|reproduced|verified|confirmed|caus(?:es|ed)|returns|regression|bug|done in|because|since|now that)\b', _st, re.I | re.M)  # a reason is a claim too
     if _claim:
         findings.append(f"status: {_claim[0].strip()[:40]!r} is a claim, a result or a number to check: post it as a reply, through the review (post step 3)")
     for _s in re.split(r'(?<=[.!?])\s+|\n\s*\n|\n(?=\s*(?:[-*+]|\d+[.)])\s)', _st):  # the allowed form: anything else may hold a claim the lists above miss
