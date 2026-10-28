@@ -652,13 +652,16 @@ asked = []
 m.fetch_thread = lambda repo, num, since, *a, **k: (asked.append(since), (False, "x", [], None, None, None, {}, True, None))[1]
 m.scan_reactions = lambda *a: None
 m.run_scan(everything=True)
-m.JOBS = (("discovery", 0, lambda: (_ for _ in ()).throw(m.PassSpent())),)
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf): m.ERRED = False; m.shared_pass(force=True)
-print(asked, m.ERRED, buf.getvalue().strip())
+calls = []
+def job():
+    for _ in range(m.PASS_CALLS + 10): m.spend(); calls.append(1)
+m.JOBS = (("discovery", 0, job),)
+m.shared_pass(force=True); in_pass = len(calls)
+m.PASS = False; calls.clear(); m.shared_pass(force=True)
+print(asked, in_pass, len(calls))
 ')
-check "a --pass reads a newly listed thread back to its pass start, though its state saw a later round; a job stopped at its call cap fails the pass" \
-  "['2026-09-30T23:50:00Z'] True WATCH ERROR discovery: stopped at its 40 calls; the next pass goes on from there" "$got"
+check "a --pass reads a newly listed thread back to its pass start, though its state saw a later round; its shared jobs finish past a daemon's per-job call cap" \
+  "['2026-09-30T23:50:00Z'] 50 40" "$got"
 
 # disk-sweep: once an hour, from main_dir's daemon alone, at low priority, its output away from events.log
 got=$(py '

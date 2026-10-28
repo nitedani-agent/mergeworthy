@@ -1603,12 +1603,11 @@ def shared_pass(force=False):
             if not force and time.time() - (shared_read()['jobs'].get(name) or {}).get('last_run', 0) < (every() if callable(every) else every):
                 continue
             shared_update(lambda s: s['jobs'].__setitem__(name, {'last_run': time.time()}))  # at the start: a failing job waits its turn too
-            _pass['left'] = PASS_CALLS
+            _pass['left'] = None if PASS else PASS_CALLS  # a pass finishes its jobs: no later pass of this daemon goes on from there
             try:
                 job()
-            except PassSpent:  # the rest waits for the next pass
-                if PASS:
-                    emit(f"WATCH ERROR {name}: stopped at its {PASS_CALLS} calls; the next pass goes on from there")
+            except PassSpent:
+                pass  # the rest waits for the next pass
             except Budget:
                 return
             except Exception as e:
