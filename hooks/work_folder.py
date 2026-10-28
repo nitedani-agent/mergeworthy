@@ -23,6 +23,20 @@ def of(path):
     return os.path.join(root, p[len(root) + 1:].split('/')[0]) if p.startswith(root + '/') else None
 
 
+def task_of(path):
+    """The task's work folder holding path: ~/.mergeworthy/work/<task>/; before that layout, the nearest <name>-work/ above it, or
+    the <prefix>-work/ beside the checkout it is in (`fu185-work/` beside `fu185-gps-fix/`); None when there is none."""
+    if wf := of(path): return wf
+    home, p = os.path.realpath(os.path.expanduser('~')), os.path.realpath(os.path.expanduser(path))
+    while p not in (home, '/'):
+        if p.endswith('-work') and os.path.isdir(p): return p
+        name = os.path.basename(p)
+        for i in [len(name)] + [m.start() for m in re.finditer('-', name)][::-1]:
+            if os.path.isdir(beside := os.path.join(os.path.dirname(p), name[:i] + '-work')): return beside
+        p = os.path.dirname(p)
+    return None
+
+
 def inside(p, top):
     return p == top or p.startswith(top + '/')
 

@@ -5,6 +5,7 @@ watcher, so maintainer comments on it are answered (mergeworthy:reply). A gated 
 .posted marker, which pre-bash-guard reads to refuse posting it as new again."""
 import hashlib, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import failclosed
 from shellcmd import segments, prog, new_post_drafts
 import steward
 d = json.load(sys.stdin)
@@ -38,10 +39,7 @@ def target(t):
             return m.group(1), m.group(2)
     return None
 
-try:
-    segs = segments(cmd)
-except ValueError:
-    sys.exit(0)
+segs = segments(cmd)  # a command that doesn't lex still yields its words: a post in it is still registered
 # Written here, not in pre-bash-guard: PostToolUse runs only after the command succeeded, so a post another hook blocked, or one that failed, can be retried
 if isinstance(r, dict) and not r.get('interrupted'):
     for s in segs:
@@ -52,7 +50,7 @@ if isinstance(r, dict) and not r.get('interrupted'):
                 if open(f + '.gate').read().split('\n')[0].strip() == sha:
                     open(f + '.posted', 'w').write(sha)
             except OSError:
-                pass
+                pass  # a draft with no gate record wasn't posted (pre-bash-guard refuses it); one gone since can't be posted again
 targets = [x for x in (target(s) for s in segs) if x]
 if not targets:
     sys.exit(0)
