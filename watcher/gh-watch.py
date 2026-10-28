@@ -458,6 +458,7 @@ def save_state(s):
 
 # The agent and the user may post as the same account (ME). The agent posts only gated drafts
 # (gate-pass registers each one's hash), each starting with its badge, so a comment by ME that is neither is the user's.
+# A badge on any account is an agent's post too: another session's agent posting as another account is no one to answer or react to.
 GATED_POSTS = os.path.expanduser(os.environ.get('GATED_POSTS', '~/.claude/gated-posts.txt'))  # written by gate-pass
 
 
@@ -497,7 +498,7 @@ def is_human(u, body=None, agent_hashes=frozenset()):
 
 
 def agent_post(u, body, agent_hashes):
-    return u.get('login') == ME and (_norm(body) in agent_hashes or gl_watch.BADGE in (body or '').lstrip().split('\n', 1)[0])
+    return bool(gl_watch.BADGE.match(body or '')) or u.get('login') == ME and _norm(body) in agent_hashes
 
 
 def append_owed(entry, d=None):
