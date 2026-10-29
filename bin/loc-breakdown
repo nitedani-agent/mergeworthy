@@ -10,6 +10,7 @@ DEFAULTS = [
     ('Lockfile', r'(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$'),
     ('Docs', r'(^|/)docs/|\.mdx?$|(^|/)llms\.txt$'),
     ('Tests', r'(^|/)(tests?|__tests__)/|\.(spec|test)\.|(^|/)fixtures?/'),
+    ('Generated', r'(^|/)dist/'),  # a committed build bundle, as pr-steps counts it
 ]
 ORDER = ['Docs', 'Tests', 'Lockfile', 'Generated']
 LABEL = {'Docs': 'Docs (one change)'}

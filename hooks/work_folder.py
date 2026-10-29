@@ -37,6 +37,17 @@ def task_of(path):
     return None
 
 
+def watched_by(dirs, session_id, path):
+    """The watch dirs (gh-watch-start) among dirs whose events reach the session acting at path: the task's work folder holding path
+    first, then the dirs whose `session` file names session_id. Another session's watcher wakes that session alone."""
+    wf = task_of(path)
+    def session(w):
+        try: return open(os.path.join(w, 'session')).read().strip()
+        except OSError: return ''
+    return sorted((w for w in dirs if wf and os.path.realpath(w) == wf or session_id and session(w) == session_id),
+                  key=lambda w: os.path.realpath(w) != wf)
+
+
 def inside(p, top):
     return p == top or p.startswith(top + '/')
 

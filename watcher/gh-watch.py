@@ -651,7 +651,7 @@ _ticks, _t3_missing = [0], [None]  # tick() counts its passes; the pass in which
 
 
 def wake_thread():
-    """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
+    """Under T3 Code (steward.bind_watcher wrote the main session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
     send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
     instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code."""
@@ -670,12 +670,15 @@ def wake_thread():
         try:
             r = subprocess.run([t3, 'thread', 'send', tid, '-'], input=msg, capture_output=True, text=True, timeout=60)
             err = r.returncode and (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
-            gone = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
+            gone = deleted = err == f"Thread {tid} was not found."  # t3's answer for a deleted thread, exit 1
         except (OSError, subprocess.SubprocessError) as e:
-            err, gone = str(e), isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]
+            err, deleted, gone = str(e), False, isinstance(e, FileNotFoundError) and _t3_missing[0] is not None and _t3_missing[0] < _ticks[0]
         if gone:
             emit(f"WATCH ERROR t3 thread send {tid}: {err[:200]}; the watcher no longer sends to T3, events.log keeps every event")
-            for f in ('t3-thread', 't3-wake.cursor'):
+            if deleted:  # steward.bind_watcher doesn't bind it again
+                with open(os.path.join(HERE, 't3-gone'), 'w') as f:
+                    f.write(tid + '\n')
+            for f in ('t3-thread', 't3-wake.cursor')[:1 + deleted]:  # a kept cursor: once t3 is back, the rebound thread gets what it missed
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(os.path.join(HERE, f))
             _t3_missing[0] = None
@@ -766,7 +769,7 @@ def emit_maintainer_commits(state, repo, key, old, new):
 
 def emit_refactor_stale(repo, key, new):
     """Your PR's own commits changed more than ~80 lines since its last shape pass (`pr-steps shape`): the ratings
-    describe old code. Merges of the base branch, tests and lockfiles don't count: they aren't the PR's code to rate."""
+    describe old code. Merges of the base branch, tests, lockfiles and dist/ don't count: they aren't the PR's code to rate."""
     num = key.split('#')[1]
     try:
         pr = request(f"repos/{repo}/pulls/{num}").json()
@@ -775,7 +778,7 @@ def emit_refactor_stale(repo, key, new):
         rec = os.path.expanduser('~/.claude/pr-steps')
         idx = max((i for i, c in enumerate(commits) if os.path.exists(f"{rec}/{c['sha']}") and any(l.startswith(('shape ', 'refactor ')) for l in open(f"{rec}/{c['sha']}"))), default=-1)
         since = [c['sha'] for c in commits[idx + 1:] if not c['merge']]
-        skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$')
+        skip = re.compile(r'\.(spec|test)\.|(^|/)tests?/|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$|(^|/)dist/')
         lines = sum(f['additions'] + f['deletions'] for sha in since for f in (request(f"repos/{repo}/commits/{sha}").json().get('files') or []) if not skip.search(f['filename']))
     except Exception as e:
         fail(f"shape check {key}", e)
@@ -1774,11 +1777,13 @@ def shared_pass(force=False):
 
 
 def retire_if_done():
-    """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt doesn't
-    keep it, an `owner/repo all` line does) has nothing left to watch: it writes the time to HERE/retired and disables its service, so
-    it doesn't come back after a reboot, or stops its daemon. A reply still owed in replies-owed.md keeps it: stop-lint holds a
-    session's turn only for a live watcher's owed lines."""
-    if any(repo_lines(HERE).values()) or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:'):
+    """A watcher whose every thread is merged or closed (and that covers no whole repo: a bare `owner/repo` line in repos.txt keeps it
+    only for an hour after it was written, for the thread about to join, an `owner/repo all` line always) has nothing left to watch:
+    it writes the time to HERE/retired and disables its service, so it doesn't come back after a reboot, or stops its daemon. A reply
+    still owed in replies-owed.md keeps it: stop-lint holds a session's turn only for a live watcher's owed lines."""
+    repos = repo_lines(HERE)
+    if (any(repos.values()) or repos and time.time() - os.path.getmtime(os.path.join(HERE, 'repos.txt')) < 3600
+            or work_folder.has_open_line(os.path.join(HERE, 'replies-owed.md'), 'done:')):
         return
     threads, gl = read_threads(), gl_watch.threads(THREADS)
     if not threads and not gl:
@@ -1894,6 +1899,8 @@ def tick():
     """One round of a daemon. What each budget level allows: OK everything; RESERVE (below RESERVE_AT calls left) not discovery and
     follow-ups; LOW (below LOW_AT) only the notifications and the threads they name; PAUSED nothing."""
     _ticks[0] += 1
+    if not os.path.exists(os.path.join(HERE, 't3-thread')):  # started before T3 delivery or while t3 wasn't found; first, so this pass's events go too
+        steward.bind_watcher(HERE)
     follow_update()
     steward_line()
     lvl = level()

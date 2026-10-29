@@ -59,7 +59,8 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
-# pr-steps small <report>: a fix of at most 60 lines outside tests, docs and lockfiles, with a test in the diff (a diff of docs
+built='(^|/)dist/'  # a committed build bundle: not code a reviewer reads
+# pr-steps small <report>: a fix of at most 60 lines outside tests, docs, lockfiles and dist/, with a test in the diff (a diff of docs
 # alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
 # reverify, fresh and the approach (converge §Small fix); gates still run
 if [ "$step" = small ]; then
@@ -67,16 +68,16 @@ if [ "$step" = small ]; then
   base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
   testre='(^|/)(tests?|__tests__|e2e|specs?)/|\.(test|spec)\.|(^|/)\.test[A-Za-z-]*\.'
   docs='\.md$|(^|/)docs?/'
-  skip="$testre|$docs"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
+  skip="$testre|$docs|$built"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
   n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
-  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs and lockfiles: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
+  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs, lockfiles and dist/: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
   if ! git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre"; then
     git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
     python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
   fi
   # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
   verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
-  [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
+  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
   catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
@@ -110,7 +111,7 @@ delta() {
   local B; B=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)
   pid() { git diff "$(git merge-base "$1" "$B" 2>/dev/null)" "$1" 2>/dev/null | git patch-id --stable | cut -d' ' -f1; }
   if git rev-parse -q --verify "$B" >/dev/null && [ -n "$(pid "$1")" ] && [ "$(pid "$1")" = "$(pid HEAD)" ]; then echo 0; return; fi
-  git diff --numstat "$1" HEAD | awk '{s+=$1+$2} END{print s+0}'
+  git diff --numstat "$1" HEAD | awk -v r="$built" '$3 !~ r {s+=$1+$2} END{print s+0}'
 }
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
@@ -203,7 +204,7 @@ EOF
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates|quick)
-    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|projects?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
     # read on every line but a suite's test results, whose titles may quote these words: '<title>: <got> (want <want>)', ok/PASS/✓ lines
@@ -211,10 +212,10 @@ EOF
     ! printf '%s\n' "$own" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$own" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
     gl=$(grep -E ' -> exit [0-9]+' "$out" || true)
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
-    # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)';
-    # a gate that counts words (tests/word-budget) ends with '(N words)'
-    bad=$(printf '%s\n' "$gl" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) (tests?|words)\)$' | head -n3 || true)
-    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates); a gate that counts words ends with '(N words)': $bad" >&2; exit 1; }
+    # a gate that ran nothing is red (a filter that matched nothing): a test-named line ends with a count over 0, and no line counts 0
+    bad=$( { printf '%s\n' "$gl" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) (tests?|projects?|words)\)$'
+             printf '%s\n' "$gl" | grep -E '\(0+ (tests?|projects?|words)\)$'; } | head -n3 || true)
+    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates); a type check ends with '(N projects)', a gate that counts words with '(N words)': $bad" >&2; exit 1; }
     # a changeset is a sentence or two on what changed for users, naming every package whose files the branch changed (a maintainer's ask)
     if [ -n "$base" ] && [ -d "$(git rev-parse --show-toplevel)/.changeset" ]; then
       bad=$(cd "$(git rev-parse --show-toplevel)" && python3 - "$base" <<'EOF'

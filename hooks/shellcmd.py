@@ -7,17 +7,18 @@ so a hook checks what it can and blocks a guarded verb it can't check."""
 import hashlib, json, os, re, subprocess, sys
 
 
-def branch_record(d, kind):
-    """The pr-steps record kept once per repo and branch (preflight, approach; same key as bin/pr-steps), None outside git."""
+def branch_record(d, kind, branch=None):
+    """The pr-steps record kept once per repo and branch (preflight, approach; same key as bin/pr-steps) of branch, by default the
+    checked-out one; None outside git."""
     git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
     common = git('rev-parse', '--git-common-dir')
     if not common:
         return None
     root = os.path.realpath(os.path.join(d, common))
     rec = lambda b: os.path.expanduser(f'~/.claude/pr-steps/{kind}.' + hashlib.sha256((root + '\n' + b).encode()).hexdigest()[:40])
-    branch = git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
+    branch = branch or git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
     # a worktree on its own local branch tracking the PR's branch shares that branch's records
-    up = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}').split('/', 1)[-1]
+    up = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{branch}@{{u}}').split('/', 1)[-1]
     return next((rec(b) for b in (branch, up) if b and os.path.exists(rec(b))), rec(branch))
 
 
@@ -104,24 +105,46 @@ def _assign(a, src):
     return a['Name']['Value'] + '=' + (_word(a['Value'], src) if a.get('Value') else _src(a['Array'], src) if a.get('Array') else '')
 
 
-def _calls(node, src):
-    """(the argv of every simple command under node, in order; the statements each heredoc of them is read by: (redirect, top statement))."""
-    segs, docs, stack = [], [], [(node, None)]
+class Seg(list):
+    """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
+    pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where;
+    loop: whether it runs inside a while or until loop."""
+    nested = loop = False
+
+
+def _seg(argv, nested, loop=False):
+    s = Seg(argv)
+    s.nested, s.loop = nested, loop
+    return s
+
+
+def _scoped(x, k):
+    """Whether node x's child k runs nested (Seg.nested)."""
+    t = x.get('Type')
+    return t in ('Subshell', 'CmdSubst', 'ProcSubst', 'CoprocClause', 'IfClause', 'CaseClause', 'WhileClause', 'ForClause', 'FuncDecl') or \
+        k == 'Cmd' and bool(x.get('Background') or x.get('Negated')) or t == 'BinaryCmd' and x.get('Op') != '&&' and (k == 'Y' or x.get('Op') != '||')
+
+
+def _calls(node, src, nested=False):
+    """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
+    (redirect, top statement, whether it is in a loop))."""
+    segs, docs, stack = [], [], [(node, None, nested, False)]
     while stack:
-        x, top = stack.pop()
+        x, top, n, loop = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top) for y in reversed(x)]
+            stack += [(y, top, n, loop) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
+        loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
-            segs.append([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words)
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
         elif cmd.get('Type') == 'DeclClause':
-            segs.append([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words)
-        docs += [(r, top or x) for r in redirs if r.get('Hdoc')]
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top)  # each statement of a list is a top statement
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
+        docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop)  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
@@ -130,9 +153,9 @@ def _segments(tree, src, depth):
     """(every simple command the tree runs, with each heredoc's commands: its substitutions, or all of it when a shell
     without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
     (segs, docs), err = _calls(tree, src), ''
-    for r, top in docs:
+    for r, top, loop in docs:
         if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
-            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1)
+            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, True, loop)
         else:
             s, e = _segments(r['Hdoc'], src, depth)
         segs, err = segs + s, err or e
@@ -188,29 +211,32 @@ def _nested(t):
     return None
 
 
-def parse(cmd, depth=0):
-    """(segments, error): the argv of every simple command cmd runs, command substitutions and the scripts of `bash -c` and
-    `eval` included; error is '' when it parsed, else why not (the segments are then _rough's)."""
+def parse(cmd, depth=0, nested=False, loop=False):
+    """(segments, error): the argv of every simple command cmd runs, each a Seg (nested, loop: all of them), command substitutions and
+    the scripts of `bash -c` and `eval` included; error is '' when it parsed, else why not (the segments are then _rough's, nested)."""
     try:
         r = subprocess.run([os.path.join(_deps(), 'bin', 'shfmt'), '--to-json', '-ln', 'bash'], input=cmd.encode(), capture_output=True, timeout=60)
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
+        for x in segs: x.nested, x.loop = x.nested or nested, x.loop or loop
     except ValueError as e:  # also a JSON error
-        segs, err = _rough(cmd), str(e)
+        segs, err = [_seg(x, True) for x in _rough(cmd)], str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
-        segs, err = _rough(cmd), f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
-    for s in list(segs):
+        segs, err = [_seg(x, True) for x in _rough(cmd)], f"mergeworthy's shell parser (shfmt, {REQUIREMENTS}) can't run: {e}"
+    out = []
+    for s in segs:  # each command, then what it runs: find's -exec commands, a script
+        out.append(s)
         t = prog(s)
         if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
-            segs += [x.split('\0') for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
+            out += [_seg(x.split('\0'), True, s.loop) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
         here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
         script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
         if script:
-            inner, e = parse(script, depth + 1)
-            segs += inner
+            inner, e = parse(script, depth + 1, True, s.loop)
+            out += inner
             err = err or e
-    return segs, err
+    return out, err
 
 
 def segments(cmd):
@@ -235,7 +261,7 @@ KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a
 def prog(t):
     """Drop env assignments, shell keywords and wrappers (with their options, and timeout's duration); return the command's argv."""
     while t:
-        if re.match(r'^\w+=', t[0]) or t[0] in KEYWORDS:
+        if re.match(r'^(\w+|\$\{?\w+\}?)=', t[0]) or t[0] in KEYWORDS:  # `env "$v=x" cmd` assigns too
             t = t[1:]
             continue
         w = os.path.basename(t[0])
@@ -272,27 +298,73 @@ def git_globals(t):
     return out
 
 
-def git_argv(t, cwd):
-    """(git dir, -c overrides, subcommand, its arguments) of a git argv, past its global options (each -C applies in turn); a
-    configured alias (`git config alias.p push`, or `-c alias.p=push`) is expanded, so `git p` is checked as the push it runs."""
+TOPLEVEL = '$(git rev-parse --show-toplevel)'  # the one substitution Where runs itself, in `cd $(git rev-parse --show-toplevel)`
+
+
+class Where:
+    """Where each simple command of one command line runs, walk() taking them in order, with the variables the line set
+    (`D=~/x; cd "$D"`). It follows the forms agents write: a cd or pushd to a path (`cd /abs/dir && ...`, or relative to a dir it
+    knows), `cd $(git rev-parse --show-toplevel)` and `git -C <dir>`. After any other dir change (a nested one: Seg.nested; a target
+    holding an expansion it can't resolve; `cd -`, popd or a stack rotation) the dir is None, and a check that needs it blocks."""
+    def __init__(self, cwd):
+        self.dir, self.moved, self.vars = cwd, False, {}
+
+    def expand(self, p):
+        """p with the line's variables ($D, ${D}), then the environment's, put in; one it can't tell stays as written."""
+        return re.sub(r'\$(?:(\w+)|\{(\w+)\})', lambda m: self.vars.get(m[1] or m[2], os.environ.get(m[1] or m[2], m[0])), p)
+
+    def path(self, p, base=''):
+        """p resolved from base (default: the dir), or None when it can't be told (an expansion left, or no base)."""
+        p = os.path.expanduser(self.expand(p))
+        base = self.dir if base == '' else base
+        return None if re.search(r'[$`]', p) else p if os.path.isabs(p) else None if base is None else os.path.join(base, p)
+
+    def walk(self, segs):
+        """Each of segs (parse()'s), with self moved to where it runs; self takes it once the caller is done with it."""
+        for t in segs:
+            yield t
+            self.step(t)
+
+    def step(self, t):
+        if t and all(re.match(r'^\w+=', x) for x in t):
+            self.vars.update(x.split('=', 1) for x in t)
+            return
+        p = prog(t)
+        if p[:1] not in (['cd'], ['pushd'], ['popd']):
+            return
+        self.moved = True
+        a = [x for x in operands(p[1:]) if x not in ('-P', '-L', '-e', '--')]
+        to = a[0] if a else '~' if p[0] == 'cd' else '-'
+        if getattr(t, 'nested', False) or p[0] == 'popd' or to[:1] in '-+' or self.dir is None:
+            self.dir = None
+        elif to == TOPLEVEL:
+            self.dir = subprocess.run(['git', '-C', self.dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or None
+        else:
+            self.dir = self.path(to) and os.path.normpath(self.path(to))
+
+
+def git_argv(t, where):
+    """(git dir, -c overrides, subcommand, its arguments) of a git argv run at where (a Where), past its global options (each -C
+    applies in turn; the dir is None when Where can't tell it); a configured alias (`git config alias.p push`, or `-c alias.p=push`)
+    is expanded, so `git p` is checked as the push it runs."""
     g = git_globals(t)
     overrides = dict(g[i + 1].split('=', 1) for i in range(len(g) - 1) if g[i] == '-c' and '=' in g[i + 1])
-    git_dir = cwd
+    git_dir = where.dir
     for i in range(len(g) - 1):
-        if g[i] == '-C': git_dir = os.path.join(git_dir, os.path.expanduser(g[i + 1]))
+        if g[i] == '-C': git_dir = where.path(g[i + 1], git_dir)
     a = t[1 + len(g):]
     if not a:
         return git_dir, overrides, '', []
     sub, rest = a[0], a[1:]
     alias = '' if sub in _builtins() else overrides.get(f'alias.{sub}') or \
-        subprocess.run(['git', '-C', git_dir, 'config', '--get', f'alias.{sub}'], capture_output=True, text=True).stdout.strip()
+        subprocess.run(['git', '-C', git_dir or '/', 'config', '--get', f'alias.{sub}'], capture_output=True, text=True).stdout.strip()
     if alias and not alias.startswith('!'):
         words = alias.split()
         sub, rest = words[0], words[1:] + rest
     elif alias:  # a shell alias: its first command's verb
         inner = prog((segments(alias[1:]) or [['']])[0])
         if inner[:1] == ['git']:
-            return git_argv(inner + rest, cwd)
+            return git_argv(inner + rest, where)
     return git_dir, overrides, sub, rest
 
 

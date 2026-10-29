@@ -24,13 +24,13 @@ Working a PR's head to a final state: no reviewer, agent or verifier finds anyth
 
 ### Small fix
 
-A change of at most 60 lines outside tests, docs (any `.md` included) and lockfiles, with a test the base fails and the head passes (docs alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one agent: `delegate/small-review.md` on the pushed head, recorded, with `pull-request` step 5's approach, by `pr-steps small <its report>`; then step 5. Each blocker or should: a fix and a new round (`delegate §Continue`); each `## Outside this change` line: its `task §Dispositions`.
+A change of at most 60 lines outside tests, docs (any `.md` included), lockfiles and build output, with a test the base fails and the head passes (docs alone: a commit's `Cold-read: <rules step 4's report>` trailer), replaces steps 1–4 with one agent: `delegate/small-review.md` on the pushed head, recorded, with `pull-request` step 5's approach, by `pr-steps small <its report>`; then step 5. Each blocker or should: a fix and a new round (`delegate §Continue`); each `## Outside this change` line: its `task §Dispositions`.
 
 ### Batching
 
-- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), then converge the whole PR once, before its push.
-- **Carry the pass:** a change of 80 lines or fewer that adds no behavior (tests, docs, wording) gets the quick gates and the lanes it touches, and its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for a pass, the shape pass runs and records instead, on the unchanged head too. Anything else gets the loops on the whole PR diff from its merge-base, then one fresh read of it.
-- **The shape pass goes stale** past 80 changed lines since its last full pass (tests and lockfiles excluded; the watcher's `### SHAPE STALE`): a fresh agent runs it on the whole diff before the next "Done" reply.
+- **Batch:** let the work land (every commit a review round or a maintainer's ask produces), then converge the whole PR once before pushing.
+- **Carry the pass:** a change of 80 lines or fewer (build output aside) that adds no behavior (tests, docs, wording) gets the quick gates and lanes it touches; its loop records say `carries the pass of <sha>`, with no new Loop A, Loop B or fresh reader. After a maintainer asks for one, the shape pass runs and records instead, on the unchanged head too. Anything else gets the loops on the PR diff from its merge-base, then one fresh read.
+- **The shape pass goes stale** past 80 changed lines since its last full pass (tests, lockfiles and build output excluded; the watcher's `### SHAPE STALE`): a fresh agent runs it on the whole diff before the next "Done" reply.
 
 ### Running the agents
 

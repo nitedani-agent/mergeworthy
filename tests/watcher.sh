@@ -599,7 +599,7 @@ before = m._ticks[0]; m.tick(); m.tick()
 print(m._ticks[0] - before, [n - before for n in seen])
 ')
 check "tick() advances _ticks once per pass, before the pass's wake_thread" "2 [1, 2]" "$got"
-rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread"
+rm -f "$W/events.log" "$W/t3-wake.cursor" "$W/t3-thread" "$W/t3-gone"
 rm -f "$W/retired"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
@@ -697,13 +697,13 @@ check "GitLab: an issue close is reported, and with every thread closed or merge
 got=$(glpy '
 thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
 out = []
-for line in ("o/r\n", "o/r all  # watched whole\n"):
-    open(os.path.join(m.HERE, "repos.txt"), "w").write(line)
+for line, age in (("o/r\n", 60), ("o/r\n", 7200), ("o/r all  # watched whole\n", 7200)):  # a bare line: gh-watch-start before the next PR
+    open(os.path.join(m.HERE, "repos.txt"), "w").write(line); os.utime(os.path.join(m.HERE, "repos.txt"), (m.time.time() - age,) * 2)
     out.append(run(m.retire_if_done).count("WATCHER RETIRED"))
 os.remove(os.path.join(m.HERE, "repos.txt"))
 print(*out)
 ')
-check "retire_if_done: every thread done, a bare owner/repo line in repos.txt doesn't keep the watcher, an owner/repo all line does" "1 0" "$got"
+check "retire_if_done: every thread done, a bare owner/repo line in repos.txt keeps the watcher for an hour after it was written, an owner/repo all line always" "0 1 0" "$got"
 got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
 check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused
@@ -732,9 +732,39 @@ t3start() { PATH="$T/cronbin:$PATH" CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-w
 out=$(t3start sess-t3)
 check "gh-watch-start under T3 Code records the thread, t3's full path and the log's end, and says no Monitor is needed" "thr-9 $T/bin/t3 11 1" \
   "$(echo $(cat "$T/t3watch/t3-thread")) $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
+# a delegated task (thr-c, delegated by thr-p) that starts it binds the main session's thread: T3 would start a finished task again on each send
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1])
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p2', 'thr-c', '{\"nativeThreadRef\":{\"nativeId\":\"sess-child\"}}'"')""")
+c.execute("""insert into orchestration_v2_projection_subagents values ('"'s1', 'thr-p', 'thr-c'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+t3start sess-child >/dev/null
+check "gh-watch-start run by a delegated task binds the thread that delegated it, not the task's" "thr-p" "$(head -n1 "$T/t3watch/t3-thread")"
 out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
+# a daemon whose dir has no t3-thread (started before T3 delivery, or while t3 wasn't found) binds its session's thread on a pass
+# its PATH holds no real t3: with the stub moved away, the daemon finds none
+tpass() { W="$T/t3daemon" PATH="$T/bin:/usr/bin:/bin" py '
+for name in ("follow_update", "steward_line", "agent_jobs_pass", "announce"):
+    setattr(m, name, lambda *a, **k: None)
+m.scan_gitlab = lambda: os.environ.get("TEV") and open(os.path.join(m.HERE, "events.log"), "a").write(os.environ["TEV"] + chr(10))  # an event the pass finds
+m.level = lambda: m.PAUSED; [m.tick() for _ in range(int(os.environ.get("TPASSES") or 1))]
+print(m.first_line(os.path.join(m.HERE, "t3-thread")).replace(chr(10), " ") or "unbound", m.first_line(os.path.join(m.HERE, "t3-wake.cursor")))
+'; }
+mkdir -p "$T/t3daemon"; printf '### old\n' > "$T/t3daemon/events.log"; echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"
+a=$(tpass); printf '### new\n' >> "$T/t3daemon/events.log"; b=$(tpass)
+check "a daemon with no t3-thread binds the main session's thread and t3's path from the log's end, then sends what follows" \
+  "thr-p $T/bin/t3 8|thr-p $T/bin/t3 16|t3 thread send thr-p -;Watcher events in $T/t3daemon/events.log (mergeworthy:reply):;### new;" "$a|$b|$(tr '\n' ';' < "$T/t3.log")"
+rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t3daemon/session"; c=$(tpass); rm "$T/t3daemon/session"
+check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
+echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"; e=$(TEV='### found in the binding pass' tpass)
+check "the pass that binds the thread sends it the events that pass found" "thr-p $T/bin/t3 46|### found in the binding pass" "$e|$(tail -n1 "$T/t3.log")"
+mv "$T/bin/t3" "$T/t3.away"; f=$(TPASSES=3 TEV='### found while t3 was missing' tpass | tail -n1); mv "$T/t3.away" "$T/bin/t3"; : > "$T/t3.log"
+check "a t3 missing on two passes unbinds the thread, keeping its cursor; once it is back, the next pass binds it again and sends what came meanwhile" \
+  "unbound 46|thr-p $T/bin/t3 139|### found while t3 was missing;### found while t3 was missing;### found while t3 was missing;" "$f|$(tpass)|$(grep '^###' "$T/t3.log" | tr '\n' ';')"
+echo sess-child > "$T/t3daemon/session"; tpass >/dev/null; printf '### to a deleted thread\n' >> "$T/t3daemon/events.log"; : > "$T/t3.gone"
+d=$(tpass | tail -n1); rm "$T/t3.gone"
+check "a thread T3 reports deleted is not bound again" "unbound |unbound " "$d|$(tpass)"
+rm "$T/t3daemon/session"
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
@@ -994,5 +1024,16 @@ print(len(started), [p.wait() for p in started], open(os.path.join(m.HERE, "disk
 ')
 check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and runs no prune" "1 [0] 1 0" "$got $(grep -c prune "$T/docker.log")"
 
+# SHAPE STALE counts your PR's code: a committed build bundle (dist/) is not
+got=$(py '
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0}]
+m.request = lambda path, *a, **k: Answer({"user": {"login": "me"}, "base": {"ref": "main"}} if path.endswith("/pulls/8")
+                                         else {"commits": [{"sha": "c1", "parents": [{}]}]} if "/compare/" in path else {"files": files})
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new")
+print(buf.getvalue().count("### SHAPE STALE"))
+')
+check "SHAPE STALE doesn't count a committed build bundle (dist/)" 0 "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]
