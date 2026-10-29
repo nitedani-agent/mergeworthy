@@ -42,7 +42,7 @@ except (KeyError, TypeError, OSError):
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
         sys.exit(2)
     lines = []
-import steward
+import forge, report, steward, t3_tasks
 from shellcmd import segments, prog, git_argv, Where
 # A T3 Code delegated child (its thread has a parent in T3's state, or its prompt says so): its result is its last message, and the main session owns replies and next steps
 def opening(l):  # a user line's typed text ('' for a tool result's list, or a line that isn't JSON)
@@ -144,74 +144,37 @@ task_dirs = {t for p in worked if p.startswith(('/', '~')) and (t := work_folder
 working = opened_task or acted or delegated or bool(task_dirs or monitor_cmds or t3_dirs)
 # the check-in asks only where work can still be waiting after the answer: a work folder it worked in, an agent it started, a Monitor
 may_wait = delegated or bool(task_dirs or monitor_cmds or t3_dirs)
-# quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
-own = re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>[^\n]*$', ' ', last, flags=re.S | re.M)
-# An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
-OFFER = (r"(when you say (go|so)|say the word|(do|would) you (want|like) me to|want me to|shall I\b|should I\b|if you want|if you'd (rather|like)|your call|"
-         r"is yours to|up to you|or would you rather|which do you (want|prefer)|let me know (if|when|whether)|"
-         r"(?:^[\s>*\-•]*|[.!?:;,]\s*|\b(?:or|and|just|please)\s+)(?:tell me (when|to|if|whether)|ask me (to|when|if)|ping me)|nothing (will|would|is going to) (notify|wake|tell) me|(won't|will not|doesn't|does not|can't) (notify|wake) me)\b")
-offer = re.search(OFFER, own, re.I | re.M)
-if working and not child and offer and 'GENUINE-FORK' not in last:
-    print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
-          "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
-          "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
-          "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
-          "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
-    sys.exit(2)
-# A fork is asked once: until the user answers it, it waits in questions-owed.md, not at the end of every report
-FORK = lambda t: {re.sub(r'\W+', ' ', f).strip().lower() for f in re.findall(r'^GENUINE-FORK:(.*)$', t, re.M)}
-asked = set().union(*map(FORK, said[:-1])) if len(said) > 1 else set()
-if not child and FORK(last) & asked:
-    print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
-          "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
-          "options, or when the user asks about it (always-on: Do, don't offer).", file=sys.stderr)
-    sys.exit(2)
+def handback_check():
+    offer = report.offer(last)
+    if working and offer and 'GENUINE-FORK' not in last:
+        print(f"Your last message hands the next step back (\"{offer.group(0)}\"). If it is your own recommendation or in scope, "
+              "do it now; if it waits on something (CI, an agent, a reply), arm a Monitor or a background command that wakes you when it lands, "
+              "and continue then. Ask only for (a) irreversible actions on shared state you didn't create, (b) money, credentials "
+              "or the user's global config, (c) an external maintainer's product decision or a fork you can't rank; then "
+              "include a line starting 'GENUINE-FORK:' with your recommended default.", file=sys.stderr)
+        sys.exit(2)
+# A fork is asked once per session: a GENUINE-FORK line already sent blocks, answered or not (it waits in questions-owed.md)
+def fork_check():
+    asked = set().union(*map(report.forks, said[:-1])) if len(said) > 1 else set()
+    if report.forks(last) & asked:
+        print("This GENUINE-FORK line was already sent to the user in this session. Ask a fork once: until they answer, "
+              "it waits in questions-owed.md, and a later report doesn't repeat it. Send it again only with changed "
+              "options; to refer to it, quote it (always-on: Do, don't offer).", file=sys.stderr)
+        sys.exit(2)
 # A Running list in the reply is checked against T3 task status: each task it names was launched or read (task_status) after the
 # user's last message, and none has a terminal status.
-running = re.search(r'^(?:#+ *Running\b|[-*\s]*\*{0,2}Running\*{0,2}:)(.*(?:\n[ \t]*[-*\d].*)*)', last, re.M)  # a `Running:` label or heading
-if running and not child:
-    titles, status, launched, seen, thread = {}, {}, False, set(), {}  # status: in the order last heard of
-    for line in lines:
-        try: e = json.loads(line)
-        except ValueError: continue
-        c = (e.get('message') or {}).get('content') if isinstance(e, dict) else None
-        if e.get('type') == 'user' and isinstance(c, str) and not c.startswith('<'):
-            # T3's own completion notice and a skill's re-invocation aren't the user: a notice marks its task terminal instead
-            # T3's notice is `Delegated task <id> reached a terminal state`, or `Delegated task <id> (<title>) [<status>]:` with its result
-            n = re.match(r'Delegated task (\S+) (?:reached a terminal state|\(.*?\) \[(\w+)\]:?)', c)
-            # a sub-agent whose turn ends while its own background work runs says so, and T3 continues it later: not finished
-            waits = n and re.search(r"\b(?:still running|I'll (?:continue|wait|resume)|I will (?:continue|wait|resume)|I'm waiting|wakes? (?:me )?when)\b", c[n.end():n.end() + 400], re.I)
-            if n: status[n.group(1)] = ('waiting' if waits else n.group(2) or 'completed', status.pop(n.group(1), ('', ''))[1])
-            elif not c.startswith(('Skill /', 'Stop hook feedback')): seen = set()
-        for b in c if isinstance(c, list) else []:
-            if b.get('type') == 'tool_use' and re.search(r'(delegate_task|task_status|thread_send)$', b.get('name', '')):
-                titles[b['id']] = (b.get('name', '').endswith('task_status'), str((b.get('input') or {}).get('title') or ''))
-                launched = launched or not titles[b['id']][0]
-            elif b.get('type') == 'tool_result' and b.get('tool_use_id') in titles:
-                r = b.get('content'); r = ''.join(x.get('text', '') for x in r) if isinstance(r, list) else str(r or '')
-                try: r = json.loads(r)
-                except ValueError: continue
-                if isinstance(r, dict) and r.get('threadId') and not r.get('taskId'):  # a message sent to a task's thread runs it again
-                    r = {'taskId': r['threadId'] + '#sent', 'childThreadId': r['threadId'], 'status': r.get('status') or 'running'}
-                if isinstance(r, dict) and r.get('taskId'):
-                    is_read, title = titles[b['tool_use_id']]
-                    old = status.pop(r['taskId'], ('', ''))
-                    status[r['taskId']] = (str(r.get('status') or ''), title or old[1])
-                    thread[r['taskId']] = str(r.get('childThreadId') or r.get('threadId') or thread.get(r['taskId']) or r['taskId'])  # a follow-up message is a new task of its thread
-                    seen.add(r['taskId'])
-    text = running.group(1).lower()
+def running_check():
+    text = report.running_list(last)
+    if text is None: return
+    status, thread, seen, launched = t3_tasks.observed(lines)
     # a link names a thread, and a list with no link names a thread by a title its tasks hold ("memory refresh" is the refresh just
-    # launched). A thread is all its tasks: the first, each message sent to it, each turn T3 continues on its own (provider-continuation).
-    # It is finished only when every task of it is; it is current when one of them was heard of since the user's last message.
-    def name_of(i):
-        m = re.search(r'%25253A([^%]+)%3Aordinal', i)  # a continuation's id holds its thread's, encoded twice
-        return (m[1] if m else thread.get(i, i).rsplit('%3A', 1)[-1]).lower()
+    # launched). It is finished only when every task of it is; it is current when one of them was heard of since the user's last message.
     threads = {}
-    for i in status: threads.setdefault(name_of(i), []).append(i)
+    for i in status: threads.setdefault(thread[i], []).append(i)
     named = [g for n, g in threads.items() if re.search(r'(?:%3a|[^\w-])' + re.escape(n) + r'(?![\w-])', text)]
     if not named:
         for t in {t.lower() for _, t in status.values() if t and t.lower() in text}:
-            named.append(threads[name_of([i for i, (_, u) in status.items() if t in u.lower()][-1])])
+            named.append(threads[thread[[i for i, (_, u) in status.items() if t in u.lower()][-1]]])
     label = lambda g: next((status[i][1] for i in g if status[i][1]), g[0])
     done = [label(g) for g in named if all(re.match(r'(completed|failed|cancel+ed|interrupted|error)', status[i][0]) for i in g)]
     stale = [label(g) for g in named if not set(g) & seen]
@@ -221,40 +184,22 @@ if running and not child:
               "and list only the ones still working (mergeworthy:writing §Reports to the user).", file=sys.stderr)
         sys.exit(2)
 # A message opening with "it's done" names no linked PR or MR that is still a draft or not green (mergeworthy:merging, Ready).
-# The opening sentence is about the PRs it links ("#1 is ready for review", while #26 is a draft); one linking none, about all of them
-DONE = r"\b(?:(?:is|are|all|work's|it's) (?:done|finished|complete)\b|ready (?:for review|to merge)|kész\b|elkészült|befejeztem)"
-# a negation or a condition earlier in the done word's clause: "isn't quite ready", "once it is ready", "amint kész"
-NOT_NOW = re.compile(r"\b(?:not|nem|nincs(?:enek)?|\w+n['’]t|once|when|if|until|after|ha|amint|amikor|mihelyt|amíg|\w+-ig)\b", re.I)
-# a future or a conditional anywhere in its clause: "it will be ready for review tomorrow", "holnapra kész lesz", "kész lenne"
-FUTURE = re.compile(r"\b(?:will|would|\w+['’]ll|going to|tomorrow|later|soon|lesz\w*|lenne\w*|majd|holnap\w*|később|hamarosan)\b", re.I)
-# a clause ends at a comma, semicolon or colon, or before a conjunction: "the tests are not flaky | and the work is done"
-CLAUSE = re.compile(r"[,;:]|(?=\b(?:and|but|so|és|de|ezért|viszont|majd)\b)", re.I)
-LINK = r'https://(github\.com|gitlab\.[\w.]+)/([\w.-]+/[\w./-]+?)(?:/-)?/(?:pull|merge_requests)/(\d+)'
-SENTENCE = r'(?<=[.!?])\s+|\n+'
-first = re.split(SENTENCE, own.strip())[0]
-def is_claim(m):
-    before, after = CLAUSE.split(first[:m.start()])[-1], CLAUSE.split(first[m.start():])[0]
-    return not NOT_NOW.search(before) and not FUTURE.search(before + after)
-if not child and any(map(is_claim, re.finditer(DONE, first, re.I))):
-    import subprocess, urllib.parse
-    def api(cmd):
-        try: return json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout or 'null')
-        except (OSError, ValueError, subprocess.SubprocessError): return None
+def done_check():
     unfinished = []
-    for host, path, n in list(dict.fromkeys(re.findall(LINK, first) or re.findall(LINK, last)))[:10]:
+    for host, path, n in report.done_links(last):
         url = f'https://{host}/{path}/{"pull" if host == "github.com" else "-/merge_requests"}/{n}'
         if host == 'github.com':
-            pr = api(['gh', 'api', f'repos/{path}/pulls/{n}'])
+            pr = forge.pull(path, n)[0]
             if not isinstance(pr, dict):
                 unfinished.append(f"{url} (gh couldn't read it)"); continue
             if pr.get('state') != 'open': continue
-            runs = api(['gh', 'api', f'repos/{path}/commits/{pr["head"]["sha"]}/check-runs'])
-            if not isinstance(runs, dict):
+            check_runs = forge.check_runs(path, pr['head']['sha'])[0]
+            if not isinstance(check_runs, dict):
                 unfinished.append(f"{url} (gh couldn't read its checks)"); continue
-            red = [r.get('name') for r in runs.get('check_runs', []) if r.get('conclusion') not in ('success', 'skipped', 'neutral')]
+            red = [r.get('name') for r in check_runs.get('check_runs', []) if r.get('conclusion') not in ('success', 'skipped', 'neutral')]
             why = (['draft'] if pr.get('draft') else []) + ([f"checks not green: {', '.join(red[:3])}"] if red else [])
         else:
-            mr = api(['glab', 'api', '--hostname', host, f'projects/{urllib.parse.quote(path, safe="")}/merge_requests/{n}'])
+            mr = forge.merge_request(host, path, n)[0]
             if not isinstance(mr, dict):
                 unfinished.append(f"{url} (glab couldn't read it)"); continue
             if mr.get('state') != 'opened': continue
@@ -268,69 +213,45 @@ if not child and any(map(is_claim, re.finditer(DONE, first, re.I))):
 # A sentence whose subject is a PR (`#N`, `owner/repo#N`, its URL, `PR #N`, `CI on #N`) and that states its live state (a draft,
 # ready, merged, CI green or red) is checked against GitHub now: the PR may have moved since the agent last looked (a maintainer
 # marks it ready, CI finishes), and the user acts on what the report says. "My reply to #12 is a draft" has another subject.
-REF = r"(?:https://github\.com/(?P<r1>[\w.-]+/[\w.-]+)/pull/(?P<n1>\d+)|(?<![\w/])(?P<r2>[\w.-]+/[\w.-]+)?#(?P<n2>\d+)\b)"
-SUBJECT = r"(?:^[\s>*\-•\d.)]*|(?<=[,;:(])\s*|\b(?:and|but|so|now)\s+)(?:(?:the\s+)?PR\s*)?\(?" + REF + \
-          r"\)?(?:\s*\([^()\n]{0,80}\))?(?:'s\s+(?:CI|checks?|jobs?)|:\s*(?:CI|checks?|jobs?))?\s+"
-STATE = {'a draft': r"(?:is|remains|stays)\s+(?:still\s+|now\s+)?(?:a\s+|in\s+)?draft\b", 'ready for review': r"is\s+(?:now\s+)?(?:ready for review|out of draft|marked ready)\b",
-         'merged': r"(?:is|was|got|has been)\s+(?:now\s+)?merged\b", 'green': r"(?:is|are)\s+(?:now\s+|all\s+)?(?:green|passing)\b", 'red': r"(?:is|are)\s+(?:still\s+|now\s+)?(?:red|failing)\b"}
-ON = r"\s+(?:on|for|of)\s+(?:PR\s*)?" + REF
-CLAIMS = [(c, re.compile(rx, re.I)) for c, rx in [(c, SUBJECT + x) for c, x in STATE.items()] + [
-    (c, r"\b(?:CI|checks?)" + ON + r"\s+" + STATE[c]) for c in ('green', 'red')] + [
-    (c, r"\b(?:CI|checks?|jobs?)\s+" + STATE[c] + ON) for c in ('green', 'red')] + [('green', r"\ball\s+\d+\s+(?:CI\s+)?(?:checks|jobs)\s+pass(?:ed)?" + ON)]]
-# a condition, a plan or a wait is no claim about now
-LATER = re.compile(r"\b(?:once|when|after|until|if|before|unless|whether|will|would|waiting|wait|expect|next|tomorrow|soon|later)\b", re.I)
-if not child and last.strip():
-    import subprocess
-    def gh(*a):
-        try: r = subprocess.run(['gh', *a], capture_output=True, text=True, timeout=20)
-        except (OSError, subprocess.TimeoutExpired) as e: return None, str(e)
-        try: return (json.loads(r.stdout or 'null') if r.returncode == 0 else None), r.stderr
-        except ValueError: return None, 'unreadable answer'
-    def remotes():
-        out = []
-        for name in ('upstream', 'origin'):
-            u = subprocess.run(['git', '-C', d.get('cwd') or '.', 'remote', 'get-url', name], capture_output=True, text=True).stdout.strip()
-            if m := re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$', u): out.append(m[1])
-        return out
-    url_repos = re.findall(r'github\.com/([\w.-]+/[\w.-]+)/pull/\d+', last)
+def state_check():
+    url_repos = report.linked_repos(last)
     states, wrong = {}, []
-    for sentence in re.split(SENTENCE, own):
-        for claim, m in [(c, m) for c, rx in CLAIMS for m in rx.finditer(sentence) if not re.search(r"\blocal(ly)?\b", sentence, re.I) and not LATER.search(re.split(r'[,;:]', sentence[:m.start()])[-1] + sentence[m.start():])]:
-            key = (m['r1'] or m['r2'], m['n1'] or m['n2'])
-            if key not in states:
-                pr, why = None, ''
-                repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + remotes()))
-                for repo in repos:
-                    pr, why = gh('api', f'repos/{repo}/pulls/{key[1]}')
-                    if pr is not None or 'HTTP 404' not in (why or ''): break
-                if pr is None and 'HTTP 404' in (why or '') and any(isinstance(i := gh('api', f'repos/{r}/issues/{key[1]}')[0], dict) and 'pull_request' not in i for r in repos[:1]):
-                    states[key] = None  # an issue, not a PR: its state is no PR state
-                    continue
-                if not isinstance(pr, dict):
-                    print(f"Your message states #{key[1]}'s state (\"{sentence.strip()[:120]}\"), and gh couldn't read that PR ({(why or 'no repo to look in').strip()[:120]}). "
-                          "Name it by its URL, read its state live (`gh pr view <url> --json isDraft,state,statusCheckRollup`), and say what that shows.", file=sys.stderr)
-                    sys.exit(2)
-                runs, why = gh('api', f"repos/{pr['base']['repo']['full_name']}/commits/{pr['head']['sha']}/check-runs?per_page=100")
-                if not isinstance(runs, dict):
-                    print(f"Your message states {pr.get('html_url')}'s state, and gh couldn't read its checks ({(why or '').strip()[:120]}): read them live and say what they show.", file=sys.stderr)
-                    sys.exit(2)
-                runs = runs.get('check_runs', [])
-                states[key] = (pr, [r.get('name') for r in runs if r.get('conclusion') in ('failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure')],
-                               [r.get('name') for r in runs if r.get('status') != 'completed'], len(runs))
-            if states[key] is None: continue
-            pr, red, pending, total = states[key]
-            ok = {'a draft': pr.get('draft') and pr.get('state') == 'open', 'ready for review': not pr.get('draft') and pr.get('state') == 'open',
-                  'merged': pr.get('merged'), 'green': total and not red and not pending, 'red': bool(red)}[claim]
-            if not ok:
-                actual = ('merged' if pr.get('merged') else pr.get('state', '?')) + (', a draft' if pr.get('draft') else ', ready for review' if pr.get('state') == 'open' else '') + \
-                         f"; checks: {len(red)} failing, {len(pending)} pending, of {total}"
-                wrong.append(f"{pr.get('html_url')} is {claim}, you say (\"{sentence.strip()[:100]}\"); GitHub says {actual}")
+    for claim, key, sentence in report.state_claims(last):
+        if key not in states:
+            pr, why = None, ''
+            repos = list(dict.fromkeys(([key[0]] if key[0] else []) + url_repos + forge.remotes(d.get('cwd') or '.')))
+            for repo in repos:
+                pr, why = forge.pull(repo, key[1])
+                if pr is not None or 'HTTP 404' not in (why or ''): break
+            if pr is None and 'HTTP 404' in (why or '') and any(isinstance(i := forge.issue(r, key[1])[0], dict) and 'pull_request' not in i for r in repos[:1]):
+                states[key] = None  # an issue, not a PR: its state is no PR state
+                continue
+            if not isinstance(pr, dict):
+                print(f"Your message states #{key[1]}'s state (\"{sentence.strip()[:120]}\"), and gh couldn't read that PR ({(why or 'no repo to look in').strip()[:120]}). "
+                      "Name it by its URL, read its state live (`gh pr view <url> --json isDraft,state,statusCheckRollup`), and say what that shows.", file=sys.stderr)
+                sys.exit(2)
+            check_runs, why = forge.check_runs(pr['base']['repo']['full_name'], pr['head']['sha'], per_page=100)
+            if not isinstance(check_runs, dict):
+                print(f"Your message states {pr.get('html_url')}'s state, and gh couldn't read its checks ({(why or '').strip()[:120]}): read them live and say what they show.", file=sys.stderr)
+                sys.exit(2)
+            check_runs = check_runs.get('check_runs', [])
+            states[key] = (pr, [r.get('name') for r in check_runs if r.get('conclusion') in ('failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure')],
+                           [r.get('name') for r in check_runs if r.get('status') != 'completed'], len(check_runs))
+        if states[key] is None: continue
+        pr, red, pending, total = states[key]
+        ok = {'a draft': pr.get('draft') and pr.get('state') == 'open', 'ready for review': not pr.get('draft') and pr.get('state') == 'open',
+              'merged': pr.get('merged'), 'green': total and not red and not pending, 'red': bool(red)}[claim]
+        if not ok:
+            actual = ('merged' if pr.get('merged') else pr.get('state', '?')) + (', a draft' if pr.get('draft') else ', ready for review' if pr.get('state') == 'open' else '') + \
+                     f"; checks: {len(red)} failing, {len(pending)} pending, of {total}"
+            wrong.append(f"{pr.get('html_url')} is {claim}, you say (\"{sentence.strip()[:100]}\"); GitHub says {actual}")
     if wrong:
         print("Your message states a PR's state that GitHub contradicts now: " + '; '.join(wrong) + ". Re-read it live and say what it shows "
               "(mergeworthy:writing §Evidence for claims); then act on it (a ready PR: the reply loop; red CI: fix it).", file=sys.stderr)
         sys.exit(2)
+if not child:
+    for check in (handback_check, fork_check, running_check, done_check, state_check): check()
 own_dirs = set(t3_dirs)
-cwd_d = d.get('cwd') or ''
 for wd in (l.strip() for l in open(reg)) if os.path.exists(reg) else ():
     # or a watch dir this session works through from elsewhere (its cwd is a repo, the watch dir an artifact root):
     # it watches its events.log, starts its watcher or gates a draft in it. Only reading another session's files

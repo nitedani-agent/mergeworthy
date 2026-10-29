@@ -21,7 +21,7 @@ if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:'
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
 for a in "$@"; do case "$a" in o=*) [ -f "${f}_${a#o=}" ] && f="${f}_${a#o=}";; esac; done  # graphql: $FX/graphql_<owner> answers for that owner
 [ -n "$GH_STUB_403" ] && { echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1; }
-[ -f "$f" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+[ -f "$f" ] || { printf '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }  # gh prints the error's JSON body too
 q=; while [ $# -gt 0 ]; do [ "$1" = --jq ] && q=$2; shift; done
 python3 -c 'import json, re, sys
 raw = open(sys.argv[1]).read(); q = sys.argv[2]
@@ -91,6 +91,8 @@ check "the next stop goes through" 0 "$(checkin 1)"
 check "no second check-in within 30 minutes of the last" 0 "$(checkin 0)"
 python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"CLEAN"}]}}))' > "$T/tr.jsonl"
 check "a delegated child ends with its result, no check-in" 0 "$(checkin 0)"
+python3 -c 'import json; print(json.dumps({"type":"user","message":{"content":"Act as the review sub-agent for this task.\n\nCheck the diff."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"a1","input":{"prompt":"x"}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Should I open the PR?"}]}}))' > "$T/tr.jsonl"
+check "a delegated child's result is the main session's to judge: a question in it is no hand-back" 0 "$(stop "$T")"
 forks() { python3 -c 'import json,sys
 print(json.dumps({"type":"user","message":{"content":"status?"}}))
 for t in sys.argv[1:]: print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":t}]}}))' "$@" > "$T/tr.jsonl"; }
@@ -1192,6 +1194,7 @@ Running:
 - Loop A on the head' user status:running waiting; check "a sub-agent whose turn ended while its gates still run (T3 says completed, it says it continues) is still running" 0 "$(stop "$T")"
 rl_tr $'Done for now.\n\nRunning:\n- [Loop A](t3-thread://v1/thread:delegated-task:command%3Amcp%3Aabc%3Adelegate-task%3Aloop-a-1) (e2e gates)' user status:running notice continued status:completed; check "a thread T3 continued on its own, waiting on its gates, is running even after a read of its first task says completed" 0 "$(stop "$T")"
 rl_tr 'Running the tests found nothing.' user; check "a sentence starting with Running is no Running list" 0 "$(stop "$T")"
+rl_tr $'The example is:\n\n- ```text\n  example output\n  ```\n\nRunning:\n- Loop A\n\nTo reproduce:\n```sh\npnpm test\n```' user status:completed; check "BLOCK: a Running list between two code examples still counts" 2 "$(stop "$T")"
 # stop-lint: a message opening with "done" names no linked PR or MR that is still a draft or not green
 cat > "$T/bin/glab" <<'EOF2'
 #!/usr/bin/env bash
@@ -1226,9 +1229,29 @@ tr_file 'It would be ready for review if CI passed: https://gitlab.com/g/p/-/mer
 tr_file 'It would be ready for review with green CI: https://gitlab.com/g/p/-/merge_requests/96'; a="$a $(stop "$T")"
 tr_file 'Kész lenne, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
 check "a conditional in the done word's clause is no claim" "0 0 0" "$a $(stop "$T")"
+a=; for m in 'Egyik MR sem kész: mindháromnál a CI hiányzik. https://gitlab.com/g/p/-/merge_requests/96' 'Semmi sincs kész: https://gitlab.com/g/p/-/merge_requests/96' \
+             'Nothing is done yet: https://gitlab.com/g/p/-/merge_requests/96' 'None of them is ready for review: https://gitlab.com/g/p/-/merge_requests/96'; do tr_file "$m"; a="$a $(stop "$T")"; done
+check "a done word under sem, sincs, semmi, nothing or none is no claim" " 0 0 0 0" "$a"
+tr_file 'Kész még nem vagyok: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész sem vagyok még: https://gitlab.com/g/p/-/merge_requests/96'
+check "a Hungarian negation after the done word is no claim either" "0 0" "$a $(stop "$T")"
+tr_file 'It is ready for review if CI passes: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész, ha zöld a CI: https://gitlab.com/g/p/-/merge_requests/96'
+check "a condition after the done word in its part is no claim; one opening the next part leaves it standing" "0 2" "$a $(stop "$T")"
+tr_file 'All done, if you have questions I can explain: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'All done as expected: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: an offer's condition or an expectation after the done word leaves it standing" "2 2" "$a $(stop "$T")"
+tr_file 'Kész van? https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'All done, any questions? https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a question still claims, as on main" "2 2" "$a $(stop "$T")"
+tr_file 'All done after I fixed the tests: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a time word after the done word is past work, not a condition" 2 "$(stop "$T")"
 tr_file 'The tests are not flaky and the work is done: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
 tr_file 'A tesztek nem instabilak és kész a munka: https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a negation in an earlier coordinated clause leaves the claim standing" "2 2" "$a $(stop "$T")"
+tr_file 'It is ready for review with no issues: https://gitlab.com/g/p/-/merge_requests/96'; a=$(stop "$T")
+tr_file 'Kész, nincs több teendő: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: a negation after the done word doesn't take the claim back" "2 2" "$a $(stop "$T")"
 tr_file 'When you asked, I checked it: all done, https://gitlab.com/g/p/-/merge_requests/96'
 check "BLOCK: a condition in an earlier clause leaves the claim standing" 2 "$(stop "$T")"
 tr_file $'> Earlier context.\n\nAll done: https://gitlab.com/g/p/-/merge_requests/96'
@@ -2225,12 +2248,25 @@ check "parse: bash -c -- '<script>', \$'\\x67it', a herestring to bash -s, bash 
 printf '{"state":"open","draft":false,"merged":false,"html_url":"https://github.com/o/r/pull/12","head":{"sha":"abc"},"base":{"repo":{"full_name":"o/r"}}}' > "$FX/repos_o_r_pulls_12"
 printf '{"check_runs":[{"name":"t","status":"completed","conclusion":"failure"}]}' > "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 tr_file 'README tidied.'
-check "a condition or a plan names no state: once, until, if, will" "0 0 0" \
-  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.')"
+check "a condition or a plan names no state: once, until, if, will, next week, next Tuesday, next sprint" "0 0 0 0 0" \
+  "$(slj 'I will update the docs once PR o/r#12 is merged.') $(slj 'I am waiting until PR o/r#12 is green.') $(slj 'If the maintainer agrees, PR o/r#12 is merged next week.') $(slj 'o/r#12 is green next Tuesday.') $(slj 'o/r#12 is green next sprint.')"
 check "BLOCK: a CI claim GitHub contradicts, however phrased" "2 2 2 2" \
   "$(slj 'o/r#12: CI is green.') $(slj 'CI is green on o/r#12.') $(slj 'All 12 checks pass on o/r#12.') $(slj 'o/r#12 is green.')"
 check "the condition words count only in the claim's own clause: an earlier clause doesn't hide it" "2 2 2" \
   "$(slj 'After the rebase, o/r#12 is green.') $(slj 'Fixed the test that failed when run in parallel; o/r#12 is green now.') $(slj 'No need to wait: o/r#12 is green.')"
+check "BLOCK: a plan in the next clause doesn't hide a state claim" "2 2" "$(slj 'o/r#12 is green, and I will merge it.') $(slj 'o/r#12 is green and I am waiting for review.')"
+check "BLOCK: a negation after the state words doesn't take the claim back" 2 "$(slj 'o/r#12 is green with no failures.')"
+check "BLOCK: a question after it doesn't hide a state claim" 2 "$(slj 'o/r#12 is green, any questions?')"
+check "BLOCK: a time word after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green after the rebase.')"
+check "BLOCK: an expectation after the state words doesn't hide the claim" 2 "$(slj 'o/r#12 is green as expected.')"
+tr_file 'All done with the next steps documented: https://gitlab.com/g/p/-/merge_requests/96'
+check "BLOCK: \"next\" that isn't a time leaves the claim standing" 2 "$(stop "$T")"
+tr_file 'https://gitlab.com/research-and-development/next/-/merge_requests/96 is ready for review.'
+check "BLOCK: words inside a URL take nothing back" 2 "$(stop "$T")"
+tr_file 'Waiting on https://example.com/build; https://gitlab.com/g/p/-/merge_requests/96 is ready for review.'
+check "BLOCK: the semicolon after a URL still ends its part" 2 "$(stop "$T")"
+check "a condition over the claim's part (past a URL's colon) states nothing; one opening the next part leaves it standing" "0 0 2" \
+  "$(slj 'Once CI passes and o/r#12 is green, I merge.') $(slj 'Once CI passes and https://github.com/o/r/pull/12 is green, I merge.') $(slj 'o/r#12 is merged, if the maintainer agrees.')"
 rm -f "$FX/repos_o_r_commits_abc_check-runs_per_page_100"
 # the second bug hunt: where git really pushes (-c, GIT_CONFIG_*, every -C, pushDefault), --git-dir and GIT_DIR, a name that is no remote
 OTH="$T/oth"; git clone -q "$OWN" "$OTH"; git -C "$OTH" remote set-url origin https://github.com/vikejs/vike.git
