@@ -23,7 +23,7 @@ Run <quick gates> after every commit and <lanes for touched areas> before handin
 One commit per item or class; message: <style>; author: <login> <noreply email>; trailer: <the agent trailer, the `Co-Authored-By:` line your harness adds to agent commits>.
 Before handing back, run code §Checklist on your own diff and fix what it catches; a diff touching a body, buffer, stream, cancellation, a transport or a hot path (when unsure, it does) is checked against code §No regressions' nine items before each commit, and your final message answers them under `## Bodies and streams`. A test you add follows the maintainer's test habit (code §Tests); a finding is fixed in the code, with a test only where that habit keeps regression tests.
 
-Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`, a test run's with `(N tests)`.
+Final message: commits (sha, subject, IDs), skipped items with reasons, probes and results, the gates as `<command> -> exit <code>`, a test run's with `(N tests)`, a type check's with `(N projects)`.
 ```
 
 A shape pass's findings: the IDs come from its report; the Loop B agent re-rates your result independently.
