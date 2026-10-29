@@ -5,7 +5,7 @@ and was revived, or that wrote its report without a final message, so the agent'
 ~/.claude/projects whose first prompt carries the brief (or, for a job an older hook registered with only its key and start,
 every ticket path in the key). It has finished when that transcript has been quiet for QUIET
 seconds with no tool call pending, or for LONG seconds whatever it was doing (no foreground tool call runs ten minutes),
-while T3 Code shows no active run of its thread and no agent it launched is still at work."""
+while T3 Code shows no active run or background command of its thread and no agent it launched is still at work."""
 import glob, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import steward
@@ -80,6 +80,15 @@ def launchers(items):
             if any(all(n in l for n in ns) for l in calls): out[f] = p
     return out
 
+def session_id(path):
+    """The provider's id of the session a transcript records, the one T3 Code names it by: a Codex rollout's session_meta id,
+    else (Claude) the file's name."""
+    try:
+        with open(path) as fh: o = json.loads(fh.readline())
+        if isinstance(o, dict) and o.get('type') == 'session_meta': return str((o.get('payload') or {}).get('id') or '')
+    except (OSError, ValueError): pass
+    return os.path.basename(path)[:-len('.jsonl')]
+
 def pending(path):
     """The transcript's last turn is a tool call still running (or cut off by a crash: LONG covers that)."""
     with open(path, 'rb') as fh:
@@ -96,12 +105,12 @@ def pending(path):
 
 def finished(job, now=None, _seen=()):
     """(transcript, its mtime) when the job's agent has finished, else None. An agent whose T3 thread has an active run
-    (waiting on a background command or an approval), or that launched agents of its own, hasn't finished."""
+    (waiting on an approval) or background command still running, or that launched agents of its own, hasn't finished."""
     p = transcript(job)
     if not p: return None
     m = os.path.getmtime(p); quiet = (now or time.time()) - m
     if not (quiet >= LONG or (quiet >= QUIET and not pending(p))): return None
-    sid = os.path.basename(p)[:-len('.jsonl')]
+    sid = session_id(p)
     if steward.busy(sid) or sid not in _seen and any(j.get('session') == sid and not finished(j, now, _seen + (sid,)) for _, j in jobs(now)):
         return None
     return (p, m)

@@ -346,11 +346,12 @@ check "BLOCK: a PR body edit is covered too" 2 "$(python3 "$R/hooks/pre-bash-gua
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
-check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the draft" "1 1" "$(gp) $(grep -c 'newer than the draft' "$T/gp.out")"
+check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the review" "1 1" "$(RT=2026-10-01T12:00:00Z gp) $(grep -c 'newer than the review' "$T/gp.out")"
+check "gate-pass passes a draft saved before a human comment the review's record holds (a PR body gated before the thread's comments)" 0 "$(gp)"
 touch -d 2026-10-03T00:00:00Z "$GD/r.md"
 check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
 touch -d '+1 minute' "$GD/r.md"
@@ -1139,8 +1140,10 @@ done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
 t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"
 t3db "insert into orchestration_v2_projection_subagents values ('s0', 'orch-1', 'busy-1', 'running')"; done_events > "$T/ev8"  # its own task: its turn ended, its background command runs
-t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"; done_events > "$T/ev9"
-check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), or whose own task is (running), is not done; it is once all ended" "0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[{\"taskId\":\"b1\",\"kind\":\"command\"}]'))"; done_events > "$T/ev8b"  # its task completed, its background all.sh runs: T3's waiting_for_children
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[]'))"; done_events > "$T/ev9"
+check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), whose own task is (running), or whose background command runs, is not done; it is once all ended" "0 0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8b") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
@@ -1149,7 +1152,28 @@ def name(f):
     try: return os.readlink("/proc/self/fd/" + f)
     except OSError: return ""
 print(sum("statev2" in name(f) for f in os.listdir("/proc/self/fd")))' "$R/hooks")"
-python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; rm -f "$HOME/.t3/userdata/statev2.sqlite"
+t3db "insert into orchestration_v2_projection_runs values ('r3', 'busy-1', 'running')"  # woken again: its next turn runs
+check "BLOCK: agent-job done while the ticket's agent is still at work keeps the job, pointing at AGENT DONE" "1 1 1" \
+  "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
+check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+# a T3 Codex agent: T3 names it by its rollout's session_meta id, not the file's name
+CX=0aa0c0de-1111-7222-8333-444455556666; CXF="$HOME/.codex/sessions/2026/10/14/rollout-2026-10-14T10-00-00-$CX.jsonl"
+python3 -c 'import json,sys; f,cx,b=sys.argv[1:]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+w({"type":"session_meta","payload":{"id":cx,"originator":"T3 Code"}})
+w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":b}]}})
+w({"type":"event_msg","payload":{"type":"task_complete"}})' "$CXF" "$CX" "Execute $T/jobs/cx-ticket.md exactly"
+reg "Execute $T/jobs/cx-ticket.md exactly"; touch -d '5 minutes ago' "$CXF"
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cx-ticket" in open(f).read()]'
+t3db "insert into orchestration_v2_projection_provider_threads values ('p3', 'codex-1', '{\"nativeThreadRef\":{\"driver\":\"codex\",\"nativeId\":\"$CX\"}}')"
+t3db "insert into orchestration_v2_projection_runs values ('r4', 'codex-1', 'running')"
+done_events > "$T/ev10"; tr_file 'Done.'
+check "a running T3 Codex agent is not done: no AGENT DONE, stop-lint passes, agent-job done keeps its job" "0 0 1" \
+  "$(grep -c "AGENT DONE $T/jobs/cx-ticket.md" "$T/ev10") $(sj orch) $(python3 "$R/bin/agent-job" done "$T/jobs/cx-ticket.md" >/dev/null 2>&1; echo $?)"
+t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r4'"; done_events > "$T/ev11"
+check "once its run ended: AGENT DONE, stop-lint names it, agent-job done releases it" "1 2 1 0" \
+  "$(grep -c "AGENT DONE $T/jobs/cx-ticket.md" "$T/ev11") $(sj orch) $(grep -c cx-ticket "$T/err") $(python3 "$R/bin/agent-job" done "$T/jobs/cx-ticket.md" >/dev/null; echo $?)"
+rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done

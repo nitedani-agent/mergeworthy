@@ -44,13 +44,13 @@ case "$kind" in reply|comment|proposal)
   fi;;
 esac
 sha256sum "$d" | cut -d' ' -f1 > "$d.gate"
-# the draft was written from the thread's record, and the reviewer had the same file: it predates the draft's last edit;
+# the draft was written from the thread's record, and the reviewer had the same file;
 # its hash goes into the gate record, so the posting hook can tell it from one made after the review
 tcf="$(dirname "$(readlink -f "$d")")/thread-context.md"
 if [ -f "$tcf" ]; then
-  # a record made after the draft is fine unless it holds a human comment newer than the draft's last edit
-  at=$(sed -n 's/^- latest-human-comment: id=[0-9]* at=\([0-9TZ:-]*\).*/\1/p' "$tcf" | head -1)
-  [ "$tcf" -nt "$d" ] && [ "${at:-0}" != 0 ] && [ "$(date -d "$at" +%s 2>/dev/null || echo 0)" -ge "$(stat -c %Y "$d")" ] && { rm -f "$d.gate"; echo "thread-context.md records a human comment ($at) newer than the draft: re-read it, revise the draft if it changes anything, and review again (mergeworthy:post step 1)"; exit 1; }
+  # the review checked the draft against the record: it must postdate the record's latest human comment (a status post: the draft)
+  at=$(sed -n 's/^- latest-human-comment: id=[0-9]* at=\([0-9TZ:-]*\).*/\1/p' "$tcf" | head -1); seen=$([ "$r" = none ] && echo "$d" || echo "$r")
+  [ "${at:-0}" != 0 ] && [ "$(date -d "$at" +%s 2>/dev/null || echo 0)" -ge "$(stat -c %Y "$seen")" ] && { rm -f "$d.gate"; echo "thread-context.md records a human comment ($at) newer than the review: re-read it, revise the draft if it changes anything, and review again (mergeworthy:post step 1)"; exit 1; }
   echo "tc $(sha256sum "$tcf" | cut -d' ' -f1)" >> "$d.gate"
 fi
 echo "gate passed: $d"

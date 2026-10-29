@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // review-context <base-ref> [--max-refs N] [--timeout SECONDS]: for the symbols a diff changes, prints their callers, callees and the names it removes.
 // Run inside a git repo whose HEAD is the head under review. Prints markdown; never blocks: on any failure it prints one line and exits 0.
-// TypeScript comes from the target repo, else from mergeworthy; the language service is built once per tsconfig.
+// TypeScript comes from the target repo, else from mergeworthy, else from a pinned copy fetched once into ~/.mergeworthy/typescript;
+// the language service is built once per tsconfig.
 // The analysis runs in a child process with a heap cap and a time limit (default 60 s), so a crash or a hang still ends in one line.
 'use strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -67,15 +69,30 @@ function parseDiff(text) {
   return files.filter((f) => [f.oldPath, f.newPath].some((p) => p && CODE.test(p) && !SKIP.test(p)))
 }
 
-// The repo's own TypeScript, else mergeworthy's: TypeScript 7 has no JavaScript compiler API
+// The repo's own TypeScript, else mergeworthy's, else the cached pinned one: TypeScript 7 has no JavaScript compiler API
+const TS_VERSION = '6.0.3'
+const TS_CACHE = path.join(process.env.MERGEWORTHY_HOME || path.join(os.homedir(), '.mergeworthy'), 'typescript', TS_VERSION)
 function loadTS(dirs) {
-  for (const req of dirs.map((dir) => createRequire(path.join(dir, 'noop.js'))).concat(createRequire(import.meta.url))) {
+  for (const req of dirs.map((dir) => createRequire(path.join(dir, 'noop.js'))).concat(createRequire(import.meta.url), createRequire(path.join(TS_CACHE, 'noop.js')))) {
     try {
       const ts = req('typescript')
       if (ts.createLanguageService) return ts
     } catch {}
   }
   return null
+}
+
+// Fetch the pinned TypeScript into TS_CACHE with pnpm, else npm; a folder of its own, renamed into place, so concurrent runs don't mix
+function fetchTS() {
+  const tmp = `${TS_CACHE}.tmp-${process.pid}`
+  const cmds = [['pnpm', ['add', '--dir', tmp, '--ignore-scripts', `typescript@${TS_VERSION}`]], ['npm', ['install', '--prefix', tmp, '--no-save', '--ignore-scripts', `typescript@${TS_VERSION}`]]]
+  for (const [cmd, args] of cmds) {
+    fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp, { recursive: true })
+    if (spawnSync(cmd, args, { cwd: tmp, encoding: 'utf8', timeout: 45000 }).status !== 0) continue
+    try { fs.renameSync(tmp, TS_CACHE) } catch {} // another run put it there first
+    break
+  }
+  fs.rmSync(tmp, { recursive: true, force: true })
 }
 
 const rel = (f) => path.relative(root, f)
@@ -103,8 +120,9 @@ function main() {
   if (!entries.length) return [`# review-context`, `base ${base} · head ${head} · no changed TypeScript or JavaScript files`]
 
   const changed = entries.filter((e) => e.newPath && CODE.test(e.newPath) && !SKIP.test(e.newPath))
-  const ts = loadTS([...new Set(changed.map((e) => path.dirname(path.join(root, e.newPath))))].concat(root))
-  if (!ts) throw new Fail(`no TypeScript found in ${root}`)
+  const dirs = [...new Set(changed.map((e) => path.dirname(path.join(root, e.newPath))))].concat(root)
+  const ts = loadTS(dirs) || (fetchTS(), loadTS(dirs))
+  if (!ts) throw new Fail(`no TypeScript found in ${root}, and neither pnpm nor npm could fetch it: run \`pnpm add --dir ${TS_CACHE} typescript@${TS_VERSION}\``)
 
   const out = []
   const lang = ts.ScriptTarget.Latest

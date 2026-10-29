@@ -43,8 +43,15 @@ def leftovers(j):
         if e not in mine and any(cwd == d or cwd.startswith(d + '/') for d in dirs):
             out.append(f"  {e}{' listening on ' + ', '.join(ports[e]) if e in ports else ''}: {cmd[:150]} (in {cwd})")
     return out
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'hooks'))
+import agent_jobs, steward
 for f in hit:
     j = dict(entries)[f]
+    # a released job is never reported: while its agent works on (a T3 run, task or background command), its result would be lost
+    p = agent_jobs.transcript(j)
+    if p and steward.busy(agent_jobs.session_id(p)):
+        sys.exit(f"agent-job: the agent for {want!r} is still at work (its T3 thread has a run, a task or a background command going), "
+                 "so its job stays open: the watcher's `### AGENT DONE` wakes this session when it ends; read its result then and release it (mergeworthy:delegate step 6)")
     os.remove(os.path.join(jobs, f)); print('released', want)
     for m in glob.glob(os.path.expanduser(f'~/.claude/agent-jobs-reported/{f}-*')): os.remove(m)
     left = leftovers(j)

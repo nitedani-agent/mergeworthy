@@ -7,7 +7,7 @@ child wakes again when its background commands end, so only its terminal task st
 import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
-import memory_file, steward, subprocess
+import agent_jobs, memory_file, steward, subprocess
 from post_words import fence_spans
 from shellcmd import segments, prog, git_argv, Where
 register = sys.argv[1:] == ['register']
@@ -142,8 +142,8 @@ if not register:
     for w in wts:
         pids = [f'{e} ({c})' for e, cwd, c in procs if cwd == w or cwd.startswith(w + '/')]
         named = [f'{f} (written {age}s ago)' for f, age, b in logs if re.search(re.escape(w.encode()) + rb'(?![\w.-])', b)  # the path itself, not a longer sibling
-                 and ('/subagents/' in f or steward.is_task(os.path.basename(f)[:-len('.jsonl')]))  # an agent's, not a main session's
-                 and not steward.task_done(os.path.basename(f)[:-len('.jsonl')])]
+                 and ('/subagents/' in f or steward.is_task(agent_jobs.session_id(f)))  # an agent's, not a main session's
+                 and not steward.task_done(agent_jobs.session_id(f))]
         if pids or named:
             busy.append(f"{w}: " + '; '.join((['processes with their cwd there: ' + ', '.join(pids)] if pids else []) + (['transcripts naming it: ' + ', '.join(named)] if named else [])))
     if busy:
@@ -294,7 +294,6 @@ elif os.path.exists(f):
 # A fan-out a step names (finality steps 2-3, converge's per-slice verifiers) says so on a `Fan-out:` line, in the task or its brief, and passes
 fanout = ti.get('role') != 'implementation' and re.search(r'^Fan-out: (finality step [23]|converge §Running the agents)$', briefs, re.M)
 if not register and d.get('session_id') and 'memory-refresh' not in gate_text and not fanout:
-    import agent_jobs
     live = [j for _, j in agent_jobs.jobs() if j.get('session') == d['session_id'] and '/memory-brief-' not in j['key']
             and 'memory-refresh' not in j.get('brief', '') and not agent_jobs.finished(j)]
     if len(live) >= 3:

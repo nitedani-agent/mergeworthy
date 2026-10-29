@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the CLI's Codex install and the watcher. Usage: tests/watcher.sh [repo root]
 # Temp HOME, stub gh/codex first on PATH. Prints "case: <got> (want <want>)"; exits 0 only when every case matches.
-# The CLI runs from a temp copy of cli/ whose node_modules links to the repo's (read only); without them
-# (no `npm ci` yet) the CLI cases are skipped.
+# The CLI runs from a temp copy of cli/ whose node_modules links to the repo's cli/node_modules (read only); without them
+# (no `npm install --prefix cli` yet) the CLI cases are skipped.
 set -u
 R=$(readlink -f "${1:-$(dirname "$0")/..}")
 T=$(mktemp -d); export HOME="$T/home"; mkdir -p "$HOME/.claude" "$T/bin"
@@ -21,16 +21,22 @@ fails=0
 check() { echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1)); }
 
 # ---------- Codex install / uninstall ----------
-if [ -d "$R/node_modules" ]; then
-mkdir -p "$T/pkg/cli"; cp "$R/cli/index.mjs" "$T/pkg/cli/"; cp "$R/package.json" "$T/pkg/"
-ln -s "$R/node_modules" "$T/pkg/node_modules"
+if [ -d "$R/cli/node_modules" ]; then
+mkdir -p "$T/pkg/cli"; cp "$R/cli/index.mjs" "$R/cli/package.json" "$T/pkg/cli/"
+ln -s "$R/cli/node_modules" "$T/pkg/cli/node_modules"
 node "$T/pkg/cli/index.mjs" install --agents codex --yes >"$T/out" 2>&1; check "install --agents codex --yes exit" 0 $?
 grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null; check "AGENTS.md has the block after install" 0 $?
 node "$T/pkg/cli/index.mjs" uninstall --agents codex --yes >"$T/out" 2>&1; check "uninstall --agents codex --yes exit" 0 $?
 grep -q 'mergeworthy:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null; check "AGENTS.md block gone after uninstall" 1 $?
 else
-echo "SKIP (CLI cases): no $R/node_modules, run npm ci first"
+echo "SKIP (CLI cases): no $R/cli/node_modules, run npm install --prefix cli first"
 fi
+
+# ---------- packaging: Claude Code runs npm or bun in a plugin root holding a lockfile, and fails the update where it can't ----------
+check "the plugin root tracks no lockfile, and its package.json no dependencies; the installer's package lists its own" "0 {} {'@clack/prompts'}" \
+  "$(git -C "$R" ls-files package-lock.json npm-shrinkwrap.json bun.lock bun.lockb yarn.lock pnpm-lock.yaml | wc -l) $(python3 -c 'import json,sys
+r, c = (json.load(open(f)) for f in sys.argv[1:])
+print({k: r[k] for k in ("dependencies", "optionalDependencies", "peerDependencies", "workspaces") if r.get(k)}, set(c.get("dependencies") or {}))' "$R/package.json" "$R/cli/package.json")"
 
 # ---------- Python cases: gh-watch.py imported as a module, HERE pointed at a temp watch dir ----------
 W="$T/watch"; mkdir -p "$W"
