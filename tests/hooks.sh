@@ -1182,6 +1182,19 @@ child_log "$JD/stew.jsonl" "Execute $T/jobs/stew-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "stew-ticket" in open(f).read()]'
 check "a job of another live watch dir's declared session is not reported here" 0 "$(done_events > "$T/ev4"; grep -c stew-ticket "$T/ev4")"
 python3 "$R/bin/agent-job" done "$T/jobs/stew-ticket.md" >/dev/null
+# one session watches two work folders, the steward's from <folder>/live: its job goes to the launcher's watch dir in the work folder of
+# the brief its task names first, not to whichever dir ticks first nor to a dir a later path cites
+S="$HOME/.mergeworthy/work/stw"; O="$HOME/.mergeworthy/work/other"; mkdir -p "$S/live" "$S/drafts" "$O"
+for d in "$S/live" "$O"; do echo orch > "$d/session"; echo $$ > "$d/gh-watch.pid"; printf '%s\n' "$d" >> "$HOME/.claude/gh-watch-dirs.txt"; done
+job() { reg "$1"; child_log "$JD/$2.jsonl" "$1" 5 text
+  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if sys.argv[1] in open(f).read()]' "$2"; }
+job "stw-brief: follow $S/drafts/stw-brief.md exactly" stw-brief
+check "a job whose brief sits beside the steward's live watcher is reported there only, though another dir of its session ticks first" "0 1" "$(WJ="$O" done_events | grep -c stw-brief) $(WJ="$S/live" done_events | grep -c stw-brief)"
+job "oth-brief: follow $O/oth-brief.md, citing $S/live/events.log" oth-brief
+check "a path the task cites after its brief doesn't take the job from the brief's work folder" "0 1" "$(WJ="$S/live" done_events | grep -c oth-brief) $(WJ="$O" done_events | grep -c oth-brief)"
+job "out-brief: follow $T/jobs/out-brief.md, citing $O/events.log" out-brief
+check "a brief outside every watched work folder leaves the job to the session rule, not to a dir a later path cites" "1 0" "$(WJ="$S/live" done_events | grep -c out-brief) $(WJ="$O" done_events | grep -c out-brief)"
+rm $(grep -l -e stw-brief -e oth-brief -e out-brief "$HOME"/.claude/agent-jobs/*) "$S/live/gh-watch.pid" "$O/gh-watch.pid"
 check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
 reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
