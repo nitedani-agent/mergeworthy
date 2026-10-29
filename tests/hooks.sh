@@ -700,6 +700,8 @@ check "a ready Hungarian body's evidence heading passes under Language: hu, not 
 hdguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr create --draft --repo acme/hu --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$TCO" \
     | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 printf '%s\n**Állapot: piszkozat** (a CI futtatója nem működik)\n\nA feltöltés elakad nagy fájloknál.\n' "$B" > "$T/hdg.md"; sha256sum "$T/hdg.md" | cut -d' ' -f1 > "$T/hdg.md.gate"
+check "gh pr create --draft without --repo takes the language of GH_REPO, not of the checkout's origin" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"GH_REPO=acme/hu gh pr create --draft --title \"$(cat /w/drafts/title.md)\" --body-file "+sys.argv[1]},"cwd":sys.argv[2]}))' "$T/hdg.md" "$TCO" \
+  | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?)"
 check "gh pr create --draft accepts the Hungarian State line under Language: hu, and blocks it without" "0 2" "$(hdguard "$T/hdg.md") $(printf '# acme/hu\n' > "$HUP"; hdguard "$T/hdg.md")"
 # without --repo (the livekit session's calls), the language comes from the draft's watch dir: the repos.txt above it
 LK="$T/lkw"; mkdir -p "$LK/drafts"; cp "$T/hu0.md" "$LK/drafts/mr.md"; echo CLEAN > "$LK/drafts/mr.review.out"; printf '# acme/hu\n\nLanguage: hu\n' > "$HUP"
@@ -996,6 +998,9 @@ python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sy
 python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":sys.argv[2]}}]}}))' "$now" "$RD/src/a.ts" > "$T/tr-read.jsonl"
 B='Build o/r#9 by skills/code/SKILL.md per ~/.mergeworthy/projects/o/r.md'
 check "BLOCK: an implementation brief whose session read only an agent's report in the checkout (in a work folder); a Read, or a cd + sed of a tracked source, passes" "2 1 0 0" "$(agt "$B" "$T/tr-noread.jsonl") $(grep -c 'read the code this change is about yourself' "$T/err") $(agt "$B" "$T/tr-read.jsonl") $(agt "$B" "$T/tr-sed.jsonl")"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; cd \"\$D\" && sed -n 1,80p src/a.ts" > "$T/tr-var.jsonl"
+python3 -c 'import json,sys; print(json.dumps({"type":"assistant","timestamp":sys.argv[1],"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[2]}}]}}))' "$now" "D=$RD; git -C \"\$D\" show HEAD:src/a.ts" > "$T/tr-gshow.jsonl"
+check "a read in a checkout named by a variable the command set (cd \"\$D\" && sed, git -C \"\$D\" show) passes too" "0 0" "$(agt "$B" "$T/tr-var.jsonl") $(agt "$B" "$T/tr-gshow.jsonl")"
 check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL.md; with it, it passes" "2 0" "$(ag "$T" 'Draft the reply from /w/drafts/x/thread-context.md' review) $(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/y/thread-context.md; list each claim with a scope word beside its source' review)"
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
@@ -1609,6 +1614,10 @@ newpass
 check "a pass after the ask on any of the PR's commits answers it" 0 "$(asked "gh pr comment 7 -R o/r --body-file $NEWR")"
 oldpass
 check "BLOCK: through gh api, a comment and a body PATCH on the PR" "1 1" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
+check "BLOCK: the same through gh api's {owner}/{repo}, which gh fills from the checkout's repo" "1 1" "$(asked "cd $IDR && gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(asked "cd $IDR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+ODR="$T/odr"; git init -q "$ODR"; git -C "$ODR" remote add origin https://github.com/x/y.git
+check "BLOCK: GH_REPO, on the command or inherited, fills {owner}/{repo} before the checkout's origin, as gh does" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh api 'repos/{owner}/{repo}/issues/7/comments' -F body=@$NEWR") $(GH_REPO=github.com/o/r asked "cd $ODR && gh api -X PATCH 'repos/{owner}/{repo}/pulls/7' -F body=@$NEWR")"
+check "BLOCK: gh pr comment and gh pr ready without -R act on GH_REPO, on the command or inherited, before the checkout's origin" "1 1" "$(asked "cd $ODR && GH_REPO=o/r gh pr comment 7 --body-file $NEWR") $(GH_REPO=https://github.com/o/r asked "cd $ODR && gh pr ready 7")"
 newpass
 check "through gh api, the pass recorded after the ask answers it" "0 0" "$(asked "gh api repos/o/r/issues/7/comments -F body=@$NEWR") $(asked "gh api -X PATCH repos/o/r/pulls/7 -F body=@$NEWR")"
 # every form gh takes for the target reaches the same check: a URL, a branch, an issue number that is a PR, gh pr ready; the current branch's PR (#6) is not the target
@@ -2016,6 +2025,7 @@ echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo 'o/r all' > "$GW/repos.txt"
 check "an 'owner/repo all' line covers the repo for opening an issue" 0 "$(glguard 'gh issue create -R o/r --title x --body-file x.md' >/dev/null; grep -c 'no running watcher' "$T/err")"
+check "gh issue create without -R opens it on GH_REPO, which the watcher covers, not on the checkout's origin" "0 0" "$(glguard 'GH_REPO=o/r gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err") $(GH_REPO=o/r glguard 'gh issue create --title x --body-file x.md' "$ODR" >/dev/null; grep -c 'no running watcher' "$T/err")"
 PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > "$PG/passed"; printf '%s\n' "$GW" "$PG" > "$HOME/.claude/gh-watch-dirs.txt"
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }

@@ -7,7 +7,7 @@ The main session fills it at `post` step 3 and starts the reviewer `delegate §R
 ```
 Review the draft <abs>/drafts/<thread>/<name>.md (kind: <kind>) before it is posted on <owner/repo#N>.
 The comment it answers: <name>.parent.md. The thread record: <abs>/drafts/<thread>/thread-context.md. The head: <SHA> in <worktree>.
-Its length: <the `length:` line post-lint's passing run printed to stderr at post step 2>. A finding that adds words names what to cut to stay within its cap.
+Its length: <the `length:` line post-lint's pass printed at post step 2>. A finding that adds words names what to cut to stay within its cap.
 Check facts and noise, not word choice. Every finding, exhaustively: the sentence, what's wrong, what it should say.
 
 - Claims: every claim against the code (file:line or a command and its output), the thread and the evidence. Every attribution (who said, proposed or agreed what) against thread-context.md's permalinks.
@@ -23,5 +23,5 @@ Check facts and noise, not word choice. Every finding, exhaustively: the sentenc
 - Reader: you have not seen this thread. List every term or sentence you can't understand, and say in one line what the reader is asked to decide. A decision you can't identify, a pronoun with two meanings, a term not yet seen, a sentence to read twice, or a bold label or fragment standing in for a sentence is a finding.
 
 Write the full findings to <abs>/drafts/<thread>/<name>.review.md.
-Final message: exactly CLEAN, or the findings.
+Final message, in <abs>/drafts/<thread>/<name>.review.out too: exactly CLEAN, or the findings.
 ```
