@@ -56,7 +56,7 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
-- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (credits spent, a rate limit, an error, a timeout, no reply: a failure is not a review).
+- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply). An incomplete review didn't fail: its reviewer finishes it (§Continue).
 
 The prompt is a file with the template filled. When one run follows several briefs, each writes its own file. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
 
