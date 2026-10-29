@@ -8,6 +8,7 @@ import datetime, fcntl, glob, hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 import memory_file, steward, subprocess
+from post_words import fence_spans
 from shellcmd import segments, prog, git_argv, Where
 register = sys.argv[1:] == ['register']
 d = json.load(sys.stdin)
@@ -75,7 +76,7 @@ if not register:
     HTML = set('a b base body br code div em footer form h1 h2 h3 head header html i img input li link main meta nav ol p path pre script section span strong style svg table td template title tr ul'.split())
     unfilled = {}
     for t in sorted(glob.glob(os.path.join(tdir, '*.md'))):
-        for line in '\n'.join(re.findall(r'^```[^\n]*\n(.*?)^```', open(t).read(), re.M | re.S)).splitlines():
+        for line in '\n'.join(inner for _, _, inner in fence_spans(open(t).read())).splitlines():
             code = [m.span() for m in re.finditer(r'`[^`]*`', line)]
             for m in re.finditer(r'<([^<>\n]+)>', line):
                 if m[1] not in HTML and m[0] in brief and not any(a <= m.start() and m.end() <= b for a, b in code):

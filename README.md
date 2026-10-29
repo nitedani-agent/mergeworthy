@@ -24,6 +24,8 @@ The installer finds the coding agents on this machine and asks which to install 
 | Codex | the skills, and the always-on rules in `~/.codex/AGENTS.md` | re-run `npx mergeworthy` |
 | Others, through [skills.sh](https://skills.sh) | the skills | `npx skills update` |
 
+The hooks and the `bin/` commands read Markdown with Python's markdown-it-py: install it first (`sudo apt install python3-markdown-it`, or `pip install markdown-it-py`).
+
 Run `npx mergeworthy` again to change the options or add an agent; `npx mergeworthy uninstall` removes mergeworthy.
 
 ## Options

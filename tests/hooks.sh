@@ -282,6 +282,10 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
+tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
+"$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
+check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -358,6 +362,18 @@ printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"
 check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
 printf 'The build fails:\n\n```\n3 foo();\n  ~~~\n```\n\nI'"'"'ll fix it in a follow-up PR.\n' > "$GD/r.md"; touch -d '+160 seconds' "$GD/r.md"
 check "BLOCK: a promise after a code block whose output holds a fence-like line (tsc's ~~~ underline)" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- Run it:\n- ```bash\n  # I'"'"'ll open a PR for it\n  ```\n' > "$GD/r.md"; touch -d '+162 seconds' "$GD/r.md"
+check "an \"I'll\" inside a code block opened on a list line is not a promise" 0 "$(gp)"
+printf -- '- ```bash\n\t# I'"'"'ll open a PR for it\n\t```\n' > "$GD/r.md"; touch -d '+163 seconds' "$GD/r.md"
+check "an \"I'll\" in a list item's code block indented with tabs is not a promise" 0 "$(gp)"
+printf 'The fix:\n\n    # I'"'"'ll open a PR for it\n\nDone.\n' > "$GD/r.md"; touch -d '+164 seconds' "$GD/r.md"
+check "an \"I'll\" in an indented code block is not a promise" 0 "$(gp)"
+printf -- '10. ```bash\n    echo hello\n    ```\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+165 seconds' "$GD/r.md"
+check "BLOCK: a promise after a code block opened on a list line, closed at the item's content column" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- ```bash\n  make\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+166 seconds' "$GD/r.md"
+check "BLOCK: a promise after a list item whose code block is never closed: the block ends with the item" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- Run it:\n  ```bash\n  make\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+167 seconds' "$GD/r.md"
+check "BLOCK: a promise after a list item whose code block opens on a continuation line and is never closed" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
 printf 'The lint says:\n\n~~~\nI'"'"'ll merge it once green\n~~~\n' > "$GD/r.md"; touch -d '+170 seconds' "$GD/r.md"
 check "an \"I'll\" inside a ~~~ code block is not a promise either" 0 "$(gp)"
 printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
@@ -1005,6 +1021,7 @@ check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
 check "BLOCK: a brief with a template's placeholder unfilled, naming it and its template" "2 1" "$(ag "$T" $'Verify the slice.\n- try the edges: <the slice\'s risky edges>, each Recurring misses line' review) $(grep -c "<the slice's risky edges> (delegate/verifier.md)" "$T/err")"
+check "BLOCK: a slot of a template's code block indented in a list item (delegate/SKILL.md's reviewer launch)" "2 1" "$(ag "$T" $'Review the diff.\n{"target": {"options": {"<its effort option>": "high"}}}' review) $(grep -c '<its effort option> (delegate/SKILL.md)' "$T/err")"
 check "a filled brief passes with the paste-in rules (their <work folder>), an output form in backticks and a quoted HTML tag" 0 "$(ag "$T" "$(printf 'Verify the slice: try the edges: the abort path.\nFinal message: the gates as `<command> -> exit <code>`; check the <head> tags.\n'; cat "$R/skills/delegate/agent.md")" review)"
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
@@ -2211,6 +2228,7 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
 tr_file 'README tidied.' work
+check "a hand-back a tool printed, in a ~~~ code block or an indented one, is not the agent's" "0 0" "$(slj $'The tool printed:\n\n~~~\nShould I retry?\n~~~') $(slj $'The tool printed:\n\n    Should I retry?')"
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"

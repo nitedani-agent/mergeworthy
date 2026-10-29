@@ -2,12 +2,13 @@
 """What a final message says, for stop-lint's message checks: an offer or hand-back, its GENUINE-FORK lines, its Running list,
 the PRs its opening calls done, and the PR states its sentences claim. Text in, findings out: nothing here reads GitHub or T3."""
 import re
+from post_words import uncoded
 
 
 def authored(message):
     """The message without code, quotes and quoted lines: the agent's own words."""
     # quoted words are someone else's (a user's "should I ...?", a banned phrase being discussed): not an offer
-    return re.sub(r'```.*?```|`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>[^\n]*$', ' ', message, flags=re.S | re.M)
+    return re.sub(r'`[^`\n]*`|"[^"\n]*"|[“„][^”\n]*”|^>[^\n]*$', ' ', uncoded(message, lambda block: ' '), flags=re.M)
 
 
 # An offer, or a hand-back of work the agent can do or wait for itself ("tell me when to re-check CI", "nothing will notify me")
