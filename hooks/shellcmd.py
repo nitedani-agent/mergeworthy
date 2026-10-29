@@ -7,17 +7,18 @@ so a hook checks what it can and blocks a guarded verb it can't check."""
 import hashlib, json, os, re, subprocess, sys
 
 
-def branch_record(d, kind):
-    """The pr-steps record kept once per repo and branch (preflight, approach; same key as bin/pr-steps), None outside git."""
+def branch_record(d, kind, branch=None):
+    """The pr-steps record kept once per repo and branch (preflight, approach; same key as bin/pr-steps) of branch, by default the
+    checked-out one; None outside git."""
     git = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout.strip()
     common = git('rev-parse', '--git-common-dir')
     if not common:
         return None
     root = os.path.realpath(os.path.join(d, common))
     rec = lambda b: os.path.expanduser(f'~/.claude/pr-steps/{kind}.' + hashlib.sha256((root + '\n' + b).encode()).hexdigest()[:40])
-    branch = git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
+    branch = branch or git('symbolic-ref', '--short', '-q', 'HEAD') or 'HEAD'
     # a worktree on its own local branch tracking the PR's branch shares that branch's records
-    up = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}').split('/', 1)[-1]
+    up = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{branch}@{{u}}').split('/', 1)[-1]
     return next((rec(b) for b in (branch, up) if b and os.path.exists(rec(b))), rec(branch))
 
 
