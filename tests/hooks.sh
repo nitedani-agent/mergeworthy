@@ -1540,7 +1540,7 @@ check "a head recorded before the shape pass (loopb and refactor) counts as shap
 # pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
 M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
 mpr() { # mergeStateStatus, when its last check completed
-  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}]}' "$1" "$2" > "$FX/pr_view_41"; }
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}],"commits":[{"authors":[%s]}]}' "$1" "$2" "${3:-}" > "$FX/pr_view_41"; }
 printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
 printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
 mpr CLEAN 2026-10-28T13:00:00Z
@@ -1561,9 +1561,24 @@ check "the merge's PR is read in the dir and with the env the merge runs in: eve
 printf '{"total_commits":251,"commits":[]}' > "$FX/repos_o_r_compare_hd...main.big"; mv "$FX/repos_o_r_compare_hd...main" "$FX/cmp.keep"; mv "$FX/repos_o_r_compare_hd...main.big" "$FX/repos_o_r_compare_hd...main"
 check "BLOCK: a base past one page of GitHub's compare, naming it" "2 1" "$(guard "$M") $(grep -c "moved past one page of GitHub's lists" "$T/err")"
 mv "$FX/cmp.keep" "$FX/repos_o_r_compare_hd...main"
-python3 -c 'import json; print(json.dumps({"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"CLEAN","changedFiles":101,"files":[{"path":f"f{i}.py"} for i in range(100)],"statusCheckRollup":[{"completedAt":"2026-10-28T11:00:00Z"}]}))' > "$FX/pr_view_41"
+python3 -c 'import json; print(json.dumps({"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"CLEAN","changedFiles":101,"files":[{"path":f"f{i}.py"} for i in range(100)],"statusCheckRollup":[{"completedAt":"2026-10-28T11:00:00Z"}],"commits":[]}))' > "$FX/pr_view_41"
 printf '{"files":[{"filename":"z101.py"}]}' > "$FX/repos_o_r_commits_b1"
 check "BLOCK: a base commit after the last CI run on a PR past gh's 100 files, which may touch one gh left out" "2 1" "$(guard "$M") $(grep -c "100 files a PR" "$T/err")"
+# a squash keeps the human authors' credit: a body of only Co-authored-by lines naming the PR's commit authors (gh lists co-authors as authors), never the agent's
+RT='{"name":"rtritto","email":"rtritto@example.invalid"}'; AG='{"name":"Claude Opus 5.5","email":"noreply@anthropic.com"},{"name":"Claude","email":"81847+claude@users.noreply.github.com"}'
+mpr CLEAN 2026-10-28T13:00:00Z "$RT,$AG"; MB='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body'
+check "a squash body of the PR's authors' Co-authored-by lines passes" 0 "$(guard "$MB \"Co-authored-by: rtritto <rtritto@example.invalid>\"")"
+check "BLOCK: a squash body with other text, a co-author no commit of the PR has (a guessed email), or two bodies" "2 2 2 1" \
+  "$(guard "$MB \"Co-authored-by: rtritto <rtritto@example.invalid>"$'\n'"Fixes the thing.\"") $(guard "$MB \"Co-authored-by: rtritto <rtritto@users.noreply.github.com>\"") $(guard "$MB '' --body ''") $(grep -c 'squash-merge as the repo asks' "$T/err")"
+check "BLOCK: the agent's co-author line, by its email or its name, though gh lists it among the PR's authors" "2 2" \
+  "$(guard "$MB \"Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\"") $(guard "$MB \"Co-authored-by: Claude <81847+claude@users.noreply.github.com>\"")"
+sed 's/"rtritto","email":"rtritto@example.invalid"/"Other","email":"other@example.invalid"/' "$FX/pr_view_41" > "$FX/pr_view_current"; cp "$FX/pr_view_41" "$FX/pr_view_https___github.com_o_r_pull_41"
+U='gh pr merge https://github.com/o/r/pull/41 --squash --subject "Fix it (#41)" --body'
+check "a squash by URL checks the credit against that PR's authors, not the current branch's" "0 2" "$(guard "$U \"Co-authored-by: rtritto <rtritto@example.invalid>\"") $(guard "$U \"Co-authored-by: Other <other@example.invalid>\"")"
+cp "$FX/pr_view_41" "$FX/pr_view_current"; : > "$T/pwd"
+check "a squash of the current branch's PR after a cd reads its authors in that dir" "0 0" \
+  "$(guard "cd $T/other && GH_STUB_PWD=$T/pwd gh pr merge --squash --subject \"Fix it (#41)\" --body \"Co-authored-by: rtritto <rtritto@example.invalid>\"") $(grep -vc " $T/other$" "$T/pwd")"
+rm "$FX/pr_view_current" "$FX/pr_view_https___github.com_o_r_pull_41"
 rm "$FX/pr_view_41"
 check "BLOCK: a merge state gh can't read" "2 1" "$(guard "$M") $(grep -c "gh couldn't read this PR's merge state" "$T/err")"
 # ---------- pre-bash-guard: a maintainer's refactor ask (the watcher's refactor-asks.txt) is answered by a pass recorded after it ----------
@@ -2072,7 +2087,6 @@ gql() { # viewer owner [PR URL]: GitHub's answer to whether a push updates a PR'
   python3 -c 'import json,sys; v, o, u = (sys.argv[1:] + [""])[:3]
 print(json.dumps({"data": {"viewer": {"login": v}, "repository": {"owner": {"login": o}, "b0": {"associatedPullRequests": {"nodes": [{"url": u, "isDraft": True}] if u else []}}}}}))' "$@" > "$FX/graphql"; }
 gql nitedani-agent nitedani-agent https://github.com/vikejs/vike/pull/3675  # the session's pushes went to its draft PR's head
-echo 'me 42' > "$FX/user"
 C1="cd $VK; "$'git commit -qam "fix: pass \\`headers\\` to telefunc \\`serve()\\` (telefunc 0.3.0)\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push origin HEAD:dependabot/npm_and_yarn/telefunc-0.3.0 2>&1 | tail -3'
 check "replay: the first commit and push (a multi-line message), with no preflight: blocked at the commit" "2 1" "$(bg "$C1") $(grep -c 'pr-steps preflight' "$T/err")"
 (cd "$VK" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)

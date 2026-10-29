@@ -9,7 +9,7 @@ Run `task` first. A Tier M or L change runs these steps once per PR.
 
 ## Steps
 
-1. **Worktree off the target repo's base** (the project file names it). `origin` here is the repository the PR targets; in a fork clone, fetch the upstream repository and branch from its base, never from the fork's, which may be stale. Read the repo's `AGENTS.md` / `CLAUDE.md` and its own `.claude/skills/pull-request/SKILL.md` on `origin/<base>`: they govern how the code is written and the implementation steps.
+1. **Worktree off the target repo's base** (the project file names it); taking over a PR: §Takeover first. `origin` here is the repository the PR targets; in a fork clone, fetch the upstream repository and branch from its base, never from the fork's. Read the repo's `AGENTS.md` / `CLAUDE.md` and its own `.claude/skills/pull-request/SKILL.md` on `origin/<base>`: they govern how the code is written and the implementation steps.
    Run: `git fetch origin && git worktree add -b <branch> <work folder>/<branch> origin/<base>`
 2. **Check you can finish before you start.** Start the app (project file, Running the app: Preflight, then Start), then record that a browser loads it; `gh` and its login, and whatever the app needs (containers, the hostname, the secrets, the data). Install whatever doesn't need root. Anything needing root: stop, and your reply starts with the exact commands, in order.
    Run: `pr-steps preflight <its URL>` (or `'none, because <why there is no UI or browser-run code>'`) · Record: the preflight record · Hook: pre-design-gate (edits wait for it), pre-bash-guard (commits wait for it)
@@ -34,10 +34,17 @@ Run `task` first. A Tier M or L change runs these steps once per PR.
 12. **Until merged,** each event goes through `reply`; after each push, re-check every body claim and caption against its evidence.
    Open: `reply`; `merging` step 4 · Hook: the watcher
 
+### Takeover
+
+Taking over a PR: your own PR, from your fork, supersedes theirs.
+- **Disposition first,** from their PR and the base's changes since: MODERNIZE (rebase it), REWORK (the smallest rewrite) or CLOSE (superseded, obsolete or not worth its cost: recommend it with the evidence and stop).
+- **Their commits first,** rebased onto the base, authorship and `Co-authored-by:` trailers kept; your fixes are separate commits.
+- **Credit:** the body names them and links their PR; a comment there links yours (`post`). Theirs closes or merges only when a maintainer says so.
+
 ### Rating
 
 - **Rate as the code's owner, for all its users:** fixing a bug they all share is not a cost.
-- **Leave the frame:** invert it, or delete what everyone treats as immovable. For someone else's library or API, generate the candidates as `finality` step 3 does. When a dependency causes the bug, one candidate stops it at its source, citing the line in that dependency's code that allows it; stopping a behavior ranks above undoing it after the fact (vikejs/vike#3611 over #3610).
+- **Leave the frame:** invert it, or delete what everyone treats as immovable. For someone else's library or API, generate the candidates as `finality` step 3 does. When a dependency causes the bug, one candidate stops it at its source, citing the line in that dependency's code that allows it; stopping a behavior ranks above undoing it after the fact.
 - **Shared assumptions count once.** Candidates resting on the same unspoken assumption count as one.
 - **Siblings decide the scope.** Before choosing, check the same failure in the mechanism's other cases (the other methods, statuses, adapters, runtimes; `delegate/agent.md` §Code search). One that fails the same way, in the same mechanism and files, with the title still true, is part of this fix. One that spreads to other modules or needs its own decision gets its own PR, opened now.
 
