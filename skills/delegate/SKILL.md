@@ -21,7 +21,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
    Run: `task_status` · Hook: stop-lint
 6. **Its result** (T3's notice, or the watcher's `### AGENT DONE <ticket>`). Read the final message; open two or three cited `path:line`s or re-run one command, and diff the result against your plan. A diff: write down each structural decision in it and why it's right before landing it; hardcoded lists and duplicated classifications get fixed before pushing. Then release the job.
    Run: `agent-job done <ticket>` · Hook: stop-lint, the watcher
-7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If the result fails your check, or the agent is blocked, redo the work on your model class with what failed.
+7. **Relay the result to the user and act on it;** an unchecked item, a deviation and each finding (by `code §Earn every line`) are yours to decide; never send the same brief again. If it fails your check or comes back blocked, redo it on your model class (reviews: §Reviewers) with what failed.
    Open: `writing §Reports to the user`
 
 ### Brief
@@ -37,7 +37,7 @@ Each role's brief is a template in `~/.mergeworthy/current/skills/delegate/`, wi
 Later work on the same thing (confirming fixes, re-rating) continues that agent; a new one re-reads everything with a cold cache.
 - **Claude Code:** `SendMessage` to its agent id.
 - **T3 Code:** `t3_thread_send` to its `childThreadId` with mode `queue`, asking it to write its result to a file; a background wait on that file wakes you.
-- **A review round in T3 Code:** a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send` (T3 Code's own rule). That counts as continuing the same reviewer.
+- **A review round in T3 Code:** a new `delegate_task` whose prompt carries the earlier report and what changed, never `t3_thread_send`. That counts as continuing the same reviewer.
 - **Codex in a shell:** `codex exec resume -c sandbox_mode=danger-full-access <session id> "<what changed>"` (the id `codex exec` printed, never `--last`).
 - **An agent is alive until its transcript and processes are quiet,** whatever T3 shows: a turn that ended, `waiting_for_children`, or a cancel that finds "no interruptible run" mean it wakes when its background commands end, and `t3_queue_promote_to_steer` can revive a run T3 calls `interrupted` or `cancelled`. Continue a stuck agent with a message; a replacement goes in a fresh worktree. When two agents run one job, keep the one with the most progress.
 
@@ -56,9 +56,9 @@ Every independent review (a post's, the Loop B review, the fresh reader, a stand
    {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
-- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply). An incomplete review didn't fail: its reviewer finishes it (§Continue).
+- **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (spent credits, rate limits, errors, timeouts, no reply). A report, even one its reviewer calls incomplete or partial, is no failure: its next round runs on the same company's model, counting against §Review rounds.
 
-The prompt is a file with the template filled. When one run follows several briefs, each writes its own file. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
+The prompt is a file with the template filled. Never write `CLEAN` yourself. Send fixes to the same reviewer (§Continue); a fresh one only when the artifact changed beyond them or needs a final cold read. Record which reviewer ran (Tier M: a `ledger.md` row); on Tier M or L work, re-review on the other company's model once it's back.
 
 ### Review rounds
 
