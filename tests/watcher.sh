@@ -48,7 +48,7 @@ json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {"o/r#1": {"state
 open(m.THREADS, "w").write("o/r 1\no/r 2\n")
 seen = {"scan": [], "reactions": []}
 m.fetch_thread = lambda repo, num, *a, **k: (seen["scan"].append(num), (False, "x", [], None, None, None, {}, True, None))[1]
-m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n in threads)
+m.scan_reactions = lambda state, threads: seen["reactions"].extend(n for _, n, _ in threads)
 m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
 ')
@@ -191,6 +191,76 @@ out += [run(2), run(3, note("me", 21)), run(4, note("them", 21))]
 print(*out)
 ')
 check "wait ping: bots active don't hold it, held while they are active elsewhere (a comment, pushed commits), sent once they are quiet, none right after your own comment" "1 0 True 1 0 1" "$got"
+
+# Whose 👍/👎 on the agent's comments and whose commits on its PR are reported: yours (ME) and a write-access account's, read through
+# a stub gh; not a read-only account's, a bot's, or one GitHub won't show (403 to an account without push access); one lookup per login.
+# A failed lookup is an error, retried on the next read, never a non-maintainer. Where GitHub won't say (403, or 404 in p/q), an account the
+# thread's comments show as a member counts, one shown as a contributor doesn't, and an unseen one's reaction is reported as access unknown
+# (its commits aren't); a commit with the agent's trailer is no maintainer's, whoever pushed it
+PB="$T/permbin"; mkdir -p "$PB"
+cat > "$PB/gh" <<'EOF'
+#!/usr/bin/env python3
+import json, os, sys
+path = sys.argv[-1].split('?')[0]
+open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'calls'), 'a').write(path + '\n')
+gated = {'id': 51, 'user': {'login': 'me'}, 'body': 'the agent', 'html_url': '<c51>', 'reactions': {'+1': 3, '-1': 1}}
+r = lambda i, who, content, kind='User': {'id': i, 'user': {'login': who, 'type': kind}, 'content': content, 'created_at': '2026-10-29T00:00:00Z'}
+commit = lambda sha, who, msg='a change': {'sha': sha, 'author': {'login': who}, 'commit': {'message': msg, 'committer': {'date': '2026-10-29T00:00:00Z'}}}
+perms = {'writer': 'write', 'owner': 'admin', 'reader': 'read', 'ci[bot]': 'write'}
+answers = {'repos/o/r/issues/5': {'id': 5, 'user': {'login': 'them'}, 'body': '', 'reactions': {}}, 'repos/o/r/issues/5/comments': [gated],
+           'repos/o/r/issues/comments/51/reactions': [r(1, 'writer', '+1'), r(2, 'reader', '+1'), r(3, 'me', '-1'), r(4, 'ci[bot]', '+1', 'Bot'), r(5, 'outsider', '+1'), r(6, 'writer', 'eyes'), r(7, 'flaky', '+1')],
+           'repos/o/r/pulls/5': {'base': {'ref': 'main'}}, 'repos/o/r/compare/old...new': {'commits': [commit('a' * 40, 'owner'), commit('b' * 40, 'reader'), commit('c' * 40, 'me'), commit('d' * 40, 'writer'), commit('e' * 40, 'writer', 'fix\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>'), commit('f' * 40, 'outsider')]},
+           'repos/o/r/compare/main...new': {'commits': [commit(c * 40, '') for c in 'abcdef']},
+           'repos/p/q/issues/3': {'id': 3, 'user': {'login': 'them'}, 'author_association': 'NONE', 'body': '', 'reactions': {}},
+           'repos/p/q/issues/3/comments': [{**gated, 'id': 61, 'html_url': '<c61>'}, {'id': 62, 'user': {'login': 'maint'}, 'author_association': 'MEMBER', 'body': 'hm', 'reactions': {}},
+                                          {'id': 63, 'user': {'login': 'stranger'}, 'author_association': 'CONTRIBUTOR', 'body': 'me too', 'reactions': {}}],
+           'repos/p/q/issues/comments/61/reactions': [r(1, 'maint', '+1'), r(2, 'stranger', '+1'), r(3, 'p', '+1')]}
+who = path.split('/collaborators/')[-1].split('/')[0]
+if who == 'flaky':
+    print('HTTP/2.0 502 Bad Gateway\n\n{}'); sys.exit(1)
+if path == 'repos/p/q/collaborators/p/permission':
+    print('HTTP/2.0 404 Not Found\n\n{"message": "Not Found"}'); sys.exit(1)
+if path.endswith('/permission') and (who not in perms or path.startswith('repos/p/q/')):
+    print('HTTP/2.0 403 Forbidden\n\n{"message": "Must have push access to view collaborator permission."}'); sys.exit(1)
+print('HTTP/2.0 200 OK\n\n' + json.dumps({'permission': perms[who]} if path.endswith('/permission') else answers.get(path, [])))
+EOF
+chmod +x "$PB/gh"; : > "$PB/calls"
+gated_posts="$T/perm-gated"; python3 -c 'import hashlib, sys; print(hashlib.sha256(b"the agent").hexdigest())' > "$gated_posts"
+got=$(PATH="$PB:$PATH" GH_HOST=github.com GATED_POSTS="$gated_posts" py '
+state = {"etag": {}, "is_pr": {}}
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    m.scan_reactions(state, [("o/r", "5", True), ("p/q", "3", True)]); m.scan_reactions(state, [("o/r", "5", True)])
+    m.emit_maintainer_commits(state, "o/r", "o/r#5", "old", "new")
+out = buf.getvalue()
+print(*[l.split(" on ")[0] if l.startswith("### THUMBS") else l.split(": review")[0].split(": gh api")[0] for l in out.splitlines() if l.startswith(("### ", "WATCH"))], sep="|")
+')
+check "reactions and commits: yours and a write-access account's are reported once, a read-only, a bot's or a hidden one's aren't; a failed lookup is one error; where GitHub won't say, a member's, an unseen one's as access unknown, not a contributor's; no agent-trailer commit" \
+  "### THUMBS UP o/r#5 by writer|### THUMBS DOWN o/r#5 by me|### THUMBS UP o/r#5 by outsider (access unknown)|WATCH ERROR permission o/r flaky|### THUMBS UP p/q#3 by maint|### THUMBS UP p/q#3 by p (access unknown)|### MAINTAINER COMMITS o/r#5: aaaaaaaaaa dddddddddd" "$got"
+check "permission: looked up once per login and repo, never for you or a bot" "flaky flaky outsider owner reader writer" "$(grep -o '^repos/o/r/collaborators/[^/]*/permission$' "$PB/calls" | cut -d/ -f5 | sort | tr '\n' ' ' | sed 's/ $//')"
+
+# A permission lookup that fails while a push's commits are reported leaves the PR's head and drops its validator, as a failed read does:
+# the next look reports them, once (the fresh reader's repro)
+got=$(py '
+import json
+m.agent_post_hashes, m.emit_refactor_stale, m.emit_wait_ping = (lambda: set()), (lambda *a: None), (lambda *a: None)
+pulls = "repos/o/r/pulls/1"
+m.fetch_thread = lambda *a: (True, "me", [], {"head": "new", "state": "open"}, None, None, {pulls: {"e": "x", "t": 0}}, True, None)
+m.request = lambda p, *a, **k: m.Resp(200, {}, json.dumps({"base": {"ref": "main"}} if "/pulls/" in p else {"commits": [{"sha": "a" * 40, "author": {"login": "boss"}, "commit": {"message": "human fix", "committer": {"date": "2026-10-29T00:00:00Z"}}}]}))
+state = {"since": "2026-10-29T00:00:00Z", "since_by": {}, "is_pr": {}, "prs": {"o/r#1": {"head": "old", "state": "open"}}, "etag": {}, "ci": {}}
+def down(*a):
+    raise RuntimeError("gh api permission: HTTP 502 Bad Gateway")
+buf, after = io.StringIO(), []
+with contextlib.redirect_stdout(buf):
+    m.maintainer = down
+    m.scan(state, [("o/r", "1", "full", 0)])
+    after += [state["prs"]["o/r#1"]["head"], pulls in state["etag"]]
+    m.maintainer = lambda *a: True
+    m.scan(state, [("o/r", "1", "full", 0)]); m.scan(state, [("o/r", "1", "full", 0)])
+out = buf.getvalue()
+print(*after, out.count("WATCH ERROR permission o/r#1"), out.count("### MAINTAINER COMMITS o/r#1: aaaaaaaaaa"), state["prs"]["o/r#1"]["head"])
+')
+check "maintainer commits: a failed permission lookup keeps the old head and drops the PR's validator; the next look reports them once" "old False 1 1 new" "$got"
 
 # /agent commands in threads no watch dir lists: found in the watched repos' comments feeds, routed to one dir, emitted once
 AD="$T/agentdirs"; mkdir -p "$AD/alpha" "$AD/beta" "$HOME/.mergeworthy"
@@ -540,8 +610,7 @@ printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep
 check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
 
 # A rate-limited `gh api user` prints the error JSON on stdout: it is no login. The watcher refuses to start rather than take it
-# as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:),
-# and gh-watch-start writes no `eyes` from it.
+# as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:).
 RL="$T/rl"; mkdir -p "$RL/bin" "$RL/home/.claude"
 cat > "$RL/bin/gh" <<'EOF'
 #!/bin/sh
@@ -554,10 +623,6 @@ EOF
 chmod +x "$RL/bin/gh"
 out=$(cd "$RL" && env -u GH_WATCH_ME HOME="$RL/home" PATH="$RL/bin:$PATH" GH_HOST=h.example timeout 20 python3 "$R/watcher/gh-watch.py" --once 2>&1); rc=$?
 check "watcher: a rate-limited login lookup exits instead of taking the error as ME" "1 could not read your login" "$rc $(echo "$out" | grep -o 'could not read your login' | head -1)"
-D="$RL/dir"; mkdir -p "$D"
-eyes_step=$(awk '/-s "\$dir\/eyes"/ { p = 1; b = /^if/ } p { print } p && (!b || /^fi/) { exit }' "$R/bin/gh-watch-start")
-( dir="$D"; PATH="$RL/bin:$PATH"; eval "$eyes_step" ) 2>/dev/null
-check "gh-watch-start: a rate-limited login lookup writes no eyes" "0" "$(cat "$D/eyes" 2>/dev/null | wc -c)"
 
 # ---------- GitLab threads: a stub glab answers `glab api --hostname gitlab.com <path>` from $GLFX, and logs :eyes: awards ----------
 GLFX="$T/glfx"; mkdir -p "$GLFX"; export GLFX; GLNOW=$(date -u +%FT%TZ); export GLNOW
@@ -655,7 +720,7 @@ check "gh-watch-start: an 'owner/repo all' line stays when a thread of its repo 
 GI="$T/ghinst"; mkdir -p "$GI/bin" "$GI/watcher" "$T/cronbin" "$T/retiredwatch"; cp "$R/bin/gh-watch-start" "$GI/bin/"; : > "$GI/watcher/gh-watch.py"
 printf '#!/bin/bash\necho $$ > gh-watch.pid\nexec sleep 30\n' > "$GI/watcher/gh-watch-daemon.sh"; printf '#!/bin/sh\nexit 1\n' > "$T/cronbin/systemctl"; printf '#!/bin/sh\n[ "$1" = -l ] && exit 0\ncat > /dev/null\n' > "$T/cronbin/crontab"
 chmod +x "$GI/watcher/gh-watch-daemon.sh" "$T/cronbin/systemctl" "$T/cronbin/crontab"; echo 2026-01-01T00:00:00Z > "$T/retiredwatch/retired"
-PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
+PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" "$T/retiredwatch" o/r 5 < /dev/null > /dev/null 2>&1
 check "gh-watch-start on a dir whose watcher retired removes its retired file" "0 removed" "$? $([ -e "$T/retiredwatch/retired" ] && echo kept || echo removed)"
 GP=$(cat "$T/retiredwatch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"  # the stub daemon it started
 # under T3 Code (T3's state names the session's thread) it records the thread and the log's end, and prints no Monitor; outside it, the Monitor again
@@ -663,7 +728,7 @@ mkdir -p "$GI/hooks" "$HOME/.t3/userdata" "$T/t3watch"; cp "$R/hooks/steward.py"
 python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("create table orchestration_v2_projection_provider_threads (provider_thread_id text, thread_id text, payload_json text)")
 c.execute("create table orchestration_v2_projection_subagents (subagent_id text, thread_id text, child_thread_id text)")
 c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p1', 'thr-9', '{\"nativeThreadRef\":{\"nativeId\":\"sess-t3\"}}'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
-t3start() { PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-watch-start" "$T/t3watch" o/r 6 < /dev/null 2>/dev/null | tail -1; }
+t3start() { PATH="$T/cronbin:$PATH" CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-watch-start" "$T/t3watch" o/r 6 < /dev/null 2>/dev/null | tail -1; }
 out=$(t3start sess-t3)
 check "gh-watch-start under T3 Code records the thread, t3's full path and the log's end, and says no Monitor is needed" "thr-9 $T/bin/t3 11 1" \
   "$(echo $(cat "$T/t3watch/t3-thread")) $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
@@ -673,19 +738,19 @@ GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/nul
 rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # --round (the steward skill): one round of gh-watch.py --round into events.log, no supervisor, no daemon, a passed mark
 printf 'import sys\nprint("### stub round", *sys.argv[1:])\n' > "$GI/watcher/gh-watch.py"; mkdir -p "$T/passwatch"
-out=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null 2>&1)
+out=$(PATH="$T/cronbin:$PATH" CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null 2>&1)
 check "gh-watch-start --round runs one round into events.log, starts no daemon, marks the dir passed by its session" "round: 1 new lines|### stub round --round|o/r all|no pid|sess-p" \
   "$(echo "$out" | grep -o '^round: [0-9]* new lines')|$(cat "$T/passwatch/events.log")|$(cat "$T/passwatch/repos.txt")|$([ -e "$T/passwatch/gh-watch.pid" ] && echo pid || echo no pid)|$(cat "$T/passwatch/passed")"
 printf 'import sys\nsys.exit(3)\n' > "$GI/watcher/gh-watch.py"; rm "$T/passwatch/passed"
-PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null > /dev/null 2>&1
+PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r all < /dev/null > /dev/null 2>&1
 check "gh-watch-start --round exits with a failed round's status and doesn't mark the dir passed" "3 not passed" "$? $([ -e "$T/passwatch/passed" ] && echo passed || echo not passed)"
 bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$T/passwatch/gh-watch.pid"; echo sess-d > "$T/passwatch/session"
-PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" x/y all < /dev/null > /dev/null 2>&1
+PATH="$T/cronbin:$PATH" CLAUDE_CODE_SESSION_ID=sess-p bash "$GI/bin/gh-watch-start" --round "$T/passwatch" x/y all < /dev/null > /dev/null 2>&1
 check "gh-watch-start --round refuses a dir whose daemon runs, leaving its session and repos as they were" "1 sess-d o/r all" "$? $(cat "$T/passwatch/session") $(echo $(cat "$T/passwatch/repos.txt"))"
 kill "$(cat "$T/passwatch/gh-watch.pid")"; rm "$T/passwatch/gh-watch.pid"
 LW="$T/livewatch"; mkdir -p "$LW"; echo 'o/r 7' > "$LW/threads.txt"; echo "$LW" >> "$HOME/.claude/gh-watch-dirs.txt"
 bash -c 'exec -a gh-watch-daemon sleep 30' & echo $! > "$LW/gh-watch.pid"; printf 'import sys\nprint("### stub round")\n' > "$GI/watcher/gh-watch.py"
-err=$(PATH="$T/cronbin:$PATH" GH_WATCH_EYES=me bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
+err=$(PATH="$T/cronbin:$PATH" bash "$GI/bin/gh-watch-start" --round "$T/passwatch" o/r 7 o/r 8 < /dev/null 2>&1 >/dev/null); rc=$?
 check "gh-watch-start --round skips a thread a live dir watches, with a note, and reads the rest" "0|skipped o/r 7: $LW watches it|o/r 8" \
   "$rc|$err|$(grep -x 'o/r [78]' "$T/passwatch/threads.txt" | tr '\n' ' ' | sed 's/ $//')"
 kill "$(cat "$LW/gh-watch.pid")"

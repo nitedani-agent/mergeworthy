@@ -108,6 +108,7 @@ class FakeGitHub:
         self.used = {'core': 0, 'graphql': 0}
         self.reset = int(T0) + 3600
         self.issues, self.comments, self.pr_comments, self.reviews = {}, {}, {}, {}  # by (repo, n); the comment feeds by repo
+        self.reactions = {}  # by comment id
         self.prs, self.commits, self.details, self.timeline, self.files = {}, {}, {}, {}, {}
         self.notifications, self.events = [], []
         self.hold = None  # a threading.Event the next request waits for
@@ -233,6 +234,9 @@ class FakeGitHub:
             return 200, hdr, body
         if url.startswith('search/issues'):
             return 200, {}, json.dumps({'items': []})
+        m = re.fullmatch(r'repos/[^/]+/[^/]+/(?:issues|pulls)/comments/(\d+)/reactions', url)
+        if m:
+            return 200, {}, json.dumps(self.reactions.get(int(m[1]), []))
         m = re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)/comments', url)
         if m:
             return self.feed(self.comments if m[2] == 'issues' else self.pr_comments, m[1], q, url)

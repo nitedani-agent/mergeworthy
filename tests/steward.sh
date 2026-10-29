@@ -144,12 +144,12 @@ elif a[:1] == ['api']:
             else [{'id': 40, 'number': 40, 'user': {'login': 'eve'}, 'title': 'An idea', 'body': '', 'html_url': 'https://github.com/nitedani/mergeworthy/issues/40',
                    'created_at': at(1 / 48), 'updated_at': at(1 / 48)}] if path == 'repos/nitedani/mergeworthy/issues'
             else comments.get(pr, []) if path == f'repos/o/r/issues/{pr}/comments' else reviews if path == 'repos/o/r/pulls/5/reviews' else {'items': []} if path == 'search/issues' else [{'id': 9, 'user': {'login': 'boss'}, 'content': '-1', 'created_at': at(1)}] if path == 'repos/o/r/issues/comments/601/reactions'
-            else {} if path.endswith('/reactions') else [])
+            else {'permission': 'admin'} if path.endswith('/permission') else {} if path.endswith('/reactions') else [])
     print('HTTP/2.0 200 OK\n\n' + json.dumps(body))
 EOF
 chmod +x "$T/stub/gh"; date -u +%s > "$T/stub/now"; : > "$T/stub/fail"; echo "$F tid" > "$HOME/.mergeworthy/steward"
 python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' '<img src="https://github.com/claude.png" alt="Claude"> *Claude* Yes: see the test.' > "$HOME/.claude/gated-posts.txt"
-sround() { env -u CLAUDE_CODE_SESSION_ID PATH="$T/stub:$PATH" GH_HOST=github.com GH_WATCH_ME=me GH_WATCH_EYES=boss python3 "$R/bin/steward" round "${1:-$F}" 2>&1; }
+sround() { env -u CLAUDE_CODE_SESSION_ID PATH="$T/stub:$PATH" GH_HOST=github.com GH_WATCH_ME=me python3 "$R/bin/steward" round "${1:-$F}" 2>&1; }
 sround > /dev/null; rc=$?; rm "$T/stub/fail"; echo $(( $(date -u +%s) + 1 )) > "$T/stub/new6"; sround > /dev/null; rc="$rc $?"
 check "round in the steward's folder with no watcher state, cut short by a failed call, then retried: exits 1 then 0, each saying where it starts; only the comment and review posted after its start are reported, owed and the comment reacted to, the review sent for sorting, not the old comments, review, red CI, wait ping, 👎 or issue" \
   "1 0 2|### o/r#5 review 802 by boss|### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-802 by|### o/r#6 comment 702 by boss|o/r#5 review 802 by boss|o/r#6 comment 702 by boss|1 1" \

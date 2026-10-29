@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import watch_sim as ws
 
 T = tempfile.mkdtemp()
-os.environ.update(HOME=f'{T}/home', GH_WATCH_ME='me', GH_WATCH_EYES='')
+os.environ.update(HOME=f'{T}/home', GH_WATCH_ME='me')
 os.makedirs(f'{T}/home/.claude')
 fails, counter = 0, itertools.count()
 

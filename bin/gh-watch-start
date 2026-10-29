@@ -5,7 +5,7 @@
 # - "owner/repo N" goes to threads.txt; a bare "owner/repo" goes to repos.txt (the repo is covered, e.g. before `gh issue create`);
 #   "owner/repo all" too: the whole repo is watched (gh-watch.py's moved_thread).
 #   GitLab: "gitlab.com/<namespace>/<project>" with N for an issue, !N for a merge request.
-# - Starts the daemon unless its PID is alive, with GH_WATCH_EYES from the environment, else from <dir>/eyes, else your gh login.
+# - Starts the daemon unless its PID is alive.
 # - A thread line drops its repo's bare line (not an `all` line) from repos.txt; <dir>/session records the Claude session that ran it.
 # - Registers <dir> in ~/.claude/gh-watch-dirs.txt, which pre-bash-guard and post-bash-register read.
 # - Removes <dir>/retired, which the watcher writes when it retires (disk-sweep's w-done rule).
@@ -61,18 +61,14 @@ if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
 fi
 reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"
-if [ -n "$GH_WATCH_EYES" ]; then echo "$GH_WATCH_EYES" > "$dir/eyes"; fi
-# gh prints an error answer (a rate limit) on stdout too: keep only a login gh really returned
-if ! [ -s "$dir/eyes" ]; then
-  if login=$(gh api user --jq .login 2>/dev/null) && [ -n "$login" ]; then echo "$login" > "$dir/eyes"; else echo "gh-watch-start: could not read your login (gh api user failed); no maintainers watched until you re-run it" >&2; fi
-fi
+rm -f "$dir/eyes"  # the maintainer list of an older start: maintainers are read from GitHub (gh-watch.py's maintainer)
 # Supervision, so the watcher restarts on failure and after a reboot, with no session alive:
 # systemd user service (Linux), launchd agent (macOS), else a detached daemon that cron revives.
 printf 'PATH=%s\nHOME=%s\n' "$PATH" "$HOME" > "$dir/env"
 if [ -n "$round" ]; then
   n=$(wc -l < "$dir/events.log")
   # passed: the hooks treat the dir as watched for a day, and stop-lint lets the session it names post without a Monitor
-  rc=0; (cd "$dir" && GH_WATCH_EYES=$(cat eyes 2>/dev/null) python3 -u gh-watch.py --round >> events.log 2>&1) || rc=$?
+  rc=0; (cd "$dir" && python3 -u gh-watch.py --round >> events.log 2>&1) || rc=$?
   if [ "$rc" = 0 ]; then echo "${CLAUDE_CODE_SESSION_ID:-}" > "$dir/passed"; else echo "WATCH ERROR gh-watch.py --round exited $rc" >> "$dir/events.log"; fi
   rm -f "$dir/retired"
   echo "round: $(( $(wc -l < "$dir/events.log") - n )) new lines in $dir/events.log; read it past events.cursor (mergeworthy:reply)"
@@ -90,7 +86,7 @@ StartLimitIntervalSec=0
 WorkingDirectory=/%I
 EnvironmentFile=/%I/env
 Environment=GH_WATCH_SUPERVISOR=systemd
-ExecStart=/bin/bash -c 'GH_WATCH_EYES=$(cat eyes) exec ./gh-watch-daemon.sh'
+ExecStart=/bin/bash -c 'exec ./gh-watch-daemon.sh'
 Restart=always
 RestartSec=5
 
@@ -103,7 +99,7 @@ UNIT
   if ! systemctl --user is-active --quiet "$inst" && daemon_alive; then kill "$(cat "$dir/gh-watch.pid")"; sleep 1; fi
   systemctl --user enable --now "$inst" >/dev/null 2>&1
   loginctl show-user "$USER" 2>/dev/null | grep -q '^Linger=yes' || echo "note: without 'loginctl enable-linger $USER' the service starts at login, not at boot" >&2
-  sleep 1; echo "watcher: systemd service $inst $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
+  sleep 1; echo "watcher: systemd service $inst $(systemctl --user is-active "$inst") (PID $(cat "$dir/gh-watch.pid" 2>/dev/null))"
 elif [ "$(uname)" = Darwin ]; then
   label="com.methodology.gh-watch.$(printf %s "$dir" | shasum | cut -c1-12)"
   plist=~/Library/LaunchAgents/$label.plist
@@ -114,7 +110,7 @@ elif [ "$(uname)" = Darwin ]; then
 <plist version="1.0"><dict>
   <key>Label</key><string>$label</string>
   <key>WorkingDirectory</key><string>$dir</string>
-  <key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>GH_WATCH_EYES=\$(cat eyes) exec ./gh-watch-daemon.sh</string></array>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>exec ./gh-watch-daemon.sh</string></array>
   <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string><key>HOME</key><string>$HOME</string><key>GH_WATCH_SUPERVISOR</key><string>launchd</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -127,12 +123,12 @@ PLIST
     daemon_alive && { kill "$(cat "$dir/gh-watch.pid")"; sleep 1; }
     launchctl bootstrap "gui/$(id -u)" "$plist"
   fi
-  sleep 1; echo "watcher: launchd agent $label (PID $(cat "$dir/gh-watch.pid" 2>/dev/null), eyes: $(cat "$dir/eyes"))"
+  sleep 1; echo "watcher: launchd agent $label (PID $(cat "$dir/gh-watch.pid" 2>/dev/null))"
 else
   if ! daemon_alive; then
     # fully detached: with `nohup setsid … &` the daemon stayed this script's child and the script never returned
-    if command -v setsid >/dev/null; then (cd "$dir" && GH_WATCH_EYES=$(cat eyes) setsid -f ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1)
-    else (cd "$dir" && GH_WATCH_EYES=$(cat eyes) nohup ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1 & disown); fi
+    if command -v setsid >/dev/null; then (cd "$dir" && setsid -f ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1)
+    else (cd "$dir" && nohup ./gh-watch-daemon.sh </dev/null >/dev/null 2>&1 & disown); fi
     sleep 1
   fi
   # cron revives it after a crash or a reboot (gh-watch-start is idempotent)
@@ -143,7 +139,7 @@ else
   else
     echo "note: no systemd, launchd or cron: the watcher won't restart after a reboot" >&2
   fi
-  echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron (eyes: $(cat "$dir/eyes"))"
+  echo "watcher: daemon PID $(cat "$dir/gh-watch.pid"), revived by cron"
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
 rm -f "$dir/retired"  # a re-armed dir is not finished: disk-sweep's w-done deletes only a dir its watcher retired

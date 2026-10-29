@@ -11,7 +11,7 @@
   Another account renaming your PR, open (the last-comment call) or merged (follow_ups' timeline), is one too (pr_renamed).
 - Machine-wide work (those two) runs in one daemon, or a --round, at a time (shared_pass). Every call goes through request(), which keeps the
   hour's budget (see "The GitHub API budget") and sends ETags; a rate-limit pause prints one WATCH ERROR per daemon.
-- Maintainers' commits pushed to a tracked PR, and 👍/👎 from GH_WATCH_EYES on the agent's comments.
+- Maintainers' commits pushed to a tracked PR, and 👍/👎 from you or a maintainer (write access, see maintainer) on the agent's comments.
 - WAIT PING DUE: your account's comment is the last on an open thread, and nobody else in it has replied or acted in any watched thread for WAIT_PING_HOURS (3).
 - PR head/state changes (pushes, merges, closes), CI turning red or green on open PRs, and your PR's code (tests excluded) changing by more than ~80 lines since its last shape pass (SHAPE STALE).
 - How often each thread is read depends on its state (see "How often a thread is read"); the notifications, your events feed
@@ -40,7 +40,6 @@ ROUND_LOOKBACK = 7 * 86400  # a --round reads the /agent feed back this far when
 ROUND_SINCE = None  # a --round reads the issue lists' threads updated since its dir's last complete round (one_round), whatever other readers saw
 SEED = None  # the dir's first --round start while none of its rounds has completed: what is older is where it started, not news (one_round)
 WAIT_PING_HOURS = float(os.environ.get('WAIT_PING_HOURS') or 3)  # mergeworthy:reply §Wait ping: a wait ping may follow after this long
-EYES_FOR = set(filter(None, os.environ.get('GH_WATCH_EYES', '').split(',')))  # maintainers: their commits on your PRs and 👍/👎 are reported
 
 
 # ---------- The GitHub API budget ----------
@@ -458,6 +457,7 @@ def save_state(s):
         return
     flush_calls(s)
     prune(s.setdefault('etag', {}))
+    prune(s.setdefault('perm', {}))
     tmp = STATE + '.tmp'
     json.dump(s, open(tmp, 'w'))
     os.replace(tmp, STATE)
@@ -483,6 +483,29 @@ def agent_post_hashes():
 
 MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
 AI_CALL = re.compile(r'(^|\s)/(ai|agent)\b', re.I)
+
+
+def maintainer(state, repo, login):
+    """An account with write access to the repo (mergeworthy:reply §Which comments), read once a day per repo and login. GitHub shows
+    it only to an account with push access itself: elsewhere (403, 404) the association note_assoc last saw decides, None when none was seen."""
+    perms, k = state.setdefault('perm', {}), f"{repo} {login}"
+    if time.time() - perms.get(k, {}).get('t', 0) >= 86400:
+        try:
+            w = request(f"repos/{repo}/collaborators/{login}/permission").json().get('permission') in ('admin', 'write')
+        except RuntimeError as e:
+            if not re.search(r' HTTP 40[34] ', str(e)):
+                raise
+            w = None
+        perms[k] = {'w': w, 't': time.time()}
+    w = perms[k]['w']
+    a = state.get('assoc', {}).get(k)
+    return w if w is not None else None if a is None else a in MAINTAINER
+
+
+def note_assoc(state, repo, u, assoc):
+    """The author_association GitHub last showed for a login in the repo (a comment, review, PR or issue): maintainer's fallback."""
+    if u and u.get('login'):
+        state.setdefault('assoc', {})[f"{repo} {u['login']}"] = assoc
 
 
 def answerable(u, body, agent_hashes, kind='comment', own=False):
@@ -708,27 +731,37 @@ def emit_tracker_stale(key, ended):
         emit(f"### TRACKER STALE {w[0]}#{w[1]}: {key} {ended}: tick its checkbox and write '({ended}…)' after it, through mergeworthy:post (mergeworthy:task §Umbrella)")
 
 
+AGENT_TRAILER = re.compile(r'^co-authored-by: claude\b', re.I | re.M)  # an agent's commit, whoever pushed it (the project files' definition)
+
+
 def emit_maintainer_commits(state, repo, key, old, new):
-    """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them")."""
+    """A maintainer's commits pushed to a tracked PR: reviewing them was requested ("Review each of my commit as I push them").
+    -> False when a call failed, so the caller reads them again."""
     try:
-        commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date']} for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
+        commits = [{'sha': c['sha'][:10], 'login': (c.get('author') or {}).get('login') or '', 'date': c['commit']['committer']['date'], 'agent': bool(AGENT_TRAILER.search(c['commit'].get('message') or ''))}
+                   for c in request(f"repos/{repo}/compare/{old}...{new}").json()['commits']]
     except Exception as e:
         fail(f"compare {key} {old}...{new}", e)
-        return
+        return False
     try:  # commits that came from merging the base branch aren't the PR's
         base = request(f"repos/{repo}/pulls/{key.split('#')[1]}").json()['base']['ref']
         on_pr = {c['sha'][:10] for c in request(f"repos/{repo}/compare/{base}...{new}").json()['commits']}
     except Exception as e:
         fail(f"compare {key} base...{new}", e)
-        return
+        return False
     for c in commits:
         if c['sha'] in on_pr:
             note_active(state, {'login': c['login']}, c['date'])
-    theirs = [c['sha'] for c in commits if c['login'] in EYES_FOR and c['login'] != ME and c['sha'] in on_pr]
+    try:
+        theirs = [c['sha'] for c in commits if c['sha'] in on_pr and c['login'] not in ('', ME) and not c['agent'] and not is_bot(c) and maintainer(state, repo, c['login'])]
+    except Exception as e:
+        fail(f"permission {key}", e)
+        return False
     if theirs:
         if (s := steward.recipient([])) and s[0] != HERE.rstrip('/') and not ONCE:  # a copy for the steward's follow-up sort
             emit_to(s[0], f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}")
         emit(f"### MAINTAINER COMMITS {key}: {' '.join(theirs)}: review each one in a table (| Commit | What it does, and the idea behind it | Rating |, one short sentence each; rated N/10 with a short reason next to anything below 10, e.g. 9/10 (Vite's built-ins differ); an emoji only where it's funny; 10/10 only when nothing could be better), as requested (mergeworthy:reply §Maintainer commits)")
+    return True
 
 
 def emit_refactor_stale(repo, key, new):
@@ -775,27 +808,41 @@ def read_threads():
 
 
 def scan_reactions(state, threads):
-    """A 👍 or 👎 from GH_WATCH_EYES on one of the agent's comments is feedback on that comment (mergeworthy:reply)."""
+    """A 👍 or 👎 from you (ME, as for comments: a reaction is no gated post) or a maintainer on one of the agent's comments is
+    feedback on that comment (mergeworthy:reply §Reactions). threads: (repo, num, read in full). After a check only the lists
+    known to hold an agent comment are read: a new comment makes the thread's next look a full read, which reads them all."""
     agent_hashes = agent_post_hashes()
     seen, etags = state.setdefault('reactions', {}), state['etag']  # seen: "<kind>:<id>" -> ["<login>:<content>", ...]
-    for repo, num in threads:
-        pending, clean = {}, True  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
+    lists = state.setdefault('agent_lists', {})  # "<repo>#<num>" -> the kinds below whose list holds an agent comment
+    for repo, num, full in threads:
+        key, pending, clean, got = f"{repo}#{num}", {}, True, []  # an answer's ETag is kept only once everything in it was handled: a 304 later means "nothing new"
+        known = lists.get(key)  # None: never read here, so read whole (no validators), else a 304 hides the agent's comments
         for kind, path in (('body', 'issues'), ('comment', 'issues'), ('review-comment', 'pulls')):
-            if kind == 'review-comment' and state['is_pr'].get(f"{repo}#{num}") is False:
+            if kind == 'review-comment' and state['is_pr'].get(key) is False:
                 continue  # an issue has no review comments
+            if not full and known is not None and kind not in known:
+                continue
             try:
                 if kind == 'body':  # the PR or issue description itself
-                    comments = paged(f"repos/{repo}/issues/{num}", etags, pending)
+                    comments = paged(f"repos/{repo}/issues/{num}", etags, pending, fresh=known is None)
                 else:
-                    comments = paged(f"repos/{repo}/{path}/{num}/comments?per_page=100", etags, pending)
+                    comments = paged(f"repos/{repo}/{path}/{num}/comments?per_page=100", etags, pending, fresh=known is None)
             except Exception as e:
                 if path == 'issues':
                     clean = False
                     fail(f"reactions {repo}#{num}", e)
                 continue  # an issue has no review comments
+            got.append((kind, path, comments))
+            for c in comments:
+                note_assoc(state, repo, c.get('user'), c.get('author_association'))
+        for kind, path, comments in got:
             for c in comments:
                 counts = c.get('reactions') or {}
-                if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes or not (counts.get('+1') or counts.get('-1')):
+                if c['user'].get('login') != ME or _norm(c.get('body')) not in agent_hashes:
+                    continue
+                if kind not in lists.setdefault(key, []):
+                    lists[key].append(kind)
+                if not (counts.get('+1') or counts.get('-1')):
                     continue
                 sk = f"{kind}:{c['id']}"
                 try:
@@ -807,17 +854,25 @@ def scan_reactions(state, threads):
                     continue
                 for r in reactions:
                     who, content = r['user']['login'], r['content']
-                    if content not in ('+1', '-1') or who not in EYES_FOR or f"{who}:{content}" in seen.get(sk, []):
+                    if content not in ('+1', '-1') or is_bot(r['user']) or f"{who}:{content}" in seen.get(sk, []):
+                        continue
+                    try:
+                        theirs = who == ME or maintainer(state, repo, who)  # None: access unknown, reported (a reaction on the agent's comment is rare)
+                    except Exception as e:
+                        clean = False
+                        fail(f"permission {repo} {who}", e)
                         continue
                     seen.setdefault(sk, []).append(f"{who}:{content}")
-                    if before_seed(r.get('created_at') or ''):
+                    if theirs is False or before_seed(r.get('created_at') or ''):
                         continue
+                    unknown = ' (access unknown)' * (theirs is None)
                     if content == '-1':
-                        emit(f"### THUMBS DOWN {repo}#{num} by {who} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")
+                        emit(f"### THUMBS DOWN {repo}#{num} by {who}{unknown} on {c['html_url']} (reaction {r['id']}): work out why and fix the rule behind it; if the thread is still on that point, post a new reply with the fix that @-mentions {who}; if it has moved past it or it's resolved, instead edit that comment to add how you'll do better. Leave the 👎 (mergeworthy:reply §Reactions, then mergeworthy:rules)")
                     else:
-                        emit(f"### THUMBS UP {repo}#{num} by {who} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:reply §Reactions)")
+                        emit(f"### THUMBS UP {repo}#{num} by {who}{unknown} on {c['html_url']}: note what they liked and reinforce the rule that produced it (mergeworthy:reply §Reactions)")
         if clean:
             etags.update(pending)
+            lists.setdefault(key, [])
 
 
 def react_eyes(repo, kind, cid, num=None):
@@ -925,10 +980,11 @@ def emit_wait_ping(state, key, last, events):
 
 # ---------- How often a thread is read ----------
 # A look at a thread is a "check" (its PR or issue and, for an open PR, its CI: one or two requests, 304 answers counted) or a "full"
-# read (that, the comment lists, the last comment and the reactions: up to nine). A check that finds the thread changed becomes a
-# full read, and so does a notification or an issue-list change (repo_feeds) that names the thread: those are read at once.
+# read (that, the comment lists and the last comment: up to seven). A check that finds the thread changed becomes a full read, and so
+# does a notification or an issue-list change (repo_feeds) that names the thread: those are read at once. After either, the reactions
+# on the agent's comments are read (scan_reactions: after a check, each list holding one, 304 while no count changed): a reaction moves nothing else.
 CHECK = {'recent': 300, 'open': 1800, 'closed': 21600}  # seconds between looks, by what the thread is now: open and changed in the last day, other open, merged or closed
-FULL = {'recent': 3600, 'open': 86400, 'closed': 86400}  # seconds after which a look is a full read anyway (reactions, edited comments: nothing else shows them)
+FULL = {'recent': 3600, 'open': 86400, 'closed': 86400}  # seconds after which a look is a full read anyway (edited comments: nothing else shows them)
 RECENT = 86400
 
 
@@ -965,13 +1021,13 @@ def plan(state, threads, lvl=OK, everything=False):
 
 
 def scan(state, jobs):
-    """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num) read in full)"""
+    """Read the given (repo, num, mode, activity) jobs in parallel; apply results in this thread. -> (all fine, the (repo, num, read in full) read)"""
     started = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     def since(key):  # each thread keeps its own position, so one failing thread doesn't hold back the others
         first = min(state['since'], ROUND_SINCE) if ROUND_SINCE else state['since']  # a --round's new thread: back to what it hasn't read
         dt = datetime.datetime.strptime(state['since_by'].get(key, first), '%Y-%m-%dT%H:%M:%SZ') - datetime.timedelta(minutes=10)
         return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-    ok, fulls, pings, now = True, [], [], time.time()
+    ok, read, pings, now = True, [], [], time.time()
     state.setdefault('upd', {})
     sched = state.setdefault('sched', {})
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -1007,8 +1063,11 @@ def scan(state, jobs):
                     if pr_state['state'] in ('merged', 'closed') and prev.get('state') != pr_state['state']:
                         emit_tracker_stale(key, pr_state['state'])
                     if prev.get('head') != pr_state['head']:
-                        emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
+                        reported = emit_maintainer_commits(state, repo, key, prev['head'], pr_state['head'])
                         emit_refactor_stale(repo, key, pr_state['head'])
+                        if not reported:  # as after a failed read: the old head and no validator, so the next look compares again
+                            pr_state = {**pr_state, 'head': prev['head']}
+                            state['etag'].pop(f"repos/{repo}/pulls/{num}", None)
                 state['prs'][key] = pr_state
             if red is not None:
                 if red != state['ci'].get(key, []) and (key in state['ci'] or not SEED):  # red already when a seeding round first reads it
@@ -1017,6 +1076,7 @@ def scan(state, jobs):
             agent_hashes = agent_post_hashes()  # read after the fetch: a post gated while it ran is the agent's
             for kind, cid, upd, user, url, body, extra in events:
                 note_active(state, user, upd)
+                note_assoc(state, repo, user, user.get('assoc'))
                 if is_pr and pr_state:
                     note_refactor_ask(repo, key, user, url, body, upd, pr_state['head'])
                 if answerable(user, body, agent_hashes, kind, own=author == ME or repo_lines(HERE).get(repo)):
@@ -1029,12 +1089,12 @@ def scan(state, jobs):
             s['act'] = a
             if full:
                 s['full'] = now
-                fulls.append((repo, num))
+            read.append((repo, num, full))
             s['next'] = now + spread(key, CHECK[thread_kind(state, key, now)])
     for key, last, events in pings:  # after every thread's activity is noted: someone busy in another thread is mid-review
         emit_wait_ping(state, key, last, events)
     state['since'] = started  # only the default for threads added to threads.txt later
-    return ok, fulls
+    return ok, read
 
 
 def notifications_changed(state):
@@ -1660,23 +1720,23 @@ def locked():
 
 
 def run_scan(everything=False):
-    """Read what is due now (everything: every listed thread, in full); the reactions of what was read in full."""
+    """Read what is due now (everything: every listed thread, in full), then the reactions of what was read."""
     threads = read_threads()
     if ROUND:  # a thread a live daemon watches is its dir's, though an earlier round listed it here
         taken = set().union(*(listed_threads(d) for d in live_dirs() if d != HERE))
         threads = [t for t in threads if f"{t[0]}#{t[1]}" not in taken]
     with locked():
         state = load_state()
-        ok, fulls = scan(state, plan(state, threads, OK, everything))
+        ok, read = scan(state, plan(state, threads, OK, everything))
         save_state(state)
-    read_reactions(fulls)
+    read_reactions(read)
 
 
-def read_reactions(fulls):
-    if fulls:
+def read_reactions(read):
+    if read:
         with locked():
             state = load_state()
-            scan_reactions(state, fulls)
+            scan_reactions(state, read)
             save_state(state)
 
 
@@ -1842,11 +1902,11 @@ def tick():
             with locked():
                 state = load_state()
                 poll_account(state, lvl)
-                ok, fulls = scan(state, plan(state, read_threads(), lvl))
+                ok, read = scan(state, plan(state, read_threads(), lvl))
                 log_stats(state)
                 sweep_disk(state)
                 save_state(state)
-            read_reactions(fulls)
+            read_reactions(read)
             if lvl <= RESERVE and time.time() - _retire_at[0] > 300:
                 _retire_at[0] = time.time()
                 retire_if_done()
