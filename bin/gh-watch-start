@@ -12,7 +12,7 @@
 # - Prints the Monitor to arm in the session: the daemon records events in <dir>/events.log; the session that
 #   owns the threads is the one that answers them, woken by that Monitor (mergeworthy:reply). Under T3 Code the
 #   main session's thread (the root of the threads that delegated the session) and t3's path go to <dir>/t3-thread and the
-#   daemon sends it each event itself: no Monitor.
+#   daemon sends it each event itself: no Monitor. The steward's folder and the dirs inside it wake only for a new mergeworthy issue (steward.quiet).
 # - --round: no daemon: one round of the watcher appends to events.log, recording what it reported, and writes the session to
 #   <dir>/passed when the round ran (mergeworthy:steward); exits with the round's status. A thread another live dir watches is
 #   skipped with a note, and the round doesn't read it. Refused, before anything changes, while the dir's daemon runs.
@@ -140,7 +140,12 @@ else
 fi
 rm -f "$dir/agent" "$dir/wake.pid" "$dir/wake.launch"  # from the watcher that started a headless agent per event
 rm -f "$dir/retired"  # a re-armed dir is not finished: disk-sweep's w-done deletes only a dir its watcher retired
+events="'###'*|'WATCH ERROR'*|'WATCHER RETIRED'*"  # the lines that start an event
+if python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import steward; sys.exit(not steward.quiet(sys.argv[2]))' "$root/hooks" "$dir"; then
+  events="'### NEW ISSUE nitedani/mergeworthy#'*"  # the one event a steward's dir delivers (gh-watch.py's WAKES)
+  echo "The steward's watcher delivers only a new nitedani/mergeworthy issue; its next pass reads the rest of $dir/events.log."
+fi
 if [ -s "$dir/t3-thread" ]; then echo "The watcher sends each event to this session's T3 thread $(head -n1 "$dir/t3-thread") itself: arm no Monitor."; exit 0; fi
 echo "Arm a Monitor in this session on (max timeout; re-arm it when it expires, since the expiry notice wakes the session):"
 # a shell loop, not grep or awk: an agent shell's grep can be a wrapper, and mawk, that hold matched lines back
-echo "  tail -n 0 -F $dir/events.log 2>/dev/null | while IFS= read -r l; do case \$l in '###'*|'WATCH ERROR'*|'WATCHER RETIRED'*) printf '%s\\n' \"\$l\";; esac; done"
+echo "  tail -n 0 -F $dir/events.log 2>/dev/null | while IFS= read -r l; do case \$l in $events) printf '%s\\n' \"\$l\";; esac; done"

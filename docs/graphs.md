@@ -11,7 +11,7 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `delegate` | `code`, `writing` |
 | `design` | `delegate`, `pull-request`, `code`, `finality`, `writing`, `post`, `converge` |
 | `docs` | `delegate`, `converge`, `code` |
-| `evidence` | `post` |
+| `evidence` | `delegate`, `post` |
 | `finality` | `delegate`, `code`, `post`, `design`, `converge` |
 | `merging` | `code`, `converge`, `post`, `task`, `writing` |
 | `open-issue` | `pull-request`, `task`, `delegate`, `evidence`, `writing`, `post` |
@@ -19,8 +19,8 @@ Generated from the skills by `docs/build-graphs.py`; edit the skills, then run i
 | `pull-request` | `delegate`, `post`, `evidence`, `design`, `finality`, `code`, `task`, `docs`, `converge`, `merging`, `writing`, `reply` |
 | `reply` | `post`, `converge`, `design`, `merging`, `delegate`, `task` |
 | `review` | `delegate`, `code`, `post`, `writing` |
-| `rules` | `task`, `delegate`, `reply` |
-| `steward` | `reply`, `rules`, `delegate`, `writing` |
+| `rules` | `task`, `open-issue`, `delegate`, `reply` |
+| `steward` | `rules`, `delegate`, `writing` |
 | `task` | `post`, `pull-request`, `design`, `reply`, `review`, `open-issue`, `docs`, `writing`, `delegate` |
 | `writing` | nothing |
 
@@ -232,7 +232,7 @@ flowchart TB
 
 ## A rule failed or the user names a failure; a 👎; editing a skill, prompt or rules file; a `### FOLLOW-UP`; the steward's tick
 
-Opens `mergeworthy:rules` (fix the instance, then the rule or the steward's inbox (6 steps)).
+Opens `mergeworthy:rules` (fix the instance, then the rule or an issue for the steward (6 steps)).
 
 ```mermaid
 flowchart TB
@@ -251,11 +251,12 @@ flowchart TB
     s4 --> s5
   end
   s1 -.-> r1[["task"]]
-  s2 -.-> r2[["delegate"]]
-  s3 -.-> r3[["delegate"]]
-  s5 -.-> r4[["reply"]]
-  s5 -.-> r5[["delegate"]]
-  s5 -.-> r6[["task"]]
+  s1 -.-> r2[["open-issue"]]
+  s2 -.-> r3[["delegate"]]
+  s3 -.-> r4[["delegate"]]
+  s5 -.-> r5[["reply"]]
+  s5 -.-> r6[["delegate"]]
+  s5 -.-> r7[["task"]]
   start --> g0
 ```
 
@@ -489,7 +490,8 @@ flowchart TB
     s4["5. Upload it"]
     s3 --> s4
   end
-  s3 -.-> r1[["post"]]
+  s0 -.-> r1[["delegate"]]
+  s3 -.-> r2[["post"]]
   start --> g0
 ```
 

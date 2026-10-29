@@ -11,8 +11,9 @@ Threads are cached by updated_at under ~/.cache/mergeworthy/threads/.
                                        human comment (checked against its root when the parent comment is newer than <file>)"""
 import json, os, re, subprocess, sys, datetime
 from concurrent.futures import ThreadPoolExecutor
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'watcher'))
+sys.path[:0] = [os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), d) for d in ('watcher', 'hooks')]
 import gl_watch  # BADGE: what an agent's post starts with
+from post_words import uncoded
 
 LINKED_LAST = 30          # comments kept per linked thread
 LINKED_BODY = 4000        # characters kept per comment in a linked thread
@@ -86,7 +87,7 @@ def latest_human(t):
 
 def refs(text, repo):
     """Thread refs (owner/repo#N) in text, in order; code blocks and quoted lines aren't followed."""
-    text = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', text, flags=re.S | re.M)
+    text = uncoded(text)
     out = []
     for m in re.finditer(r'https?://github\.com/([\w.-]+/[\w.-]+)/(?:issues|pull)/(\d+)', text): out.append(f'{m[1]}#{m[2]}')
     text = re.sub(r'https?://\S+', ' ', text)
@@ -129,7 +130,7 @@ LANG = [
 ]
 def ledger_line(x):
     if x['kind'] == 'rename': return ['title'], x['body']
-    text = re.sub(r'^(```|~~~).*?^\1[^\n]*$', '', x['body'], flags=re.S | re.M)
+    text = uncoded(x['body'])
     text = '\n'.join(l for l in text.split('\n') if not l.lstrip().startswith('>'))
     text = re.sub(r'<[^>]+>|\[([^\]]*)\]\([^)]*\)', lambda m: m[1] or '', text)
     sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text) if s.strip()]

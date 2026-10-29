@@ -9,6 +9,16 @@ def read():
     except (OSError, ValueError): return None
     return os.path.expanduser(wd).rstrip('/'), tid
 
+def folder():
+    """The steward's folder: the first word of ~/.mergeworthy/steward, else ~/.mergeworthy/work/steward (mergeworthy:steward)."""
+    return (read() or (os.path.expanduser('~/.mergeworthy/work/steward'),))[0]
+
+def quiet(d):
+    """True for the steward's folder and the watch dirs inside it: their watcher reacts to nothing, owes no reply and wakes its
+    thread only for a new mergeworthy issue (gh-watch.py's WAKES); the rest of their events.log waits for the next pass."""
+    s, d = os.path.realpath(folder()), os.path.realpath(d)
+    return d == s or d.startswith(s + '/')
+
 def passed_by(wd):
     """The session whose watcher round in wd passed in the last day (gh-watch-start --round writes <wd>/passed), or None."""
     try:
@@ -74,11 +84,13 @@ def bind_watcher(wd):
 def _busy(c, tid):
     return bool(c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone()
                 or c.execute(f"select 1 from orchestration_v2_projection_subagents where ? in (thread_id, child_thread_id) and status in {_in(ACTIVE_TASKS)}",
-                         (tid, *ACTIVE_TASKS)).fetchone())
+                         (tid, *ACTIVE_TASKS)).fetchone()
+                or c.execute("select 1 from orchestration_v2_projection_provider_threads where thread_id = ? and case when json_valid(payload_json) "
+                             "then json_array_length(payload_json, '$.pendingBackgroundTasks') > 0 else 0 end", (tid,)).fetchone())
 
 def busy(session_id):
-    """True when the Claude session's T3 thread has an active run, a task it delegated still active, or, as a delegated task,
-    is still active itself (its turn ended while a background command of its own runs): T3 will act on it again."""
+    """True when the Claude session's T3 thread has an active run, a task it delegated still active, a background command still
+    running (T3's waiting_for_children), or, as a delegated task, is still active itself: T3 will act on it again."""
     return _ask(session_id, _busy, False)
 
 def task_done(session_id):

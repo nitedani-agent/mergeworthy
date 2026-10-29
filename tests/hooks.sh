@@ -193,6 +193,11 @@ check "BLOCK: that watcher's owed reply holds the session's turn, from any cwd" 
 rm "$WD/t3-thread"; echo s-t3 > "$WD/session"  # the session's watcher dropped its thread (gh-watch.py's wake_thread fallback)
 check "BLOCK: under T3, a post whose own watcher dropped its t3-thread says that watcher stopped waking the thread, not that it wakes it" "2 1 0" \
   "$(stop_as s-t3) $(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err") $(grep -c 'wakes this T3 thread itself' "$T/err")"
+mv "$WD/replies-owed.md" "$T/owed.keep"; mkdir -p "$HOME/.mergeworthy"; echo "$WD tid" > "$HOME/.mergeworthy/steward"
+b1=$(stop_as s-t3); b1e=$(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err"); echo thr-h > "$WD/t3-thread"
+check "BLOCK: the steward's watcher, though it delivers only new mergeworthy issues, needs working delivery like any: unbound, the post blocks; bound to its T3 thread, it passes" "2 1 0" "$b1 $b1e $(stop_as s-t3)"
+rm "$WD/t3-thread"
+rm "$HOME/.mergeworthy/steward"; mv "$T/owed.keep" "$WD/replies-owed.md"
 rm "$WD/session" "$WD/scope.md" "$HOME/.t3/userdata/statev2.sqlite"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post through mw post" 2 "$(stop "$T/work")"
@@ -282,6 +287,10 @@ check "a bot's comment is not in the transcript" 0 "$(tcg '^see #99')"
 check "--verify accepts it for its thread" 0 "$("$R/bin/thread-context" --verify "$TC" --target o/r#41 2>/dev/null; echo $?)"
 check "a maintainer's retitle is in the ledger and the transcript, and isn't the latest comment" "1 1" "$(echo "$(tcg '@maint \[title\] "Retitled "feat: old" to "fix: his title"."') $(tcg 'maint, retitled')")"
 check "--latest" "104 2026-10-01T09:30:00Z" "$("$R/bin/thread-context" --latest o/r#41)"
+tc_fx repos_o_r_issues_45 '{"number":45,"id":5,"title":"Code in a list","html_url":"https://example.invalid/o/r/issues/45","state":"open","updated_at":"2026-10-02T10:00:00Z","created_at":"2026-10-02T09:00:00Z","user":{"login":"maint"},"body":"- The log:\n  ```\n  see o/r#42\n  ```"}'
+tc_fx repos_o_r_issues_45_comments_per_page_100 '[{"id":105,"user":{"login":"maint"},"created_at":"2026-10-02T09:30:00Z","html_url":"https://example.invalid/o/r/issues/45#c105","body":"- The bot said:\n  ```\n  I disagree with the rename.\n  ```"}]'
+"$R/bin/thread-context" o/r#45 --out "$T/ctx/tc45.md" >/dev/null
+check "a ref and a rejection inside a code block in a list item are code: not followed, not in the ledger" "0 0" "$(grep -c '^  - o/r#42 ' "$T/ctx/tc45.md") $(grep -c '\[reject\]' "$T/ctx/tc45.md")"
 
 # the guard: a post on the thread needs thread-context.md in the draft's folder, current
 TD="$T/tdrafts/o-r-41"; mkdir -p "$TD"
@@ -337,11 +346,12 @@ check "BLOCK: a PR body edit is covered too" 2 "$(python3 "$R/hooks/pre-bash-gua
 
 # gate-pass wants the same file beside a reply draft
 GD="$T/gdrafts/x"; mkdir -p "$GD"; printf 'Agreed, option A it is.\n' > "$GD/r.md"; echo CLEAN > "$GD/r.review.out"
-gp() { touch -d '+10 minutes' "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
+gp() { touch -d "${RT:-+10 minutes}" "$GD/r.review.out"; MERGEWORTHY_BADGE=off GATED_POSTS="$T/gp.txt" "$R/bin/gate-pass" "$GD/r.md" "$GD/r.review.out" --kind reply --parent none >"$T/gp.out" 2>&1; echo $?; }
 check "BLOCK: gate-pass on a reply without thread-context.md" 1 "$(gp)"
 grep -c 'no thread-context.md' "$T/gp.out"
 cp "$TD/thread-context.md" "$GD/thread-context.md"; touch -d 2026-10-01T00:00:00Z "$GD/r.md"
-check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the draft" "1 1" "$(gp) $(grep -c 'newer than the draft' "$T/gp.out")"
+check "BLOCK: gate-pass with a thread-context.md holding a human comment newer than the review" "1 1" "$(RT=2026-10-01T12:00:00Z gp) $(grep -c 'newer than the review' "$T/gp.out")"
+check "gate-pass passes a draft saved before a human comment the review's record holds (a PR body gated before the thread's comments)" 0 "$(gp)"
 touch -d 2026-10-03T00:00:00Z "$GD/r.md"
 check "gate-pass passes with a thread-context.md made after the draft whose comments all predate it" 0 "$(gp)"
 touch -d '+1 minute' "$GD/r.md"
@@ -358,6 +368,18 @@ printf 'The lint says:\n\n```\nsay what is being done ('"'"'I'"'"'ll merge …'"
 check "an \"I'll\" inside a fenced code block is a tool's output, not a promise" 0 "$(gp)"
 printf 'The build fails:\n\n```\n3 foo();\n  ~~~\n```\n\nI'"'"'ll fix it in a follow-up PR.\n' > "$GD/r.md"; touch -d '+160 seconds' "$GD/r.md"
 check "BLOCK: a promise after a code block whose output holds a fence-like line (tsc's ~~~ underline)" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- Run it:\n- ```bash\n  # I'"'"'ll open a PR for it\n  ```\n' > "$GD/r.md"; touch -d '+162 seconds' "$GD/r.md"
+check "an \"I'll\" inside a code block opened on a list line is not a promise" 0 "$(gp)"
+printf -- '- ```bash\n\t# I'"'"'ll open a PR for it\n\t```\n' > "$GD/r.md"; touch -d '+163 seconds' "$GD/r.md"
+check "an \"I'll\" in a list item's code block indented with tabs is not a promise" 0 "$(gp)"
+printf 'The fix:\n\n    # I'"'"'ll open a PR for it\n\nDone.\n' > "$GD/r.md"; touch -d '+164 seconds' "$GD/r.md"
+check "an \"I'll\" in an indented code block is not a promise" 0 "$(gp)"
+printf -- '10. ```bash\n    echo hello\n    ```\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+165 seconds' "$GD/r.md"
+check "BLOCK: a promise after a code block opened on a list line, closed at the item's content column" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- ```bash\n  make\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+166 seconds' "$GD/r.md"
+check "BLOCK: a promise after a list item whose code block is never closed: the block ends with the item" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
+printf -- '- Run it:\n  ```bash\n  make\n\nI'"'"'ll open a PR for it.\n' > "$GD/r.md"; touch -d '+167 seconds' "$GD/r.md"
+check "BLOCK: a promise after a list item whose code block opens on a continuation line and is never closed" "1 1" "$(gp) $(grep -c 'promises work' "$T/gp.out")"
 printf 'The lint says:\n\n~~~\nI'"'"'ll merge it once green\n~~~\n' > "$GD/r.md"; touch -d '+170 seconds' "$GD/r.md"
 check "an \"I'll\" inside a ~~~ code block is not a promise either" 0 "$(gp)"
 printf "I'll open a PR for it.\n" > "$GD/r.md"; touch -d '+3 minutes' "$GD/r.md"
@@ -436,6 +458,12 @@ preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-3","t
   | python3 "$R/hooks/post-bash-register.py"; cat "$D4/threads.txt" 2>/dev/null || echo none; rm -f "$D4/threads.txt"; }
 check "a new PR, and a comment on a thread only the passed dir lists, join the session's live dir, not the dir its steward pass read" "o/r 9|o/r 5|o/r 5" \
   "$(preg 'gh pr create --repo o/r --fill' https://github.com/o/r/pull/9)|$(preg 'gh issue comment 5 --repo o/r --body-file x' https://github.com/o/r/issues/5#issuecomment-1)|$(cat "$D3/threads.txt")"
+# the steward's live dir may list a new mergeworthy issue first: it wakes no one on its closing, so the opener's dir still gets it
+SL="$T/reg-steward"; mkdir -p "$SL" "$HOME/.mergeworthy"; echo "$SPID" > "$SL/gh-watch.pid"; echo 'nitedani/mergeworthy 12' > "$SL/threads.txt"; echo "$SL tid" > "$HOME/.mergeworthy/steward"
+printf '%s\n' "$SL" "$D4" > "$HOME/.claude/gh-watch-dirs.txt"
+check "an issue the session opens on mergeworthy joins its own dir though the steward's lists it" "nitedani/mergeworthy 12" \
+  "$(preg 'gh issue create --repo nitedani/mergeworthy --title t --body-file x' https://github.com/nitedani/mergeworthy/issues/12)"
+rm "$HOME/.mergeworthy/steward"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
@@ -1005,6 +1033,7 @@ check "BLOCK: a drafter brief (it reads thread-context.md) without writing/SKILL
 check "BLOCK: a drafter brief without the template's scope-word check, naming the template; a review of a draft (CLEAN) needs none" "2 1 0" "$(ag "$T" 'Write a reply draft by skills/writing/SKILL.md from /w/drafts/z/thread-context.md' review) $(grep -c 'delegate/drafter.md' "$T/err") $(ag "$T" 'Review /w/drafts/z/r.md against /w/drafts/z/thread-context.md by skills/writing/SKILL.md; final message CLEAN or findings' review)"
 # pre-agent-dedupe: a template's placeholder left in the brief, by the plugin's own skills/delegate templates
 check "BLOCK: a brief with a template's placeholder unfilled, naming it and its template" "2 1" "$(ag "$T" $'Verify the slice.\n- try the edges: <the slice\'s risky edges>, each Recurring misses line' review) $(grep -c "<the slice's risky edges> (delegate/verifier.md)" "$T/err")"
+check "BLOCK: a slot of a template's code block indented in a list item (delegate/SKILL.md's reviewer launch)" "2 1" "$(ag "$T" $'Review the diff.\n{"target": {"options": {"<its effort option>": "high"}}}' review) $(grep -c '<its effort option> (delegate/SKILL.md)' "$T/err")"
 check "a filled brief passes with the paste-in rules (their <work folder>), an output form in backticks and a quoted HTML tag" 0 "$(ag "$T" "$(printf 'Verify the slice: try the edges: the abort path.\nFinal message: the gates as `<command> -> exit <code>`; check the <head> tags.\n'; cat "$R/skills/delegate/agent.md")" review)"
 check "a brief quoting a line format in backticks that holds a template's slot passes (a format, not a slot)" 0 "$(ag "$T" 'Check each `PROMISED <thread>: <what> (<draft>)` line in proposals-open.md.' review)"
 mkdir -p "$T/mem"; printf 'Next: the brief may say (git show <sha>) in a quoted ruling.\n' > "$T/mem/memory.md"; printf 'Summarize %s into the digest.\n' "$T/mem/memory.md" > "$T/mem/memory-brief-1.md"
@@ -1111,8 +1140,10 @@ done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
 t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"
 t3db "insert into orchestration_v2_projection_subagents values ('s0', 'orch-1', 'busy-1', 'running')"; done_events > "$T/ev8"  # its own task: its turn ended, its background command runs
-t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"; done_events > "$T/ev9"
-check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), or whose own task is (running), is not done; it is once all ended" "0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[{\"taskId\":\"b1\",\"kind\":\"command\"}]'))"; done_events > "$T/ev8b"  # its task completed, its background all.sh runs: T3's waiting_for_children
+t3db "update orchestration_v2_projection_provider_threads set payload_json = json_set(payload_json, '$.pendingBackgroundTasks', json('[]'))"; done_events > "$T/ev9"
+check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), whose own task is (running), or whose background command runs, is not done; it is once all ended" "0 0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8b") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
@@ -1121,7 +1152,28 @@ def name(f):
     try: return os.readlink("/proc/self/fd/" + f)
     except OSError: return ""
 print(sum("statev2" in name(f) for f in os.listdir("/proc/self/fd")))' "$R/hooks")"
-python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; rm -f "$HOME/.t3/userdata/statev2.sqlite"
+t3db "insert into orchestration_v2_projection_runs values ('r3', 'busy-1', 'running')"  # woken again: its next turn runs
+check "BLOCK: agent-job done while the ticket's agent is still at work keeps the job, pointing at AGENT DONE" "1 1 1" \
+  "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null 2>"$T/aj.err"; echo $?) $(grep -c 'AGENT DONE. wakes this session' "$T/aj.err") $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r3'"
+check "agent-job done releases it once the agent has ended" "0 0" "$(python3 "$R/bin/agent-job" done "$T/jobs/t3busy-ticket.md" >/dev/null; echo $?) $(python3 "$R/bin/agent-job" list | grep -c t3busy-ticket)"
+# a T3 Codex agent: T3 names it by its rollout's session_meta id, not the file's name
+CX=0aa0c0de-1111-7222-8333-444455556666; CXF="$HOME/.codex/sessions/2026/10/14/rollout-2026-10-14T10-00-00-$CX.jsonl"
+python3 -c 'import json,sys; f,cx,b=sys.argv[1:]; w=lambda o: open(f,"a").write(json.dumps(o)+"\n")
+w({"type":"session_meta","payload":{"id":cx,"originator":"T3 Code"}})
+w({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":b}]}})
+w({"type":"event_msg","payload":{"type":"task_complete"}})' "$CXF" "$CX" "Execute $T/jobs/cx-ticket.md exactly"
+reg "Execute $T/jobs/cx-ticket.md exactly"; touch -d '5 minutes ago' "$CXF"
+python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cx-ticket" in open(f).read()]'
+t3db "insert into orchestration_v2_projection_provider_threads values ('p3', 'codex-1', '{\"nativeThreadRef\":{\"driver\":\"codex\",\"nativeId\":\"$CX\"}}')"
+t3db "insert into orchestration_v2_projection_runs values ('r4', 'codex-1', 'running')"
+done_events > "$T/ev10"; tr_file 'Done.'
+check "a running T3 Codex agent is not done: no AGENT DONE, stop-lint passes, agent-job done keeps its job" "0 0 1" \
+  "$(grep -c "AGENT DONE $T/jobs/cx-ticket.md" "$T/ev10") $(sj orch) $(python3 "$R/bin/agent-job" done "$T/jobs/cx-ticket.md" >/dev/null 2>&1; echo $?)"
+t3db "update orchestration_v2_projection_runs set status = 'completed' where run_id = 'r4'"; done_events > "$T/ev11"
+check "once its run ended: AGENT DONE, stop-lint names it, agent-job done releases it" "1 2 1 0" \
+  "$(grep -c "AGENT DONE $T/jobs/cx-ticket.md" "$T/ev11") $(sj orch) $(grep -c cx-ticket "$T/err") $(python3 "$R/bin/agent-job" done "$T/jobs/cx-ticket.md" >/dev/null; echo $?)"
+rm -f "$HOME/.t3/userdata/statev2.sqlite"
 # a job launched by another watch dir's declared session goes to that dir, though its launcher's transcript names this one's events.log
 WS="$T/ws"; mkdir -p "$WS"; echo stew > "$WS/session"; echo $$ > "$WS/gh-watch.pid"; printf '%s\n' "$WS" >> "$HOME/.claude/gh-watch-dirs.txt"
 for i in 1 2 3; do echo "tail $WJ/events.log" >> "$T/stew-tr.jsonl"; done
@@ -1130,6 +1182,19 @@ child_log "$JD/stew.jsonl" "Execute $T/jobs/stew-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "stew-ticket" in open(f).read()]'
 check "a job of another live watch dir's declared session is not reported here" 0 "$(done_events > "$T/ev4"; grep -c stew-ticket "$T/ev4")"
 python3 "$R/bin/agent-job" done "$T/jobs/stew-ticket.md" >/dev/null
+# one session watches two work folders, the steward's from <folder>/live: its job goes to the launcher's watch dir in the work folder of
+# the brief its task names first, not to whichever dir ticks first nor to a dir a later path cites
+S="$HOME/.mergeworthy/work/stw"; O="$HOME/.mergeworthy/work/other"; mkdir -p "$S/live" "$S/drafts" "$O"
+for d in "$S/live" "$O"; do echo orch > "$d/session"; echo $$ > "$d/gh-watch.pid"; printf '%s\n' "$d" >> "$HOME/.claude/gh-watch-dirs.txt"; done
+job() { reg "$1"; child_log "$JD/$2.jsonl" "$1" 5 text
+  python3 -c 'import glob,json,os,sys,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if sys.argv[1] in open(f).read()]' "$2"; }
+job "stw-brief: follow $S/drafts/stw-brief.md exactly" stw-brief
+check "a job whose brief sits beside the steward's live watcher is reported there only, though another dir of its session ticks first" "0 1" "$(WJ="$O" done_events | grep -c stw-brief) $(WJ="$S/live" done_events | grep -c stw-brief)"
+job "oth-brief: follow $O/oth-brief.md, citing $S/live/events.log" oth-brief
+check "a path the task cites after its brief doesn't take the job from the brief's work folder" "0 1" "$(WJ="$S/live" done_events | grep -c oth-brief) $(WJ="$O" done_events | grep -c oth-brief)"
+job "out-brief: follow $T/jobs/out-brief.md, citing $O/events.log" out-brief
+check "a brief outside every watched work folder leaves the job to the session rule, not to a dir a later path cites" "1 0" "$(WJ="$S/live" done_events | grep -c out-brief) $(WJ="$O" done_events | grep -c out-brief)"
+rm $(grep -l -e stw-brief -e oth-brief -e out-brief "$HOME"/.claude/agent-jobs/*) "$S/live/gh-watch.pid" "$O/gh-watch.pid"
 check "stop-lint passes once every finished job is released" 0 "$(sj orch)"
 reg "Execute $T/jobs/routed-ticket.md exactly"; child_log "$JD/routed.jsonl" "Execute $T/jobs/routed-ticket.md exactly" 5 text
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f, "w")) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "routed-ticket" in open(f).read()]'
@@ -1954,7 +2019,7 @@ sg() { # command session cwd
     | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 echo "$SW steward-thread" > "$HOME/.mergeworthy/steward"
-check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
+check "BLOCK: another session's commit or push in a mergeworthy checkout, saying to open an issue there" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "open an issue on nitedani/mergeworthy" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
 check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" child-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" x "$SW") $(sg "git -C $T/gr push $T/elsewhere.git HEAD:main" other-session "$T")"
 python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
 import sqlite3, sys
@@ -1969,12 +2034,16 @@ check "without T3's database, the session its watch dir's session file names is 
 mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
 printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
-check "with a steward, its unsorted FOLLOW-UP blocks it, not an orchestrator" "0 2" "$(stop "$WD") $(stop "$SW")"
+stop_in() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$1" "$2" \
+  | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }  # cwd session
+s1=$(stop_in "$SW" steward-session); echo "$SW" >> "$HOME/.claude/gh-watch-dirs.txt"; echo steward-session > "$SW/passed"
+check "with a steward, its unsorted FOLLOW-UP waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
 cp "$SW/events.log" "$WD/events.log"
 check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
 echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
-check "a WORKED verdict sorts it" 0 "$(stop "$SW")"
-rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt"
+check "a WORKED verdict sorts it" 0 "$(stop_in "$SW" steward-session)"
+echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
+rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt" "$SW/passed"
 # ---------- hooks/run: hook scripts run from ~/.mergeworthy/current; a changed hook list asks once for a restart ----------
 PO="$T/plugins/cache/mw/old"; PN="$T/plugins/cache/mw/new"; mkdir -p "$PO/hooks" "$PN/hooks" "$T/co/hooks"; cp "$R/hooks/run" "$PO/hooks/"; cp "$R/hooks/run" "$T/co/hooks/"; CUR=$(readlink "$HOME/.mergeworthy/current")
 printf 'print("old")\n' > "$PO/hooks/x.py"; printf 'print("new")\n' > "$PN/hooks/x.py"; printf 'print("checkout")\n' > "$T/co/hooks/x.py"
@@ -2211,6 +2280,7 @@ hb=; for m in 'The fix is committed locally on `fix-telefunc`. Pushing it, or te
              "The reply to brillout is drafted and reviewed as CLEAN, but it isn't posted yet. Do you want me to post it now that CI is green?"; do tr_file "$m" work; hb="$hb $(slj)"; done
 check "BLOCK: the session's six hand-backs, as it wrote them" " 2 2 2 2 2 2" "$hb"
 tr_file 'README tidied.' work
+check "a hand-back a tool printed, in a ~~~ code block or an indented one, is not the agent's" "0 0" "$(slj $'The tool printed:\n\n~~~\nShould I retry?\n~~~') $(slj $'The tool printed:\n\n    Should I retry?')"
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"

@@ -58,6 +58,7 @@ cat > "$T/bin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
   "api user") echo '{"login":"me"}' ;;
+  *updated:*) echo '{"items":[{"number":4,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":7,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"},{"number":8,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"a PR the user wrote"}]}' ;;
   *is:open*) echo '{"items":[{"number":9,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}' ;;
   *search/issues*) cat <<'J'
 {"items":[{"number":5,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*\\nbody"},
@@ -67,15 +68,51 @@ case "\$*" in
 {"number":10,"repository_url":"https://api.github.com/repos/o/r","user":{"login":"me"},"body":"<img src=\"https://github.com/claude.png\" alt=\"Claude\"> *x*"}]}
 J
   ;;
-  *n=10*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C10","mergedAt":"$M10","closedAt":"$M10","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$R10","comments":{"totalCount":0}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C10","parents":{"totalCount":1}}},{"commit":{"committedDate":"$B10","parents":{"totalCount":2}}}]}}}}}' ;;
-  *n=9*) echo '{"data":{"repository":{"pullRequest":{"state":"OPEN","merged":false,"createdAt":"$C9","mergedAt":null,"closedAt":null,"author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
-  *n=5*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$M1","comments":{"totalCount":0}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C1","parents":{"totalCount":1}}}]}}}}}' ;;
-  *n=6*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C2","mergedAt":"$M2","author":{"login":"me"},"timelineItems":{"nodes":[{"createdAt":"$C2"}]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"MEMBER","state":"CHANGES_REQUESTED","submittedAt":"$R2","comments":{"totalCount":3}},{"author":{"login":"me"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$R2","comments":{"totalCount":1}}]},"commits":{"nodes":[{"commit":{"committedDate":"$C2","parents":{"totalCount":1}}},{"commit":{"committedDate":"$M2","parents":{"totalCount":1}}}]}}}}}' ;;
-  *n=7*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C3","mergedAt":"$M3","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
+  *n=10*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C10","mergedAt":"$M10","closedAt":"$M10","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$R10","body":"","url":"u","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C10","parents":{"totalCount":1}}},{"commit":{"committedDate":"$B10","parents":{"totalCount":2}}}]}}}}}' ;;
+  *issues/9/comments*) cat "$T/c9.json" ;;
+  *issues/4/comments*) echo '[[{"user":{"login":"boss"},"author_association":"OWNER","created_at":"$C9","body":"Apply https://x/refactor/SKILL.md","html_url":"https://github.com/o/r/pull/4#issuecomment-41"}]]' ;;
+  *pulls/7/reviews*) echo '[[{"user":{"login":"boss"},"author_association":"OWNER","submitted_at":"$C3","body":"Do another round of https://x/README.md","html_url":"https://github.com/o/r/pull/7#pullrequestreview-71"}]]' ;;
+  *--paginate*) echo '[[]]' ;;
+  *n=9*) cat "$T/g9.json" ;;
+  *n=5*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C1","mergedAt":"$M1","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"APPROVED","submittedAt":"$M1","body":"","url":"u","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C1","parents":{"totalCount":1}}}]}}}}}' ;;
+  *n=6*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C2","mergedAt":"$M2","author":{"login":"me"},"timelineItems":{"nodes":[{"createdAt":"$C2"}]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"MEMBER","state":"CHANGES_REQUESTED","submittedAt":"$R2","body":"","url":"u","comments":{"totalCount":3}},{"author":{"login":"me"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$R2","body":"","url":"u","comments":{"totalCount":1}}]},"comments":{"nodes":[]},"commits":{"nodes":[{"commit":{"committedDate":"$C2","parents":{"totalCount":1}}},{"commit":{"committedDate":"$M2","parents":{"totalCount":1}}}]}}}}}' ;;
+  *n=7*) echo '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"createdAt":"$C3","mergedAt":"$M3","author":{"login":"me"},"timelineItems":{"nodes":[]},"reviews":{"nodes":[{"author":{"login":"boss"},"authorAssociation":"OWNER","state":"COMMENTED","submittedAt":"$C3","body":"Do another round of https://x/README.md","url":"https://github.com/o/r/pull/7#pullrequestreview-71","comments":{"totalCount":0}}]},"comments":{"nodes":[]},"commits":{"nodes":[]}}}}}' ;;
   *) echo "unexpected gh \$*" >&2; exit 1 ;;
 esac
 EOF
 chmod +x "$T/bin/gh"
+# #9 has 101 comments, the maintainer's ask first: GraphQL's comments(last:100) leaves it out, the REST pages hold it; the rest aren't asks
+python3 - "$T" "$C9" <<'PY'
+import json, sys
+T, at = sys.argv[1:]
+c = lambda who, assoc, body, url: {"user": {"login": who}, "author_association": assoc, "created_at": at, "body": body, "html_url": url}
+cs = [c("boss", "OWNER", "Apply https://x/refactor/SKILL.md", "https://github.com/o/r/pull/9#issuecomment-91"),
+      c("boss", "OWNER", "> Apply https://x/refactor/SKILL.md\n\nDone?", "q"), c("eve", "CONTRIBUTOR", "Apply https://x/refactor/SKILL.md", "e"),
+      c("boss", "OWNER", '<img src="https://github.com/claude.png" alt="Claude"> apply(app, https://x)', "b"),
+      c("boss", "OWNER", "Could this be simpler?\n\n```js\napply(app, mw)\n```", "c"),
+      # brillout's words on vikejs/vike: asks without a link (5951977441, 6155983309), and questions about the design that aren't (6120497562, 6419073377)
+      c("boss", "OWNER", "Look for opportunities to simplify this PR. List what you considered.", "https://github.com/o/r/pull/9#issuecomment-92"),
+      c("boss", "OWNER", "Do one last round of review.", "https://github.com/o/r/pull/9#issuecomment-93"),
+      c("boss", "OWNER", "I think it can be simplified? E.g. simply exposing a wrapper as the user's `renderPage()`?", "s"),
+      c("boss", "OWNER", "I wonder whether we should have a single manifest, would that simplify this PR?", "w"),
+      c("boss", "OWNER", "```\nApply https://x/refactor/SKILL.md\n```", "k"),
+      # an ask is put to us (an instruction, a request, under a condition); the writer's own plan isn't: real comments, paired
+      c("boss", "OWNER", "Is this PR ready for review/merge? If it is from your perspective, then do one last round of https://x/README.md with an extra focus on simplification.", "https://github.com/o/r/pull/9#issuecomment-94"),  # vike#3594 6125533767
+      c("boss", "OWNER", "@Stebalien @magik6k can you do another round of review, and  @vyzo can you rebase?", "https://github.com/o/r/pull/9#issuecomment-95"),  # kubo#4462 363902734
+      c("boss", "OWNER", "Could you do one more pass please?", "https://github.com/o/r/pull/9#issuecomment-96"),  # datafusion#24646 5538839111
+      c("boss", "OWNER", "I'll address the comments, then do another round of review.", "p1"),  # the plan round 2 found counted
+      c("boss", "OWNER", "I will do another round of review.", "p2"),  # iceberg#18062 r4058831255
+      c("boss", "OWNER", "Thanks! I added two more inline comments, and then I'll do one more round, then we can move to core review!", "p3"),  # transformers#31059 2141226366
+      c("boss", "OWNER", "I'll then do a final review with a view to merge.", "p4"),
+      # a colon starts a sentence too, and an ask after it keeps its URL
+      c("boss", "OWNER", "One more thing: Do one last round of review.", "https://github.com/o/r/pull/9#issuecomment-97"),
+      c("boss", "OWNER", "Apply this: https://gist.github.com/brillout/8bc8e37cdf820f72663c550022a3d156", "https://github.com/o/r/pull/9#issuecomment-98")] + \
+     [c("boss", "OWNER", "ok", f"f{n}") for n in range(82)]
+json.dump([cs], open(f"{T}/c9.json", "w"))
+node = lambda x: {"author": {"login": x["user"]["login"]}, "authorAssociation": x["author_association"], "createdAt": x["created_at"], "body": x["body"], "url": x["html_url"]}
+json.dump({"data": {"repository": {"pullRequest": {"state": "OPEN", "merged": False, "createdAt": at, "mergedAt": None, "closedAt": None, "author": {"login": "me"},
+           "timelineItems": {"nodes": []}, "reviews": {"nodes": []}, "comments": {"nodes": [node(x) for x in cs[-100:]]}, "commits": {"nodes": []}}}}}, open(f"{T}/g9.json", "w"))
+PY
 S="$HOME/.mergeworthy/work/steward"; mkdir -p "$S"; echo "$(iso '-5 days') first pass" > "$S/passes.txt"
 echo '### FOLLOW-UP o/r#5, #6: 1234567abc by carol changes lines from your PR  at 2026-10-01T00:00:00Z' >> "$W/events.log"
 check "owed: a follow-up naming two PRs is listed once, with both" 1 "$(python3 "$R/bin/steward" owed | grep -c $'\tsort\to/r#5, #6 1234567abc')"
@@ -90,6 +127,8 @@ check "metrics: a change request and a commit after it: not first-pass; the auth
 check "metrics: a PR merged before --since falls in the previous window" "previous" "$(rec o/r#7 window)"
 check "metrics: a PR created before --since and merged after it counts in this window; a merge of the base after approval isn't rework" "this True 0" "$(rec o/r#10 window first_pass commits_after_review)"
 check "metrics: an open PR is listed apart" "open|Open now: 1" "$(rec o/r#9 window)|$(echo "$out" | grep '^Open now')"
+check "metrics: a maintainer's ask for a pass since the last pass is listed, one before it counted, the first of 101 comments too; a direct ask without a link counts; quoted, a non-maintainer's, an agent's, code and a question about the design aren't asks; one on a PR closed before the window counts by its own time; a request or a conditional put to us counts, the writer's own plan doesn't; a colon starts a sentence" \
+  "Maintainer asks for a pass we owe since $(iso '-5 days' | cut -c1-10): 9 (1 in the window before)|- $C9 o/r#4 https://github.com/o/r/pull/4#issuecomment-41|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-91|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-92|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-93|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-94|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-95|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-96|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-97|- $C9 o/r#9 https://github.com/o/r/pull/9#issuecomment-98|" "$(echo "$out" | sed -n '/^Maintainer asks/,$p' | tr '\n' '|')"
 check "metrics: the side-by-side table, first-pass acceptance per window" "| first-pass acceptance (north star) | 1/1 (100%) | 2/3 (66%) |" "$(echo "$out" | grep 'north star')"
 
 check "sessions <folder>: the window starts at the folder's last pass" 2 "$(python3 "$R/bin/steward" sessions "$S" | grep -c "^~")"
@@ -151,16 +190,16 @@ chmod +x "$T/stub/gh"; date -u +%s > "$T/stub/now"; : > "$T/stub/fail"; echo "$F
 python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' '<img src="https://github.com/claude.png" alt="Claude"> *Claude* Yes: see the test.' > "$HOME/.claude/gated-posts.txt"
 sround() { env -u CLAUDE_CODE_SESSION_ID PATH="$T/stub:$PATH" GH_HOST=github.com GH_WATCH_ME=me python3 "$R/bin/steward" round "${1:-$F}" 2>&1; }
 sround > /dev/null; rc=$?; rm "$T/stub/fail"; echo $(( $(date -u +%s) + 1 )) > "$T/stub/new6"; sround > /dev/null; rc="$rc $?"
-check "round in the steward's folder with no watcher state, cut short by a failed call, then retried: exits 1 then 0, each saying where it starts; only the comment and review posted after its start are reported, owed and the comment reacted to, the review sent for sorting, not the old comments, review, red CI, wait ping, 👎 or issue" \
-  "1 0 2|### o/r#5 review 802 by boss|### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-802 by|### o/r#6 comment 702 by boss|o/r#5 review 802 by boss|o/r#6 comment 702 by boss|1 1" \
-  "$rc $(grep -c '^note: rounds in .* start at .*, its first; until one completes, nothing older is recorded as owed or as an event$' "$F/events.log")|$(grep '^###' "$F/events.log" | cut -d' ' -f1-6 | tr '\n' '|')$(grep -v '^#' "$F/replies-owed.md" | cut -d' ' -f1-5 | tr '\n' '|')$(grep -c ' -X POST .*reactions' "$T/stub/calls") $(grep -c ' -X POST .*comments/702/reactions' "$T/stub/calls")"
+check "round in the steward's folder with no watcher state, cut short by a failed call, then retried: exits 1 then 0, each saying where it starts; only the comment and review posted after its start are reported, the review sent for sorting, not the old comments, review, red CI, wait ping, 👎 or issue; nothing owed or reacted to" \
+  "1 0 2|### o/r#5 review 802 by boss|### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-802 by|### o/r#6 comment 702 by boss|none 0" \
+  "$rc $(grep -c '^note: rounds in .* start at .*, its first; until one completes, nothing older is recorded as owed or as an event$' "$F/events.log")|$(grep '^###' "$F/events.log" | cut -d' ' -f1-6 | tr '\n' '|')$([ -e "$F/replies-owed.md" ] && echo owed || echo none) $(grep -c ' -X POST .*reactions' "$T/stub/calls")"
 n=$(wc -l < "$F/events.log"); sround > /dev/null; : > "$T/stub/later"; sround > /dev/null
-check "round: the rounds after it report only what is new since: the later comment, owed, with its reaction, and the red CI of a PR opened since" \
-  "### o/r#5 comment 502 by boss|### CI o/r#7: red=['test']: fix it,|1|o/r#5 comment 502 by boss|1" \
-  "$(tail -n +$((n + 1)) "$F/events.log" | grep '^###' | cut -d' ' -f1-6 | tr '\n' '|')$(grep -c 'comment 502' "$F/replies-owed.md")|$(tail -1 "$F/replies-owed.md" | cut -d' ' -f1-5)|$(grep -c ' -X POST .*comments/502/reactions' "$T/stub/calls")"
+check "round: the rounds after it report only what is new since: the later comment, not owed nor reacted to, and the red CI of a PR opened since" \
+  "### o/r#5 comment 502 by boss|### CI o/r#7: red=['test']: fix it,|none 0" \
+  "$(tail -n +$((n + 1)) "$F/events.log" | grep '^###' | cut -d' ' -f1-6 | tr '\n' '|')$([ -e "$F/replies-owed.md" ] && echo owed || echo none) $(grep -c ' -X POST .*reactions' "$T/stub/calls")"
 rm "$HOME/.mergeworthy/steward"
 G="$T/daemoned"; mkdir -p "$G"; echo '{"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}}' > "$G/gh-watch-state.json"; sround "$G" > /dev/null
-check "round in a folder whose daemon ran but no round did: it reports as the daemon would" "0 1" "$(grep -c '^note: rounds' "$G/events.log") $(grep -c '^### o/r#5 comment 501 ' "$G/events.log")"
+check "round in a folder whose daemon ran but no round did, not the steward's: it reports, owes and reacts as the daemon would" "0 1 1 1" "$(grep -c '^note: rounds' "$G/events.log") $(grep -c '^### o/r#5 comment 501 ' "$G/events.log") $(grep -c 'o/r#5 comment 501 by boss' "$G/replies-owed.md") $(grep -c ' -X POST .*comments/501/reactions' "$T/stub/calls")"
 # ---------- fired: failclosed logs each block once a day by the line that wrote it; `steward fired` reads that log against the hooks ----------
 guard() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$T" | bash "$R/hooks/run" pre-bash-guard.py; }
 gate='block(f"no gate record for {p}: run post-lint'; changed='block(f"{p} changed after its gate'; LOG="$HOME/.mergeworthy/hooks-fired.log"

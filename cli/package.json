@@ -1,0 +1,31 @@
+{
+  "name": "mergeworthy",
+  "version": "0.1.0",
+  "description": "Install mergeworthy into Claude Code, Codex and other agents: work with an AI coding agent through GitHub, like a coworker.",
+  "type": "module",
+  "bin": {
+    "mergeworthy": "index.mjs"
+  },
+  "files": [
+    "index.mjs"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nitedani/mergeworthy.git",
+    "directory": "cli"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agent-skills",
+    "plugin",
+    "github",
+    "code-review"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1"
+  }
+}

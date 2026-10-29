@@ -363,7 +363,7 @@ check "a retired folder that would lose something stays, its row in work-kept.md
 check "a folder whose watcher didn't retire: w-done leaves it, c-ignored and c-node_modules sweep its build folders" "kept 0 removed removed" "$(there "$W9/live/repo/README") $(grep -c "$W9/live" "$H9/.mergeworthy/work-kept.md") $(there "$W9/live/repo/node_modules") $(there "$W9/live/drafts/node_modules")"
 
 # tests/all.sh, on a root whose first suite leaves a child that calls docker after the suite exits
-F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"
+F="$T/allsh"; mkdir -p "$F/node_modules/typescript" "$F/cli/node_modules" "$F/docs" "$F/tests"; cp -r "$R/tests/refuse" "$F/tests/"
 echo 'import subprocess; subprocess.Popen(["sh", "-c", "sleep 0.5; docker version"])' > "$F/docs/build-graphs.py"
 bash "$R/tests/all.sh" "$F" > /dev/null 2> "$T/allsh.err"
 check "tests/all.sh fails a suite whose child calls docker after the suite exited" "1 1" "$? $(grep -c 'called docker' "$T/allsh.err")"

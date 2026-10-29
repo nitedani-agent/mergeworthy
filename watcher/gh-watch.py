@@ -19,6 +19,8 @@
 - GitLab threads in threads.txt are read by gl_watch.py (scan_gitlab), into the same events.log and replies-owed.md.
 - AGENT DONE: an agent the session launched has finished (hooks/agent_jobs.py), once per finish, until `agent-job done` releases its job.
 - Under T3 Code each pass's event lines also go to the session's thread (wake_thread), so it needs no Monitor.
+- The steward's folder and the dirs inside it (steward.quiet) watch nitedani/mergeworthy whole and only log: no :eyes:, no owed reply, and only
+  a new issue there wakes the steward (WAKES); its next pass reads the rest of events.log.
 - Every request is counted, 304 answers too (tally; `gh-watch.py --stats` prints the rate, and once an hour a line goes to gh-watch-stats.log).
 - On Linux, main_dir's daemon starts bin/disk-sweep --delete at most once an hour, in the background (sweep_disk).
 State lives in gh-watch-state.json: every seen (id, updated_at) pair, so nothing is skipped or repeated,
@@ -535,6 +537,8 @@ def append_owed(entry, d=None):
     """replies-owed.md (mergeworthy:reply): the daemon records each human comment as an owed reply; the session
     clears the line with "done: <reply url> <what changed>" when it is answered. The Stop hook
     blocks a turn while a line is still owed, so an unposted reply cannot end the session unseen."""
+    if steward.quiet(d or HERE):
+        return  # the steward's next pass reads its events.log
     path = os.path.join(d or HERE, 'replies-owed.md')
     owed = open(path).read().splitlines() if os.path.exists(path) else []
     if any(f' {entry.split()[2]} ' in l for l in owed):
@@ -582,7 +586,7 @@ def handle_comment(state, repo, key, kind, cid, upd, login, url, body, extra='',
     append_owed(f"{key} {kind} {cid} by {login} {url} — {body.strip().splitlines()[0][:80]}" if body.strip() else f"{key} {kind} {cid} by {login} {url}")
     if re.fullmatch(r"\W*(ok(ay)?|good|great|lgtm|yes|sure|agreed|sounds good|👍|nice)\W*", body.strip().lower()):
         emit(f"### ACK {key} {cid}: an acknowledgement answers your last open proposal in that thread or PR; apply it now (mergeworthy:reply §Kinds of comment)")
-    if not ONCE and kind != 'review':  # GitHub has no reactions on a review
+    if not ONCE and kind != 'review' and not steward.quiet(HERE):  # GitHub has no reactions on a review
         (react or react_eyes)(repo, kind, cid)
 
 
@@ -629,6 +633,8 @@ def emit(line):
 
 
 EVENT = re.compile(r'###|WATCH ERROR|WATCHER RETIRED')  # the lines gh-watch-start's Monitor delivers
+STEWARD_REPO = 'nitedani/mergeworthy'
+WAKES = re.compile(rf'### NEW ISSUE {STEWARD_REPO}#')  # the one event a steward's dir delivers (rules step 2: a session's report of a mergeworthy fault)
 
 
 def unsent():
@@ -664,7 +670,7 @@ def wake_thread():
     elif _t3_missing[0] is None:
         _t3_missing[0] = _ticks[0]
     start, data = unsent()
-    lines = [l for l in data.decode(errors='replace').splitlines() if EVENT.match(l)]
+    lines = [l for l in data.decode(errors='replace').splitlines() if (WAKES if steward.quiet(HERE) else EVENT).match(l)]
     if lines:
         msg = f"Watcher events in {HERE}/events.log (mergeworthy:reply):\n" + '\n'.join(lines)
         try:
@@ -1055,6 +1061,9 @@ def scan(state, jobs):
             if updated:
                 state['upd'][key] = iso_epoch(updated)
             if last:
+                if not is_pr and state.setdefault('open', {}).get(key) and not last['open']:
+                    emit(f"### ISSUE CLOSED {key}" + (": the steward shipped its fix: update your installed mergeworthy (README, Install), then go on"
+                                                      if repo == STEWARD_REPO else ""))
                 state.setdefault('open', {})[key] = last['open']
             state['since_by'][key] = started
             if pr_state:
@@ -1211,20 +1220,28 @@ def poll_feed(url, repo_of, watched, size):
 def moved_thread(repo, i, new):
     """A thread an issue list shows moved. A new one whose body starts with your /agent is an agent command. One of a repo a live dir
     watches whole (`owner/repo all` in repos.txt) that no live dir lists joins that dir's threads.txt, so its scan reports each new
-    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's."""
+    comment; a new one is reported there (### NEW ISSUE, ### NEW PR, an owed reply, :eyes:) unless it is the agent's. A new mergeworthy
+    issue is reported to the steward's dir, whichever dir watches the repo first, however it is listed and whoever opened it: a session's
+    report of a fault (rules step 2)."""
     num, body, user = i['number'], i.get('body') or '', i.get('user') or {}
     key, dirs = f"{repo}#{num}", live_dirs()
     if new and AGENT_CMD.match(body) and user.get('login') == ME:
         return agent_command(repo, num, 'body', i)
-    d = next((d for d in dirs if repo_lines(d).get(repo)), None)
+    whole = [d for d in dirs if repo_lines(d).get(repo)]
+    fault = repo == STEWARD_REPO and 'pull_request' not in i
+    s = next((d for d in whole if steward.quiet(d)), None) if fault else None
+    indented = '\n'.join('    ' + l for l in body.splitlines())
+    event = lambda: f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n"  # built only for a new thread: a moved one may lack these fields
+    if new and s and claim(f"fault:{i['id']}", record=not ONCE):  # whichever dir saw it first or lists it, an agent's too
+        emit_to(s, event())
+    d = next((d for d in whole if not (fault and steward.quiet(d))), s)
     if not d or any(key in listed_threads(x) for x in dirs):
         return
     if not ONCE:
         open(os.path.join(d, 'threads.txt'), 'a').write(f"{repo} {num}\n")
-    if new and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
-        indented = '\n'.join('    ' + l for l in body.splitlines())
-        emit_to(d, f"### NEW {'PR' if 'pull_request' in i else 'ISSUE'} {key} by {user.get('login')} {i['created_at']} {i['html_url']}: {i['title']}\n{indented}\n")
-        if not ONCE:
+    if new and d != s and not agent_post(user, body, agent_post_hashes()) and claim(f"new:{i['id']}", record=not ONCE):
+        emit_to(d, event())
+        if not ONCE and not steward.quiet(d):
             append_owed(f"{key} body {i['id']} by {user.get('login')} {i['html_url']} — {i['title'][:80]}", d)
             react_eyes(repo, 'body', i['id'], num)
 
@@ -1344,8 +1361,9 @@ def agent_command(repo, num, kind, c):
     line = key.replace('#', ' ')
     if routed and line not in open(os.path.join(target, 'threads.txt')).read().splitlines():
         open(os.path.join(target, 'threads.txt'), 'a').write(line + '\n')  # its follow-ups are watched
-    append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
-    react_eyes(repo, kind, cid, num)
+    if not steward.quiet(target):
+        append_owed(f"{key} {kind} {cid} by {ME} {url} — {body.strip().splitlines()[0][:80]}", target)
+        react_eyes(repo, kind, cid, num)
     with open(os.path.join(target, 'events.log'), 'a') as f:  # last: the event wakes that session, which finds the rest in place
         f.write(event)
 
@@ -1880,14 +1898,14 @@ def announce():
             save_state(state)
 
 
-STEWARD_LINE = 'nitedani/mergeworthy all  # the steward watches its repo (gh-watch.py)'
+STEWARD_LINE = f'{STEWARD_REPO} all  # the steward watches its repo (gh-watch.py)'
 
 
 def steward_line():
-    """The steward's watch dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it."""
+    """The steward's dirs (steward.quiet) watch the mergeworthy repo whole: a new issue there is how sessions report a fault to it."""
     path = os.path.join(HERE, 'repos.txt')
     lines = open(path).read().splitlines() if os.path.exists(path) else []
-    want = (steward.read() or ('',))[0] == HERE.rstrip('/')
+    want = steward.quiet(HERE)
     if want != (STEWARD_LINE in lines) and not ONCE:
         with open(path + '.tmp', 'w') as f:
             f.writelines(l + '\n' for l in lines if l != STEWARD_LINE)
@@ -1941,10 +1959,12 @@ _jobs_at, _routed = [0], {}
 
 
 def agent_jobs_pass():
-    """Once a minute: `### AGENT DONE` for each job whose agent finished, once per finish, in the watch dir of the session that
-    launched it: the one its `session` file names, else the one whose events.log the launcher's transcript names most (a
-    transcript also names other watchers, in a `ps` listing say). A job an older hook registered without them has its
-    launcher found by agent_jobs.launchers."""
+    """Once a minute: `### AGENT DONE` for each job whose agent finished, once per finish, in the watch dir its work belongs
+    to: a launcher's watch dir in the work folder of the first file its task text names (the brief; the steward's watcher runs
+    in <folder>/live, its briefs sit beside it), else the one whose `session` file names the launcher (one session watches many
+    dirs, so this alone goes to whichever ticks first), else the one whose events.log the launcher's transcript names most (a
+    transcript also names other watchers, in a `ps` listing say). A job an older hook registered without them has its launcher
+    found by agent_jobs.launchers."""
     if time.time() - _jobs_at[0] < 60:
         return
     _jobs_at[0] = time.time()
@@ -1954,7 +1974,15 @@ def agent_jobs_pass():
         mine = ''
     ready = [(f, j, done) for f, j in agent_jobs.jobs() for done in [agent_jobs.finished(j)] if done and not agent_jobs.reported(f, done[1])]
     found = agent_jobs.launchers([(f, j, done[0]) for f, j, done in ready if f not in _routed and not j.get('transcript')])
+    dirs = list(dict.fromkeys(live_dirs() + [HERE]))
     for f, j, done in ready:
+        if f not in _routed:
+            # the brief is the first path the task names; a path it cites later is another task's, not this job's
+            brief = re.search(r'(?<![\w.~/-])(~?/[^\s`\'"]+)', j.get('brief') or j['key'])
+            wf = brief and work_folder.task_of(os.path.expanduser(brief[1]))
+            home = [d for d in dirs if wf and work_folder.task_of(d) == wf and j.get('session') and first_line(os.path.join(d, 'session')) == j['session']]
+            if home:
+                _routed[f] = HERE in home
         if f not in _routed:
             try:
                 tr = j.get('transcript') or found.get(f)
