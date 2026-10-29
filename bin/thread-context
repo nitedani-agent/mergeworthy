@@ -7,8 +7,8 @@ agreements, rejections, proposals and decisions, the root transcript, then the l
 Threads are cached by updated_at under ~/.cache/mergeworthy/threads/.
   thread-context --latest <repo#N>     print "<id> <time>" of the thread's latest human comment
   thread-context --verify <file> [--target <repo#N>] [--parent <file>]
-                                       exit 1 with the reason unless <file> is for the target thread, newer than the parent
-                                       comment, and records the target's current latest human comment (gate-pass, pre-bash-guard)"""
+                                       exit 1 with the reason unless <file> is for the target thread and records its current latest
+                                       human comment (checked against its root when the parent comment is newer than <file>)"""
 import json, os, re, subprocess, sys, datetime
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'watcher'))
@@ -203,8 +203,8 @@ def verify(path, target, parent):
     root, rec = header(path)
     if not root or not rec: return f'{path} is not a thread-context file: run `{cmd}`'
     if target and root != target: return f'{path} is the context of {root}, not {target}: keep one drafts folder per thread, or run `{cmd}`'
-    if parent and os.path.exists(parent) and os.path.getmtime(path) < os.path.getmtime(parent):
-        return f'{path} is older than the comment it answers ({parent}): run `{cmd}` again and re-read it'
+    # a parent saved after the record is fine while the record still holds the thread's latest human comment
+    target = target or (root if parent and os.path.exists(parent) and os.path.getmtime(path) < os.path.getmtime(parent) else None)
     if target:
         t = load(*parse_ref(target)) if parse_ref(target) else None
         if not t: return f"gh couldn't read {target}, so whether {path} records its latest comment can't be checked: retry once gh answers"

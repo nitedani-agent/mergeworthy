@@ -3,7 +3,7 @@
 set -eu
 REAP=$(readlink -f "$(dirname "$0")/reap.py")
 cd "${1:-$(dirname "$0")/..}"
-[ -d node_modules/typescript ] || { echo "all.sh: run npm ci first (review-context and its tests use mergeworthy's TypeScript)"; exit 1; }
+[ -d node_modules/typescript ] || { echo "all.sh: install the dependencies first, \`npm ci\` (\`pnpm install\` where npm is disabled): review-context and its tests use mergeworthy's TypeScript"; exit 1; }
 # tests/refuse first on PATH: a docker a suite finds by PATH lookup is the refusing one (an absolute path or a replaced PATH is not)
 export PATH="$PWD/tests/refuse:$PATH" ALL_SH_LEAKED=$(mktemp); trap 'rm -f "$ALL_SH_LEAKED"' EXIT
 run() { # a suite; once it and every process it started have exited (tests/reap.py), fail when one of them called docker

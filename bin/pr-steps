@@ -73,7 +73,9 @@ if [ "$step" = small ]; then
     git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
     python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
   fi
-  [ "$(grep -v '^[[:space:]]*$' "$out" | tail -n2 | tr '\n' '|')" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
+  # the verdict ends the report, before any trailing Verification or not_checked section (delegate/agent.md asks every agent for not_checked)
+  verdict=$(awk '{ l = tolower($0) } l ~ /^#+[ \t]*(verification|not[ _]checked)([^a-z]|$)/ { tail = 1; next } /^#/ { tail = 0 } !tail' "$out" | grep -v '^[[:space:]]*$' | tail -n2 | tr '\n' '|')
+  [ "$verdict" = 'NO BUGS|MERGE AS IS: yes|' ] || { echo "$out does not end with NO BUGS and MERGE AS IS: yes: fix what it found and send the same reviewer a new round checking that fix" >&2; exit 1; }
   grep -qsF " $(realpath "$out") " ~/.claude/pr-steps/"$sha" && { echo "$out is already recorded for $sha" >&2; exit 1; }
   for k in verify shape reverify fresh; do echo "$k $(realpath "$out") $(date -u +%FT%TZ)" >> ~/.claude/pr-steps/"$sha"; done
   catalog=$(cut -d' ' -f2 ~/.mergeworthy/sessions/"$(basename "${CLAUDE_CODE_SESSION_ID:-none}")" 2>/dev/null || true)
@@ -127,12 +129,16 @@ case "$step" in
     unruled=$(python3 - "$out" <<'EOF'
 import re, sys
 lines, plain = open(sys.argv[1]).read().splitlines(), lambda l: re.sub(r'[*`]', '', l).strip().lower()
-dropped = False  # only the dropped list: a counted bug may well be "a rare race"
+dropped, item = False, None  # only the dropped list: a counted bug may well be "a rare race"
+name_of = lambda l: re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
 for i, l in enumerate(lines):
     if l.startswith('#'):
         dropped = 'dropped' in l.lower()
-    elif dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
-        name = re.split(r':|\s[—–-]\s', re.sub(r'^[\s>+-]*(\d+\.\s*)?', '', plain(l)), maxsplit=1)[0].strip()
+        continue
+    sub = re.match(r'\s+[-*+]\s', l)  # a sub-bullet ('**Why a nit:** …') belongs to the item above it
+    if not sub and l.strip() and not l.startswith('RULED:'): item = name_of(l)
+    if dropped and re.search(r'no documented usage|\brare\b|not a regression|same as (on )?(main|master)|(main|master) does the same|pre-?existing|(also|too) on (main|master)|on (main|master) (too|as well)|masteren is', l, re.I) and not l.startswith('RULED:'):
+        name = item if sub and item else name_of(l)
         rulings = [r for r in lines[i + 1:] if r.startswith('RULED:') and name in plain(r)]
         if not rulings:
             print(l)
@@ -187,14 +193,18 @@ EOF
       [ "$changed" -le 80 ] || { echo "$changed lines changed since $carried: the pass is stale (mergeworthy:converge §Batching), run it again" >&2; exit 1; }
     fi ;;
   gates|quick)
-    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ tests?\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
+    grep -Eq '^.+ -> exit [0-9]+( \([0-9]+ (tests?|words)\))?$' "$out" || { echo "$out lists no gate: one line per gate, '<command> -> exit <code>', run on this HEAD" >&2; exit 1; }
     # a gate that can't run here is installed or run another way: CI is never where a change is first checked
     unrun="\\b(not installed|isn't installed|let CI|leave it to CI|CI will (verify|check|tell)|(can't|cannot|can not) (run|install)|(not|wasn't|weren't) run)\\b"
-    ! grep -Eiq "$unrun" "$out" || { echo "$out says a gate didn't run ($(grep -Eio "$unrun" "$out" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
+    # read on every line but a suite's test results, whose titles may quote these words: '<title>: <got> (want <want>)', ok/PASS/✓ lines
+    own=$(grep -Ev '\(want .*\)$|^[[:space:]]*(ok|not ok|PASS|FAIL|✓|✔|✗|×)[[:space:]]' "$out" || true)
+    ! printf '%s\n' "$own" | grep -Eiq "$unrun" || { echo "$out says a gate didn't run ($(printf '%s\n' "$own" | grep -Eio "$unrun" | head -n1)): install what it needs and run it (code §Gates)" >&2; exit 1; }
+    gl=$(grep -E ' -> exit [0-9]+' "$out" || true)
     ! grep -Eq ' -> exit [1-9][0-9]*( \(.*\))?$' "$out" || { echo "$out has a red gate: fix it on this HEAD first" >&2; exit 1; }
-    # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)'
-    bad=$(grep -E ' -> exit [0-9]+' "$out" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) tests?\)$' | head -n3 || true)
-    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates): $bad" >&2; exit 1; }
+    # a test run with no test in it is red (a filter that matched nothing): each test line ends with its count, '(N tests)';
+    # a gate that counts words (tests/word-budget) ends with '(N words)'
+    bad=$(printf '%s\n' "$gl" | grep -Ei '(^|[ /:])(test|tests|e2e|vitest|jest|playwright|mocha|pytest|bun test)([ :/-]|$)' | grep -Ev '\(([1-9][0-9]*) (tests?|words)\)$' | head -n3 || true)
+    [ -z "$bad" ] || { echo "a test gate in $out has no '(N tests)' with N > 0, so it may have run nothing (code §Gates); a gate that counts words ends with '(N words)': $bad" >&2; exit 1; }
     # a changeset is a sentence or two on what changed for users, naming every package whose files the branch changed (a maintainer's ask)
     if [ -n "$base" ] && [ -d "$(git rev-parse --show-toplevel)/.changeset" ]; then
       bad=$(cd "$(git rev-parse --show-toplevel)" && python3 - "$base" <<'EOF'

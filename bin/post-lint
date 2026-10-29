@@ -139,6 +139,9 @@ for a, n in _labels:
         findings.append(f"internal label {a + n!r}: say what it is in plain words")
 for m in re.finditer(r'(?<![\w`/#.-])R\*(?![\w`])', prose):
     findings.append("internal label 'R*': say what it is in plain words")
+# A placeholder left for later (POST_TIME, GATES_LINE) makes the reviewed draft not the posted one: fill it before the review
+for m in dict.fromkeys(re.findall(r'(?<![\w`$/.-])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?![\w`])', prose)):
+    findings.append(f"placeholder {m!r}: write the real text before the review, so the reviewed draft is the one posted (a real name goes in `code`)")
 for m in re.finditer(r'^\s*[-*]\s+\*\*[^*\n]+\*\*:?\s+([^\n]*)$', prose, flags=re.M):
     if len(m.group(1).split()) < 6 and m.group(1).rstrip().endswith('.'):
         findings.append(f"a bold label with a fragment ({m.group(0).strip()[:60]!r}): write it as a full sentence")
@@ -307,7 +310,8 @@ if kind == 'issue' and not decision and chars > 400:
 _loc = uncoded(text)
 _loc = re.sub(r'^\s*(?:[-*]\s+)?>.*$', '', _loc, flags=re.M)
 _loc = re.sub(r'\[(?:[^\[\]]|\[[^\]]*\])*\]\([^)]*\)', '', _loc)  # linked text, `[x](url)` included
-_locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b|\blines? \d+(?:[-–]\d+)?\b', _loc)
+_locs = re.findall(r'[\w./-]+\.(?:[cm]?[jt]sx?|py|rs|go|vue|svelte|java|rb|php|css|html?|json|ya?ml|toml):\d+(?:-\d+)?\b', _loc)
+_locs += re.findall(r'\blines? \d+(?:[-–]\d+)?\b', re.sub(r'`[^`\n]*`', '', _loc))  # "line 1" in inline code quotes a message, not a place
 if _locs:
     findings.append(f"code location without a link: {', '.join(dict.fromkeys(_locs))}: link each to the line at a commit (a permalink), so a reader can open it")
 # a newcomer must see where it is and how to reproduce it (lexunit-ai/atotal_vagyon_borze#49 comment 6017184273)

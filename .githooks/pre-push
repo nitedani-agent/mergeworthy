@@ -4,4 +4,7 @@
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 # a pushed skill change names its cold read (rules step 4); git gives the pushed refs on stdin
 "$(dirname "$0")/cold-read" || exit 1
-cd "$(dirname "$0")/.." && bash tests/all.sh . >/tmp/mergeworthy-pre-push.log 2>&1 || { echo "pre-push: tests/all.sh failed, see /tmp/mergeworthy-pre-push.log"; exit 1; }
+# a log of its own: two pushes at once don't overwrite each other's
+log=$(mktemp "${TMPDIR:-/tmp}/mergeworthy-pre-push.XXXXXX")
+cd "$(dirname "$0")/.." && bash tests/all.sh . >"$log" 2>&1 || { echo "pre-push: tests/all.sh failed, see $log"; exit 1; }
+rm -f "$log"
