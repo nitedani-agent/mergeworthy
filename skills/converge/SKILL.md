@@ -5,7 +5,7 @@ description: "Converging a PR's head before it is ready, in every tier: the desi
 
 # Converge
 
-Working a PR's head to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. Called by `pull-request` step 9; when done, return there. Each step ends with its `pr-steps` record; pre-bash-guard refuses `gh pr create` without `--draft`, `gh pr ready` and a push to a ready PR until the final head has all five (verify, shape, reverify, fresh, gates) and the branch its approach record (`pull-request` step 5). Every loop runs by `delegate §Review rounds`. Subagents work read-only or in their own worktrees; only you write the PR branch's history.
+Working a PR's head to a final state: no reviewer, agent or verifier finds anything worth changing, and every claim in the PR is backed by evidence you observed. Called by `pull-request` step 9; when done, return there. Each step ends with its `pr-steps` record, which pre-bash-guard requires before the PR leaves draft or a ready PR gets a push. Every loop runs by `delegate §Review rounds`. Subagents work read-only or in their own worktrees; only you write the PR branch's history.
 
 ## Steps
 

@@ -4,6 +4,7 @@
 # reverify (Loop A after Loop B's commits), fresh (the fresh reader), gates (every gate's exit code on the final head).
 # The posting hook blocks `gh pr create` (unless --draft), `gh pr ready` and pushes to a ready PR until HEAD has all five.
 # quick: the quick gates' exit codes on a head (code §Gates), which a push to a PR or another owner's repo, and `gh pr create`, need on the pushed head.
+# simplify: the report delegate/simplify.md asks for, which a code file's 6th change on the branch needs on the head (pre-bash-guard).
 set -euo pipefail
 # The first sentence of each code/SKILL.md section a checker's brief names: its file copies them under '## Standards read', proof it read them
 standards() { python3 - "$(dirname "$(realpath "$0")")/../skills/code/SKILL.md" <<'EOF'
@@ -20,9 +21,9 @@ read_standards() {
   miss=$(standards | while IFS= read -r l; do case "$sec" in *"$l"*) ;; *) printf '%s\n' "$l" ;; esac; done)
   [ -z "$miss" ] || { printf '%s\n' "$out has no '## Standards read' copying the first sentence of each code/SKILL.md section its brief names (read them before checking; the brief of this step: mergeworthy delegate/verifier.md, shape.md or fresh-reader.md). Missing:" "$miss" >&2; exit 1; }
 }
-step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates> <output-file>}; out=${2:?output file}
-case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates) ;; review) step=fresh ;;
-  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh or gates" >&2; exit 1;; esac
+step=${1:?usage: pr-steps <preflight|approach|small|quick|verify|shape|reverify|fresh|gates|simplify> <output-file>}; out=${2:?output file}
+case "$step" in preflight|approach|small|quick|verify|shape|loopb|refactor|reverify|fresh|gates|simplify) ;; review) step=fresh ;;
+  *) echo "step must be preflight, approach, small, quick, verify, shape, reverify, fresh, gates or simplify" >&2; exit 1;; esac
 # preflight and approach: one record per repo and branch; the hooks compute the same key
 key=$(printf '%s\n%s' "$(realpath "$(git rev-parse --git-common-dir)")" "$(git symbolic-ref --short -q HEAD || echo HEAD)" | sha256sum | cut -c1-40)
 mkdir -p ~/.claude/pr-steps
@@ -119,7 +120,7 @@ carries() {
   changed=$(delta "$full")
   [ "$changed" -le 80 ] || { echo "$changed lines changed since $c: too much to carry, run the $step step again (converge, per push)" >&2; exit 1; }
 }
-if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && carries; then :; else
+if [ "$step" != shape ] && [ "$step" != refactor ] && [ "$step" != gates ] && [ "$step" != quick ] && [ "$step" != simplify ] && carries; then :; else
 base=$(git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null || true)
 case "$step" in
   verify|reverify)
@@ -154,6 +155,15 @@ EOF
       miss=$(for w in Cancellation Backpressure Cap Release 'Read once' Ownership Failure Sources 'Second copy'; do printf '%s\n' "$sec" | grep -Eqi "^- \*{0,2}$w\*{0,2}: +[^ ]+ +[^ ]+ +[^ ]+" || printf '%s, ' "$w"; done)
       [ -z "$miss" ] || { echo "the diff touches bodies, buffers, streams or cancellation: $out needs '## Bodies and streams' with a line '- <item>: <the probe run and what it showed>' (or 'not reached, because <reason>') for each item of code §No regressions' first bullet; missing or too short: ${miss%, }" >&2; exit 1; }
     fi ;;
+  simplify)
+    # delegate/simplify.md: a code file's 6th change on the branch waits for this record (pre-bash-guard)
+    grep -Eq '^Class: +[^ ]+ +[^ ]+' "$out" || { echo "$out has no line 'Class: <what the patches share>' (mergeworthy delegate/simplify.md)" >&2; exit 1; }
+    case "$last" in
+      SIMPLIFIED) n() { git diff --numstat "$@" | awk '{s+=$1+$2} END{print s+0}'; }
+        [ -n "$base" ] && [ "$(n "$base")" -lt "$(n "$base" HEAD)" ] || { echo "$out says SIMPLIFIED, but the worktree's diff from the base is no smaller than HEAD's: leave the one smaller shape uncommitted, then record" >&2; exit 1; } ;;
+      DISTINCT) ;;
+      *) echo "$out does not end with a line SIMPLIFIED or DISTINCT (mergeworthy delegate/simplify.md)" >&2; exit 1 ;;
+    esac ;;
   loopb)
     [ "$last" = CLEAN ] || { echo "$out does not end with a line CLEAN: fix its findings and continue the same agent" >&2; exit 1; } ;;
   fresh)

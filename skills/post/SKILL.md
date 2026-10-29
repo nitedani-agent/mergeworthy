@@ -26,7 +26,7 @@ Everything that reaches an external service passes these steps: comments, review
 
 ### Thread rules
 
-- **At most two comments in a row.** The second is only the answer after its holding reply or status post, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment. Anything else edits your last comment; a would-be third is an edit with an @-mention. pre-bash-guard blocks a third while your last two have no reply from anyone else and the last is under 3 hours old.
+- **At most two comments in a row.** The second is only the answer after its holding reply or status post, a wait ping, a dependency's progress, a 👎 fix, or the review of commits a maintainer pushed after your last comment. Anything else edits your last comment; a would-be third is an edit with an @-mention.
 - **One reply per person, edits for corrections.** Several comments from one person get one reply. Correct your earlier post in place through these steps.
-- **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` for every token, cookie, auth header and key, and quote only the lines that show the point (post-lint fails on common token shapes).
+- **Evidence carries no secret.** In logs, requests, payloads and screenshots, write `<REDACTED>` for every token, cookie, auth header and key, and quote only the lines that show the point.
 - **A maintainer who asks to see how you change this methodology:** write the installed mergeworthy commit (`git -C ~/.mergeworthy/current rev-parse HEAD`) to `~/.mergeworthy/harness-shown/<owner>`; gate-pass then appends to each `reply` or `proposal` a link comparing the commit it names with the installed one.
