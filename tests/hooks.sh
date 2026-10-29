@@ -742,7 +742,7 @@ check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md 
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
-launch_in() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t"}}))' "$1"; }
+launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
   launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; local rc=$?
   [ $rc = 0 ] && launch_in "$1" | python3 "$R/hooks/pre-agent-dedupe.py" register; echo $rc
@@ -780,7 +780,12 @@ python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-re
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
 rnd() { # clientRequestId task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "review rounds: 3 passes, 4 blocks, 4 naming security passes, 6 naming security blocks, a trailing date is no round, an implementation's -4 is no round, authentication names auth, author doesn't, a head SHA after the round is no escape" "0 2 0 2 0 0 0 2 2 2" "$(rnd post-review-3 'Follow /tmp/x/rr.md') $(rnd post-review-4 'Follow /tmp/x/rr.md') $(rnd authz-review-4 'Follow /tmp/x/rr.md; the security fix') $(rnd authz-review-6 'Follow /tmp/x/rr.md; the security fix') $(rnd post-review-2026-10-28 'Follow /tmp/x/rr.md') $(rnd fix-4 'Follow /tmp/x/rr.md' implementation) $(rnd login-review-5 'Follow /tmp/x/rr.md; the authentication bypass') $(rnd words-review-4 'Review author wording. Follow /tmp/x/rr.md') $(rnd post-review-4-96ef442 'Follow /tmp/x/rr.md') $(rnd authz-review-6-96ef442 'Follow /tmp/x/rr.md; the security fix')"
+agent_rnd() { # description prompt
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
+check "review rounds: r3 passes, r4 blocks, no round blocks, a new loop's r1 passes, a trailing date or head SHA is no escape, an implementation needs no round" "0 2 2 0 0 2 0" "$(rnd loop-a-r3 'Follow /tmp/x/rr.md') $(rnd loop-a-r4 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(rnd loop-a2-r1 'Follow /tmp/x/rr.md') $(rnd loop-a-r2-2026-10-28 'Follow /tmp/x/rr.md') $(rnd loop-a-r4-96ef442 'Follow /tmp/x/rr.md') $(rnd fix-r4 'Follow /tmp/x/rr.md' implementation)"
+check "review rounds by the Agent tool's description: r3 passes, r4 blocks, no round blocks, a non-review launch needs none" "0 2 2 0" "$(agent_rnd fresh-r3 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r4 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd 'Fresh read' 'Verify it. Final message: exactly NO BUGS only when both lists are empty.') $(agent_rnd 'Fix the parser' 'Edit hooks/x.py and run the tests.')"
+mkdir -p "$HOME/.mergeworthy/work/rr"; printf 'Review the patch. Final message: exactly CLEAN, or the findings.\n' > "$HOME/.mergeworthy/work/rr/review.prompt.md"
+check "BLOCK: an Agent review past r3 that follows a brief in the work folder" 2 "$(agent_rnd loop-r4 "Follow $HOME/.mergeworthy/work/rr/review.prompt.md exactly.")"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
@@ -911,7 +916,7 @@ git init -q -b main "$T/gr"; git -C "$T/gr" commit -q --allow-empty -m one; OLD=
 git -C "$T/gr" worktree add -q -b w "$T/gw"; git -C "$T/gw" commit -q --allow-empty -m two; NEW=$(git -C "$T/gw" rev-parse HEAD)
 git -C "$T/gr" commit -q --allow-empty -m three; MAINOLD=$OLD
 ag() { # cwd task [role]
-  python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3]}}))' "$1" "$2" "${3:-implementation}" \
+  python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","cwd":sys.argv[1],"tool_input":{"task":sys.argv[2],"title":sys.argv[2][:50],"role":sys.argv[3],"clientRequestId":f"ag-{time.time_ns()}-r1"}}))' "$1" "$2" "${3:-implementation}" \
     | timeout 10 python3 "$R/hooks/pre-agent-dedupe.py" 2>"$T/err"; echo $?; }
 printf '# Memory\n## Standing\n### Ruled out\n- **Cron jobs** (now). The user refused them.\n## Recent\n<!-- covered-until: 2099-01-01T00:00:00.000Z -->\n' > "$MR/memory.md"
 check "BLOCK: a brief pinned to an older commit of the worktree it names, with the ruled-out list" "2 1" "$(ag "$OC" "Fix it in $T/gw at $OLD") $(grep -c 'Cron jobs' "$T/err")"

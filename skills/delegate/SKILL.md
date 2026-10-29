@@ -53,7 +53,7 @@ The classes are model families, never versions: the strongest class is the newes
 Every independent review (a post's, the Loop B review, the fresh reader, a standalone review) picks its reviewer in this order, trying the first each time: an earlier "unavailable" note (memory, a post's badge) is no check:
 - **First, a model from another company than the main session's:** on its default model, at the effort chosen per call (high; medium for a few-sentence reply). In T3 Code, one `delegate_task` per round, the reviewer's `providerInstanceId` from `orchestrator_capabilities`:
    ```json
-   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<review>-<round>"}
+   {"task": "Follow <prompt file>; output to <out>", "role": "review", "target": {"providerInstanceId": "<id>", "options": {"<its effort option>": "<effort>"}}, "clientRequestId": "<loop>-r<N>"}
    ```
    Elsewhere, a Codex reviewer: `codex exec -c model_reasoning_effort=<effort> --sandbox danger-full-access --skip-git-repo-check -o <out> "$(cat <prompt file>)" < /dev/null`; a Claude reviewer: `claude -p --effort <effort> --permission-mode bypassPermissions < <prompt file> > <out>`.
 - **Else, a fresh agent of the main session's class,** with the same prompt, when the first fails (credits spent, a rate limit, an error, a timeout, no reply: a failure is not a review).
@@ -63,9 +63,9 @@ The prompt is a file with the template filled. When one run follows several brie
 ### Review rounds
 
 Every review loop:
-- **Severity:** re-rate each label (`agent.md`) yourself; a nit gets no code.
-- **Budget:** 3 rounds (reviewer passes, re-checks included) per loop, renewed for Loops A and B at `converge` step 3 and each return from step 4; 5 for security, permissions, auth, data loss or concurrency while a reproduced blocker or should stays open there.
-- **From round 2,** the prompt says outside the changes and the open ids only a blocker or a regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
+- **Severity:** re-rate each label (`agent.md`) yourself; nits (findings nobody hits in practice) get no code.
+- **Budget:** 3 rounds (re-checks included) per loop, never renewed or raised. Name each round `<loop>-r<N>` (T3's `clientRequestId`, the Agent tool's `description`, a shell reviewer's prompt file). Replacing the implementation with a different approach starts a new loop with a new name; fixes to the existing approach keep its round count.
+- **Round 1's prompt** asks for every finding exhaustively; **from round 2,** it says outside the changes and open ids only a blocker or regression counts (not the fresh reader's). Before each round, cut what the fixes added beyond need.
 - **Ledger:** `<work folder>/drafts/<review>.ledger.md`, one line per finding: `<id> <label> <outcome>` (fixed in <sha>, disputed: <evidence>, declined: <why>), the id `R<round>.<n>` from its first round.
-- **Stuck:** a finding the reviewer holds after two replies of yours disputing it, or open at the budget's end, goes to the user, both sides in 2–3 lines. Budget end is not approval. Rule on evidence, never to end the loop.
+- **Stuck:** a finding the reviewer holds after two disputing replies of yours, or open at the budget's end, goes to the user, both sides in 2–3 lines. Rule on evidence, never to end the loop.
 - **While a round runs,** leave what it reads unchanged.

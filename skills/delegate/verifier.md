@@ -40,10 +40,10 @@ How:
 - make your own worktrees under <work folder> (worktree add --detach, install, build) and remove them when done;
 - lanes you may run: <lanes>. Don't run <lanes owned by others>.
 
-Write <work folder>/<name>.md:
+Write <work folder>/<name>.md, exhaustively:
 - each reproduced bug with its commit, the repro inline, observed vs expected;
 - then, under `## Dropped`, every candidate you tried and dropped, one line each `<candidate>: <why>`; the main session adds `RULED: <candidate>: <ruling>` under each whose reason is like "not a regression", "rare", "no documented usage" or "main does the same", before `pr-steps verify` records the file (converge step 1);
-- if no bug counts, say what you tried and end the file with a line NO BUGS.
+- if no bug counts, what you tried, then a last line NO BUGS.
 
-Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when both lists are empty (the file still ends NO BUGS when only dropped candidates remain).
+Final message: the count and one line each, then each reproduced-and-dropped candidate, one line each; exactly NO BUGS only when both lists are empty.
 ```
