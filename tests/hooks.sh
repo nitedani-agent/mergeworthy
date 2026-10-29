@@ -165,6 +165,9 @@ stop_as() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys
   | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }
 tr_cmd "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
 check "BLOCK: a post with no Monitor and no pass" 2 "$(stop_as s-p)"
+python3 -c 'import json,sys; print(json.dumps({"type":"user","message":{"content":"Act as the implementation sub-agent for this task."}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"t1","input":{"command":sys.argv[1]}}]}})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}))' "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md" > "$T/tr.jsonl"
+check "a delegated child's post needs no watcher of its own: its main session watches" 0 "$(stop_as s-p)"
+tr_cmd "gh issue comment 5 --repo o/r --body-file $PD/drafts/r.md"
 echo s-p > "$PD/passed"
 check "BLOCK: a post in the session whose pass round ran: nothing wakes it on a reply, so it says to start a watcher" "2 1" "$(stop_as s-p) $(grep -c 'gh-watch-start <your work folder>' "$T/err")"
 tr_cmd "gh api repos/o/r/issues -X GET -F per_page=100"
@@ -1969,6 +1972,9 @@ PG="$T/glpass"; mkdir -p "$PG"; echo 'p/q all' > "$PG/repos.txt"; echo sess-g > 
 glsess() { python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":"gh issue create -R p/q --title x --body-file x.md"},"cwd":sys.argv[2]}))' "$1" "$T" \
   | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err" >/dev/null; grep -c 'no running watcher' "$T/err"; }
 check "BLOCK: a dir a steward pass read today covers no repo for opening an issue, its session's or another's, saying to start a watcher" "1 1 1" "$(glsess sess-g) $(glsess sess-h) $(grep -c 'gh-watch-start' "$T/err")"
+# a watcher wakes the session that started it: a subagent leaves it to the main session, which owns the PR
+check "BLOCK: a subagent starting a watcher, or told to by an unwatched issue create; the main session, or a subagent's steward round, passes" "2 2 1 0 0" \
+  "$(guard 'gh-watch-start /w o/r 5' a1) $(guard 'gh issue create -R p/q --title x --body-file x.md' a1) $(grep -c 'asking the main session to run .gh-watch-start' "$T/err") $(guard 'gh-watch-start /w o/r 5') $(guard 'gh-watch-start --round /w o/r' a1)"
 echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 glreg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"tool_response":{"stdout":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/post-bash-register.py"; }

@@ -134,8 +134,10 @@ def need_watch(repo, path):
     covering = [w for w in work_folder.watched_by(watch_dirs(), sid, path)
                 if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
+        start = f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`"
         block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
-              f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
+              + (f"a subagent starts none: end your turn asking the main session to run {start}" if by_agent()
+                 else f"{start}, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)"))
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
@@ -572,6 +574,10 @@ def check(t, has_cd):
               "model: <the review model from orchestrator_capabilities>}, the prompt file's path in the task, a new delegate_task per review round (mergeworthy:delegate §Reviewers)")
     if p in ('docker', 'docker-compose'):
         check_compose(env, t)
+    # a watcher wakes the session that started it, and a subagent's result is its last message: the main session owns the PR and its watcher
+    if p == 'gh-watch-start' and '--round' not in a and by_agent():
+        block("a subagent never starts a watcher: it would wake you, not the main session that owns the PR. End your turn with your result; "
+              "the main session watches (mergeworthy:reply step 1)")
     # A credential file printed to the tool output lands in the transcript (an npm token, 2026-10-14)
     CRED = r'(?:^|/)(?:\.npmrc|\.netrc|\.pypirc|\.git-credentials|hosts\.yml|credentials(?:\.json)?|id_(?:rsa|ed25519|ecdsa)|\.config/pnpm/(?:config\.yaml|rc))$'
     if p in ('cat', 'head', 'tail', 'less', 'more', 'bat', 'sed', 'awk', 'grep', 'rg', 'cut', 'strings', 'xxd', 'od', 'base64', 'jq', 'yq', 'python3', 'node') and any(
