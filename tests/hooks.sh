@@ -797,10 +797,7 @@ rnd() { # clientRequestId task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 agent_rnd() { # description prompt
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"Agent","tool_input":{"description":sys.argv[1],"prompt":sys.argv[2]}}))' "$1" "$2" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
-check "review rounds: r3 passes, r4 blocks, no round blocks, a new loop's r1 passes, a trailing date or head SHA is no escape, an implementation needs no round" "0 2 2 0 0 2 0" "$(rnd loop-a-r3 'Follow /tmp/x/rr.md') $(rnd loop-a-r4 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(rnd loop-a2-r1 'Follow /tmp/x/rr.md') $(rnd loop-a-r2-2026-10-28 'Follow /tmp/x/rr.md') $(rnd loop-a-r4-96ef442 'Follow /tmp/x/rr.md') $(rnd fix-r4 'Follow /tmp/x/rr.md' implementation)"
-check "review rounds by the Agent tool's description: r3 passes, r4 blocks, no round blocks, a non-review launch needs none" "0 2 2 0" "$(agent_rnd fresh-r3 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd fresh-r4 'Review it. Final message: exactly CLEAN, or the findings.') $(agent_rnd 'Fresh read' 'Verify it. Final message: exactly NO BUGS only when both lists are empty.') $(agent_rnd 'Fix the parser' 'Edit hooks/x.py and run the tests.')"
-mkdir -p "$HOME/.mergeworthy/work/rr"; printf 'Review the patch. Final message: exactly CLEAN, or the findings.\n' > "$HOME/.mergeworthy/work/rr/review.prompt.md"
-check "BLOCK: an Agent review past r3 that follows a brief in the work folder" 2 "$(agent_rnd loop-r4 "Follow $HOME/.mergeworthy/work/rr/review.prompt.md exactly.")"
+check "a review launch at any round, or naming none, passes: rounds aren't capped, the loop stops when a round finds only nits" "0 0 0" "$(rnd loop-a-r7 'Follow /tmp/x/rr.md') $(rnd loop-a 'Follow /tmp/x/rr.md') $(agent_rnd fresh-r5 'Review it. Final message: exactly CLEAN, or the findings.')"
 J="$HOME/.claude/agent-jobs"; mkdir -p "$J"
 printf '{"key": "/x/a.md /x/shared.md", "started": 1}' > "$J/aj1.json"; printf '{"key": "/x/b.md /x/shared.md", "started": 2}' > "$J/aj2.json"
 check "agent-job done with a path two jobs hold releases neither" "1 2" "$(python3 "$R/bin/agent-job" done /x/shared.md >/dev/null 2>&1; echo $? $(ls "$J"/aj*.json | wc -l))"
@@ -1410,6 +1407,8 @@ check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with fi
 check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
+printf 'x\n## Outside this change\nNone.\n\n## not_checked\n- Windows\n\nNO BUGS\nMERGE AS IS: yes\n' > "$T/sr6.md"
+check "pr-steps small records a report whose verdict ends the file after its not_checked section" 0 "$(prss "$T/sr6.md")"
 mkdir -p "$GS/dist"; seq 1 300 > "$GS/dist/a.mjs"; git -C "$GS" add dist; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
 check "pr-steps small doesn't count a committed build bundle (dist/)" 0 "$(prss "$T/sr2.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
@@ -2302,6 +2301,9 @@ check "'the watcher will tell me when' is no hand-back; 'Tell me when' and 'or a
 SP="$T/simp"; git init -q -b main "$SP"; sc() { git -C "$SP" -c user.name=t -c user.email=t@t commit -q "$@"; }
 echo 0 > "$SP/a.py"; mkdir "$SP/tests"; echo 0 > "$SP/tests/a_test.py"; git -C "$SP" add -A; sc -m base
 git -C "$SP" update-ref refs/remotes/origin/main HEAD; git -C "$SP" checkout -q -b fix; (cd "$SP" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+for i in 1 2 3 4 5 6; do echo "d$i" >> "$SP/a.py"; sc -am "d$i"; done; echo d7 >> "$SP/a.py"; git -C "$SP" add a.py
+check "before the branch's first review, a code file's 7th change passes: building counts nothing" 0 "$(bg 'git commit -m d7' "$SP")"
+sc -m d7; printf 'NO LOOP B COMMITS\n' > "$T/rv.md"; (cd "$SP" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null) || echo "pr-steps verify failed in the simplify setup"
 for i in 1 2 3 4; do echo "p$i" >> "$SP/a.py"; sc -am "p$i"; done
 echo p5 >> "$SP/a.py"; r5=$(bg 'git commit -am p5' "$SP"); sc -am p5
 echo p6 >> "$SP/a.py"; r6=$(bg 'git commit -am p6' "$SP"); n6=$(grep -c 'a.py would get a 6th change' "$T/err")
@@ -2322,6 +2324,7 @@ check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no small
 SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
 seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
 git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+(cd "$SM" && bash "$R/bin/pr-steps" reverify "$T/rv.md" >/dev/null)
 for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
 base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
 base_edit 1
@@ -2331,5 +2334,8 @@ for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9
 check "a simplify record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
 mc commit -q -m p9; base_edit 2; mc commit -q --no-edit; echo p10 >> "$SM/a.py"; git -C "$SM" add a.py
 check "a merge of the base in the history is no change either: the 5th change since the record passes" 0 "$(bg 'git commit -m p10' "$SM")"
+mc commit -q -m p10; mc checkout -q -b side; for i in 1 2 3 4 5 6; do echo "s$i" >> "$SM/b.py"; mc add b.py; mc commit -qm "s$i"; done
+mc checkout -q fix; mc merge -q --no-ff --no-edit side; echo f1 >> "$SM/b.py"; git -C "$SM" add b.py
+check "the commits a merge of another branch brings in are not the branch's own: its next change of their file passes" 0 "$(bg 'git commit -m f1' "$SM")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

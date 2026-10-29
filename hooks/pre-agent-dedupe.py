@@ -58,19 +58,9 @@ if not register and re.search(r'\.out\b', gate_text) and 'CLEAN' in gate_text:
         if not ok:
             sys.stderr.write(f"BLOCKED: {draft} has no passing post-lint for its current text: run post-lint first, then the review.\n")
             sys.exit(2)
-# A review round's launch is named `<loop>-r<N>` (delegate §Review rounds), maybe followed by the date or head SHA the reuse block asks for.
-# A review is a review launch, or a launch with no role whose brief ends as a review template does (`exactly CLEAN`, `exactly NO BUGS`)
-name = cid or str(ti.get('description') or '')
-rnd = re.search(r'-r(\d+)$', re.sub(r'(-\d{4}-\d{2}-\d{2}|-[0-9a-f]{7,40})+$', '', name))
 # a brief the launch follows from the work folder counts here, though the tickets above skip all of ~/.mergeworthy
 briefs = gate_text + '\n' + '\n'.join(open(t).read() for t in {os.path.abspath(os.path.expanduser(m)) for m in re.findall(MD, text)}
                                if t.startswith(mw + 'work' + os.sep) and os.path.isfile(t))
-if not register and (ti.get('role') == 'review' or not ti.get('role') and re.search(r'\bexactly (CLEAN|NO BUGS)\b', briefs)) and not (rnd and int(rnd[1]) <= 3):
-    sys.stderr.write((f"BLOCKED: review round {rnd[1]} ('{name}') is past the budget" if rnd else
-                      f"BLOCKED: name this review launch `<loop>-r<N>` (T3's clientRequestId, the Agent tool's description; '{name}' names no round)")
-                     + ": mergeworthy:delegate §Review rounds allows 3 rounds per loop, never renewed or raised; a rewrite is a new loop. "
-                     "A finding still open at the budget's end goes to the user, both sides in 2-3 lines.\n")
-    sys.exit(2)
 # A template's slot left unfilled (`<the slice's risky edges>`) reaches the agent as a rule it never got. A slot in backticks is
 # the agent's own output form, the paste-in rules (agent.md) carry slots of their own, and an HTML tag a brief quotes is no slot.
 if not register:
