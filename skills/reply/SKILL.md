@@ -9,7 +9,7 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
 
 ## Steps
 
-1. **Read `events.log` past the line in `events.cursor`;** move the cursor as you handle each event. After any resume, or whenever nothing was armed, do this first; re-arm an expired Monitor when its notice wakes you. Never poll GitHub in a loop. Work in this order: the user's chat message, red CI on your PR, a maintainer's comment, the critical path, side work.
+1. **Read `events.log` past the line in `events.cursor`,** moving the cursor per event. Do this first whenever nothing was armed. Never poll GitHub; re-arm an expired Monitor. A wake needing nothing ends the turn without a word, never "still waiting". Work in this order: the user's chat message, red CI on your PR, a maintainer's comment, the critical path, side work.
    Open: `<work folder>/events.log` · Record: `events.cursor`
 2. **Route each event** by its row of §Events.
    Open: §Events · Hook: the watcher

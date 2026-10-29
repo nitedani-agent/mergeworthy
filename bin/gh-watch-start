@@ -54,12 +54,7 @@ if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
   echo "$CLAUDE_CODE_SESSION_ID" > "$dir/session"
   # under T3 Code the watcher sends each event to the main session's thread (gh-watch.py's wake_thread), from the log's end on:
   # a send to a delegated task's thread would start the finished task again
-  t3=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import steward; print(*steward.threads(sys.argv[2])[-1:])' "$root/hooks" "$CLAUDE_CODE_SESSION_ID" 2>/dev/null || true)
-  # with t3's full path: cron revives the daemon with a PATH that may not hold it
-  if [ -n "$t3" ] && t3bin=$(command -v t3); then
-    [ "$(head -n1 "$dir/t3-thread" 2>/dev/null)" = "$t3" ] || wc -c < "$dir/events.log" > "$dir/t3-wake.cursor"
-    printf '%s\n%s\n' "$t3" "$t3bin" > "$dir/t3-thread"
-  else rm -f "$dir/t3-thread" "$dir/t3-wake.cursor"; fi
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import steward; steward.bind_watcher(sys.argv[2])' "$root/hooks" "$dir" || true
 fi
 reg=~/.claude/gh-watch-dirs.txt
 grep -qxF "$dir" "$reg" 2>/dev/null || echo "$dir" >> "$reg"

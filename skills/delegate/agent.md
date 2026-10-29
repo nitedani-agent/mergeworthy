@@ -3,7 +3,7 @@
 Pasted into every brief, after the role's template.
 
 - **First read each target repo's `AGENTS.md` and `CLAUDE.md` and their imports, and follow them within the brief.**
-- **Do exactly the brief.** Don't widen it, and don't pick another approach than the plan: stop and report why the plan is wrong instead. Do the work yourself; never start agents of your own.
+- **Do exactly the brief.** Don't widen it, and don't pick another approach than the plan: stop and report why the plan is wrong instead. Do the work yourself; never start agents or watchers of your own.
 - **Search before theorizing:** for an error, an API's behavior or how others solved it, search the web and read the sources first, and whenever you're circling.
 - **Never say a step ran when it couldn't:** stop and say what blocked it.
 - **End your turn only with your result.** A turn ended while your own install or test still runs never reports back. A process you find later is your own leftover: check with `ps` and kill it by PID, never wait on it. Long installs skip postinstall downloads (`--ignore-scripts`) when the browsers or binaries are already cached.
