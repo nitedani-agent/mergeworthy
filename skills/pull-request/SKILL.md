@@ -27,7 +27,7 @@ Run `task` first. A Tier M or L change runs these steps once per PR.
    Open: `evidence` steps 2–4 · Run: `git checkout origin/<base> -- <files>`, then `git checkout HEAD -- <files>` · Record: screenshots in the work folder
 9. **Converge the head.**
    Open: `converge` steps 0–5 · Record: the five records · Hook: pre-bash-guard
-10. **The body.** `drafts/<pr>/pr-body.md` from §Body; feature code (tests, docs and lockfiles excluded) over ~300 changed lines adds the `loc-breakdown` table: write a map file by reading the hunks, one line per feature and range, the features named in the maintainer's words, and fix it until the tool passes. Upload images and video. Inline comments only per §Inline comments, each its own draft through `post`.
+10. **The body.** `drafts/<pr>/pr-body.md` from §Body; feature code (tests, docs, lockfiles and build output excluded) over ~300 changed lines adds the `loc-breakdown` table: write a map file by reading the hunks, one line per feature and range, features in the maintainer's words, and fix it until the tool passes. Upload images and video. Inline comments only per §Inline comments, each its own draft through `post`.
    Open: §Body; `writing §Forms`; `evidence` step 5; `post` with `--kind pr` and `--kind inline` · Run: `loc-breakdown <base>..<head> <map file>` · Record: the body's gate file · Hook: gate-pass, post-lint
 11. **Ready.**
    Open: `merging` steps 2–3 · Record: the PR's state · Hook: pre-bash-guard
