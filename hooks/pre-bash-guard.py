@@ -316,13 +316,19 @@ def check_compose(env, t):
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either)."""
     n = 2 if os.path.basename(t[0]) == 'docker' else 1
     if t[1:n] not in ([], ['compose']) or env.get('MERGEWORTHY_HOST_PORTS') == 'user-asked': return
-    keep = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file')
+    keep, paths = ('-f', '--file', '-p', '--project-name', '--profile', '--project-directory', '--env-file'), ('-f', '--file', '--project-directory', '--env-file')
     a, glob = t[n:], []
     while a and a[0].startswith('-'):
         k = 2 if a[0] in keep + ('--ansi', '--parallel', '--progress') else 1
         if a[0].split('=')[0] in keep: glob += a[:k]
         a = a[k:]
     if not (a[:1] == ['up'] or a[:1] == ['run'] and '--service-ports' in a): return
+    for i, x in enumerate(glob):  # compose gets the paths, not the words: ~ and the variables the line set put in
+        o, eq, v = x.partition('=') if x.startswith('--') else ('', '', x)
+        if eq and o in paths or not o and i and glob[i - 1] in paths:
+            if where.path(v) is None:
+                block(f"can't tell the path `{v}` this compose command reads, so its ports can't be checked: write it out, or set its variable on this line")
+            glob[i] = o + eq + where.path(v)
     try:
         r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
         svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
@@ -754,7 +760,8 @@ if err and (m := GUARDED.search(unquoted(cmd))):  # its words are still checked 
     verb = ' '.join(m.group(0).split()[:2])
     block(f"{err}, so this command's `{verb}` can't be checked" if 'shell parser' in err else f"this command doesn't parse ({err}), so its `{verb}` "
           "can't be checked: split it into simple commands, a message or body in a file (`git commit -F <file>`, `--body-file`)")
-if re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) and not d.get('tool_input', {}).get('run_in_background'):
+waits = re.search(r'\b(until|while)\b[^\n]*\bsleep\b', cmd) if err else any(s.loop and prog(s)[:1] and os.path.basename(prog(s)[0]) == 'sleep' for s in segs)
+if waits and not d.get('tool_input', {}).get('run_in_background'):
     block('never wait in the foreground: the main session keeps working while agents and builds run. Rely on the task-completion notification, '
           'or run the wait with run_in_background (one notification when it ends)')
 # a Playwright install prunes the browser builds other sessions use from the shared ~/.cache/ms-playwright (agent.md §Machine)

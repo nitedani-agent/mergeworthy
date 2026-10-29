@@ -106,13 +106,14 @@ def _assign(a, src):
 
 class Seg(list):
     """A simple command's argv; nested: whether it runs where a cd in it may not hold for what follows (a subshell, substitution,
-    pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where."""
-    nested = False
+    pipeline part or background job, after || or !, a branch, a loop, a function, a child shell's script, find's -exec), for Where;
+    loop: whether it runs inside a while or until loop."""
+    nested = loop = False
 
 
-def _seg(argv, nested):
+def _seg(argv, nested, loop=False):
     s = Seg(argv)
-    s.nested = nested
+    s.nested, s.loop = nested, loop
     return s
 
 
@@ -124,23 +125,25 @@ def _scoped(x, k):
 
 
 def _calls(node, src, nested=False):
-    """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by: (redirect, top statement))."""
-    segs, docs, stack = [], [], [(node, None, nested)]
+    """(the argv of every simple command under node, in order, each a Seg; the statements each heredoc of them is read by:
+    (redirect, top statement, whether it is in a loop))."""
+    segs, docs, stack = [], [], [(node, None, nested, False)]
     while stack:
-        x, top, n = stack.pop()
+        x, top, n, loop = stack.pop()
         if isinstance(x, list):
-            stack += [(y, top, n) for y in reversed(x)]
+            stack += [(y, top, n, loop) for y in reversed(x)]
             continue
         if not isinstance(x, dict):
             continue
+        loop = loop or x.get('Type') == 'WhileClause'  # shfmt's node for until too
         cmd, redirs = x.get('Cmd') or {}, x.get('Redirs') or []
         words = [w for r in redirs for w in ((r.get('N') or {}).get('Value', '') + r['Op'], _word(r.get('Word') or {}, src))]
         if cmd.get('Type') == 'CallExpr':
-            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd')))
+            segs.append(_seg([_assign(a, src) for a in cmd.get('Assigns') or []] + [_word(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
         elif cmd.get('Type') == 'DeclClause':
-            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd')))
-        docs += [(r, top or x) for r in redirs if r.get('Hdoc')]
-        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k))  # each statement of a list is a top statement
+            segs.append(_seg([cmd['Variant']['Value']] + [_assign(a, src) for a in cmd.get('Args') or []] + words, n or _scoped(x, 'Cmd'), loop))
+        docs += [(r, top or x, loop) for r in redirs if r.get('Hdoc')]
+        stack += [(v, None if k == 'Stmts' else (top or x) if 'Cmd' in x else top, n or _scoped(x, k), loop)  # each statement of a list is a top statement
                   for k, v in reversed(x.items()) if isinstance(v, (dict, list)) and k not in ('Pos', 'End', 'Hdoc')]
     return segs, docs
 
@@ -149,9 +152,9 @@ def _segments(tree, src, depth):
     """(every simple command the tree runs, with each heredoc's commands: its substitutions, or all of it when a shell
     without a script reads it (`bash <<EOF`, `cat <<EOF | sh`); the error of a heredoc script that doesn't parse)."""
     (segs, docs), err = _calls(tree, src), ''
-    for r, top in docs:
+    for r, top, loop in docs:
         if any(reads_stdin(a) for a in _calls(top, src)[0]) and depth < 4:
-            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, True)
+            s, e = parse(''.join(_src(p, src) for p in r['Hdoc'].get('Parts') or []), depth + 1, True, loop)
         else:
             s, e = _segments(r['Hdoc'], src, depth)
         segs, err = segs + s, err or e
@@ -207,16 +210,15 @@ def _nested(t):
     return None
 
 
-def parse(cmd, depth=0, nested=False):
-    """(segments, error): the argv of every simple command cmd runs, each a Seg (nested: all of them), command substitutions and
+def parse(cmd, depth=0, nested=False, loop=False):
+    """(segments, error): the argv of every simple command cmd runs, each a Seg (nested, loop: all of them), command substitutions and
     the scripts of `bash -c` and `eval` included; error is '' when it parsed, else why not (the segments are then _rough's, nested)."""
     try:
         r = subprocess.run([os.path.join(_deps(), 'bin', 'shfmt'), '--to-json', '-ln', 'bash'], input=cmd.encode(), capture_output=True, timeout=60)
         if r.returncode:
             raise ValueError('bash syntax error at ' + r.stderr.decode(errors='replace').strip().replace('<standard input>:', ''))
         segs, err = _segments(json.loads(r.stdout), cmd.encode(), depth)
-        if nested:
-            for x in segs: x.nested = True
+        for x in segs: x.nested, x.loop = x.nested or nested, x.loop or loop
     except ValueError as e:  # also a JSON error
         segs, err = [_seg(x, True) for x in _rough(cmd)], str(e)
     except Exception as e:  # no parser: nothing is checked as parsed, and a guarded verb blocks
@@ -226,11 +228,11 @@ def parse(cmd, depth=0, nested=False):
         out.append(s)
         t = prog(s)
         if t[:1] and os.path.basename(t[0]) == 'find':  # find -exec <command> ;
-            out += [_seg(x.split('\0'), True) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
+            out += [_seg(x.split('\0'), True, s.loop) for x in re.findall(r'\0-(?:exec|execdir|ok|okdir)\0(.+?)\0(?:;|\+)(?=\0|$)', '\0' + '\0'.join(t))]
         here = [s[i + 1] for i in range(len(s) - 1) if s[i] == '<<<']  # `bash <<< '<script>'`
         script = (_nested(s) or (here[0] if here and reads_stdin(s) else None)) if depth < 4 else None
         if script:
-            inner, e = parse(script, depth + 1, True)
+            inner, e = parse(script, depth + 1, True, s.loop)
             out += inner
             err = err or e
     return out, err

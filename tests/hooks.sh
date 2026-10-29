@@ -754,6 +754,14 @@ wait_guard() { # command background(true|false)
 check "BLOCK: a foreground until-sleep loop" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' false)"
 check "the same loop in the background passes" 0 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; cat out.md' true)"
 check "a plain sleep passes" 0 "$(wait_guard 'sleep 2; ls' false)"
+check "a loop written into a file by a heredoc passes: nothing waits" 0 "$(wait_guard "$(printf 'cat > x.md <<EOF\nuntil done; do sleep 5; done\nEOF')" false)"
+check "a loop in a quoted argument passes" 0 "$(wait_guard "jq -n --arg s 'while true; do sleep 1; done' '\$s'" false)"
+check "BLOCK: a loop a shell runs from a heredoc" 2 "$(wait_guard "$(printf 'bash <<EOF\nuntil [ -s out.md ]; do sleep 5; done\nEOF')" false)"
+check "BLOCK: a loop running sleep by its path" 2 "$(wait_guard 'while true; do /usr/bin/sleep 1; done' false)"
+check "BLOCK: a loop in bash -c" 2 "$(wait_guard "bash -c 'while true; do sleep 1; done'" false)"
+check "BLOCK: a loop running bash -c or a heredoc script with a sleep" "2 2" "$(wait_guard "while true; do bash -c 'sleep 1'; done" false) $(wait_guard "$(printf 'while true; do bash <<EOF\nsleep 1\nEOF\ndone')" false)"
+check "BLOCK: a loop sent to the background in a foreground command" 2 "$(wait_guard '(until [ -s out.md ]; do sleep 20; done) & wait' false)"
+check "BLOCK: a loop with sleep in a command that doesn't parse" 2 "$(wait_guard 'until [ -s out.md ]; do sleep 20; done; echo "x' false)"
 # ---------- pre-agent-dedupe: one agent per job ----------
 launch_in() { python3 -c 'import json,sys,time; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[1],"title":"t","clientRequestId":f"t-{time.time_ns()}-r1"}}))' "$1"; }
 launch() { # task text; a launch that passes runs, so the PostToolUse half registers it
@@ -1828,16 +1836,21 @@ check "BLOCK: kill of an agent's claude process" 2 "$(kill_guard $APID)"
 check "kill of an ordinary process passes" 0 "$(kill_guard $OPID)"
 kill $(ps -o pid= --ppid $APID) $APID $OPID 2>/dev/null
 # ---------- pre-bash-guard: a compose stack takes no fixed host port or container name ----------
-printf '#!/bin/sh\ncase " $* " in *" config "*) [ -f "$DC_FX" ] && cat "$DC_FX";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
+printf '#!/bin/sh\ncase " $* " in *" config "*) f=$DC_FX; while [ $# -gt 0 ]; do case "$1" in -f) f=$2;; --file=*) f=${1#--file=};; esac; shift; done; [ -f "$f" ] && cat "$f";; esac\n' > "$T/bin/docker"; chmod +x "$T/bin/docker"
 echo '{"services":{"db":{"ports":[{"target":5432,"published":"5432"}]}}}' > "$T/fixed.json"
 echo '{"services":{"web":{"container_name":"web","ports":[{"target":80}]}}}' > "$T/named.json"
 echo '{"services":{"web":{"ports":[{"target":80}]}}}' > "$T/assigned.json"
-dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>/dev/null; echo $?; }
+dc_guard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: compose up publishing a fixed host port" 2 "$(dc_guard "DC_FX=$T/fixed.json docker compose -p x up -d")"
 check "BLOCK: compose up with a container_name" 2 "$(dc_guard "DC_FX=$T/named.json docker compose -p x up -d")"
 check "compose up with Docker-assigned ports passes" 0 "$(dc_guard "DC_FX=$T/assigned.json docker compose -p x up -d")"
 check "compose up on the usual ports when the user asked passes" 0 "$(dc_guard "MERGEWORTHY_HOST_PORTS=user-asked DC_FX=$T/fixed.json docker compose -p x up -d")"
 check "BLOCK: compose up whose config fails (its ports can't be checked)" 2 "$(dc_guard "DC_FX=$T/missing.json docker compose -p x up -d")"
+cp "$T/assigned.json" "$HOME/assigned.json"
+check "compose up with a file under ~ passes" 0 "$(dc_guard 'docker compose -f ~/assigned.json -p x up -d')"
+check "compose up with a file under a dir the line set passes" 0 "$(dc_guard "W=$T; docker compose -f \$W/assigned.json -p x up -d")"
+check "BLOCK: compose up with --file= under a dir the line set, publishing a fixed host port" "2 1" "$(dc_guard "W=$T; docker compose --file=\$W/fixed.json -p x up -d") $(grep -c 'db host port 5432' "$T/err")"
+check "BLOCK: compose up with a file path it can't tell, naming it" "2 1" "$(dc_guard 'docker compose -f $NOPE_DIR/c.yml -p x up -d') $(grep -c "can't tell.*NOPE_DIR/c.yml" "$T/err")"
 printf 'See #7.\n' > "$T/ref.md"
 check "post-lint: a 404 reference doesn't exist" 1 "$(python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist in o/r")"
 check "post-lint: a rate-limited check says it couldn't check, not that it doesn't exist" "1 0" "$(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "couldn't check it") $(GH_STUB_403=1 python3 "$R/bin/post-lint" "$T/ref.md" --kind reply --repo o/r --parent none 2>&1 | grep -c "doesn't exist")"
