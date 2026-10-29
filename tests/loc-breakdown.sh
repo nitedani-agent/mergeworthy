@@ -56,4 +56,9 @@ printf 'Cache\tdocs/guide.md\nCache\tapp.ts:2-2\nCache\tapp.ts:base:2-2\nRetry\t
 OUT=$(python3 "$R/bin/loc-breakdown" "$BASE..$HEAD" "$T/over" --repo-dir "$P")
 check reclassified-doc '+3 / −1' "$(row Cache)"
 check no-docs-row 0 "$(printf '%s\n' "$OUT" | grep -c 'Docs')"
+# a committed build bundle under dist/ goes to Generated with no map entry
+mkdir -p dist && printf 'a\nb\n' > dist/bundle.mjs && G add dist && G commit -qm bundle
+OUT=$(python3 "$R/bin/loc-breakdown" "$HEAD..HEAD" "$T/map" --repo-dir "$P" 2>&1); rc=$?
+check dist-exit 0 "$rc"
+check dist-generated '+2 / −0' "$(row Generated)"
 exit $((fails > 0))
