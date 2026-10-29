@@ -791,6 +791,8 @@ check "a new clientRequestId passes" 0 "$(cid r-1)"
 check "a retry of the same clientRequestId within 10 minutes passes" 0 "$(cid r-1)"
 python3 -c 'import json,os,time; p=os.path.expanduser("~/.claude/agent-client-request-ids.json"); d=json.load(open(p)); d["r-1"]=time.time()-3600; json.dump(d,open(p,"w"))'
 check "BLOCK: a clientRequestId reused later (T3 replays the old result)" 2 "$(cid r-1)"
+for i in $(seq 40); do (cid_in "c-$i" | python3 "$R/hooks/pre-agent-dedupe.py" register 2>/dev/null || echo crash) & done > "$T/cid.out"; wait
+check "40 launches registering at once: none crashes, none is lost" "0 40" "$(grep -c crash "$T/cid.out") $(python3 -c 'import json,os; print(sum(k.startswith("c-") for k in json.load(open(os.path.expanduser("~/.claude/agent-client-request-ids.json")))))')"
 rnd() { # clientRequestId task [role]
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","tool_input":{"task":sys.argv[2],"role":sys.argv[3],"clientRequestId":sys.argv[1]}}))' "$1" "$2" "${3:-review}" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 agent_rnd() { # description prompt
@@ -823,6 +825,9 @@ check "another session, and a memory refresh in this one, pass" "0 0" "$(cap cap
 check "a fifth brief naming its fan-out step passes; one naming another step does not" "0 2" "$(cap capS $'Execute /tmp/x/cap8.md\nFan-out: converge §Running the agents') $(cap capS $'Execute /tmp/x/cap9.md\nFan-out: review step 2')"
 cap_impl() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"mcp__t3-code__delegate_task","session_id":"capS","tool_input":{"task":sys.argv[1],"title":"impl","role":"implementation"}}))' "$1" | python3 "$R/hooks/pre-agent-dedupe.py" 2>/dev/null; echo $?; }
 check "BLOCK: an implementation brief carrying the fan-out line still counts" 2 "$(cap_impl $'Execute /tmp/x/cap10.md\nFan-out: converge §Running the agents')"
+FB="$HOME/.mergeworthy/work/fx/verify-1.md"; mkdir -p "${FB%/*}"; printf 'Verify slice 1.\nFan-out: converge §Running the agents\n' > "$FB"
+check "a fifth launch following a work-folder brief that holds the fan-out line passes" 0 "$(cap capS "Follow $FB exactly")"
+python3 "$R/bin/agent-job" done "$(python3 -c 'import sys; print(sys.argv[1][:40])' "Follow $FB exactly")" >/dev/null  # its key: the title
 python3 "$R/bin/agent-job" done /tmp/x/cap8.md >/dev/null; python3 "$R/bin/agent-job" done /tmp/x/cap1.md >/dev/null
 check "a released job no longer counts" 0 "$(cap capS 'Execute /tmp/x/cap4.md')"
 python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started": time.time() - 3600}, open(f + ".n", "w")) or os.replace(f + ".n", f) for f in glob.glob(os.path.expanduser("~/.claude/agent-jobs/*")) if "cap2.md" in open(f).read()]'
@@ -1085,8 +1090,10 @@ python3 -c 'import glob,json,os,time; [json.dump({**json.load(open(f)), "started
 t3db() { python3 -c 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(sys.argv[2]); c.commit()' "$HOME/.t3/userdata/statev2.sqlite" "$1"; }
 done_events > "$T/ev6"; t3db "update orchestration_v2_projection_runs set status = 'completed'"
 t3db "insert into orchestration_v2_projection_subagents values ('s9', 'busy-1', 'child-9', 'pending')"; done_events > "$T/ev7"
-t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"; done_events > "$T/ev8"
-check "a quiet agent whose T3 run is still active (waiting), or whose delegated task is (pending), is not done; it is once both ended" "0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8")"
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's9'"
+t3db "insert into orchestration_v2_projection_subagents values ('s0', 'orch-1', 'busy-1', 'running')"; done_events > "$T/ev8"  # its own task: its turn ended, its background command runs
+t3db "update orchestration_v2_projection_subagents set status = 'completed' where subagent_id = 's0'"; done_events > "$T/ev9"
+check "a quiet agent whose T3 run is still active (waiting), whose delegated task is (pending), or whose own task is (running), is not done; it is once all ended" "0 0 0 1" "$(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev6") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev7") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev8") $(grep -c "AGENT DONE $T/jobs/t3busy-ticket.md" "$T/ev9")"
 # the watcher asks T3's state on every tick for days: each lookup closes its connection, not the cycle collector
 check "T3 state lookups leave no connection open" 0 "$(python3 -c '
 import gc, os, sys; sys.path.insert(0, sys.argv[1]); import steward; gc.disable()
@@ -1317,6 +1324,8 @@ cp "$T/carry.md" "$T/carry-v.md"
 check "a small follow-up carries an earlier head's Loop A" 0 "$(prs verify "$T/carry-v.md")"
 cp "$T/carry.md" "$T/carry-f.md"
 check "BLOCK: carrying a step the earlier head never recorded" 1 "$(prs fresh "$T/carry-f.md")"
+mkdir -p "$G/dist"; seq 1 300 > "$G/dist/a.mjs"; git -C "$G" add dist; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m bundle; cp "$T/carry.md" "$T/carry-d.md"
+check "a committed build bundle (dist/) doesn't count against a carry" 0 "$(prs shape "$T/carry-d.md")"
 seq 1 100 > "$G/big"; git -C "$G" add big; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m c
 printf 'carries the pass of %s: big change\n' "$A" > "$T/carry2.md"
 check "BLOCK: carrying across more than 80 changed lines" 1 "$(prs shape "$T/carry2.md")"
@@ -1401,6 +1410,8 @@ check "pr-steps small: BLOCK with no test in the diff, BLOCK on a report with fi
 check "after pr-steps small, gh pr ready lacks only the gates" "gates" "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$GS" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -o 'no pr-steps [a-z, ]* record' | sed 's/no pr-steps //; s/ record//')"
 printf 'x\n## Outside this change\nNone.\n\nNO BUGS\nMERGE AS IS: yes\n\n## Verification\n- ran it\n\n## not_checked\n- Windows\n' > "$T/sr5.md"
 check "pr-steps small records a report whose verdict comes before its Verification and not_checked sections" 0 "$(prss "$T/sr5.md")"
+mkdir -p "$GS/dist"; seq 1 300 > "$GS/dist/a.mjs"; git -C "$GS" add dist; git -C "$GS" -c user.name=t -c user.email=t@t commit -qm bundle
+check "pr-steps small doesn't count a committed build bundle (dist/)" 0 "$(prss "$T/sr2.md")"
 seq 1 70 >> "$GS/src/a.ts"; git -C "$GS" -c user.name=t -c user.email=t@t commit -qam d
 printf 'NO BUGS\nMERGE AS IS: yes\n- a finding after them\n' > "$T/sr4.md"
 check "BLOCK: pr-steps small on a report whose last lines aren't NO BUGS and MERGE AS IS: yes" 1 "$(prss "$T/sr4.md")"
@@ -2221,6 +2232,8 @@ git -C "$OWN2" checkout -q scratch; git -C "$OWN2" config --unset remote.pushDef
 fp=; for c in '"$(npm bin)/vitest" run tests/git-push.test.ts' '$PYTHON -m pytest -k "git push"' '"$VENV/bin/pytest" -k git-commit' \
              '${PNPM:-pnpm} test && git log --oneline | grep -i commit' '"$CLAUDE" -p "summarize the last git commit"'; do fp="$fp $(bg "$c" "$OWN2")"; done
 check "a command named by an expansion that only mentions git (a test name, a prompt) passes" " 0 0 0 0 0" "$fp"
+check "env's assignment named by a variable (\"\$v=host\") is no command name: the glab call after it passes, a push after it is still checked" "0 2" \
+  "$(bg 'env -i HOME="$HOME" "$v=code.example.com" timeout 20 glab api projects/x' "$OWN2") $(bg 'env "$v=x" git push nosuch HEAD:s' "$OWN2")"
 check "a command named by a variable the command set is checked as what it runs: \$G commit with the right author passes, a wrong one blocks" "0 2" \
   "$(echo 'me 42' > "$HOME/.claude/gh-user.txt"; bg 'G="git -c user.name=me -c user.email=42+me@users.noreply.github.com"; $G commit -m x' "$TCO") $(bg 'G="git -c user.name=x -c user.email=x@x"; $G commit -m x' "$TCO")"
 check "a git -C to a variable the command set is the checkout it names: a commit there with the right author passes, a wrong one blocks" "0 2" \
@@ -2305,5 +2318,18 @@ echo p13 >> "$SP/a.py"; git -C "$SP" add a.py; r13=$(bg 'git commit -m p13' "$SP
 check "BLOCK: a 7th change; a simplify record on the head that holds the 6th unblocks it" "2 0" "$r13 $(bg 'git commit -m p13' "$SP")"
 printf 'Class: each patch narrows which lines a counts\nSIMPLIFIED\n' > "$T/simp2.md"
 check "BLOCK: pr-steps simplify SIMPLIFIED while the worktree's diff is no smaller than HEAD's" "1 1" "$(cd "$SP" && bash "$R/bin/pr-steps" simplify "$T/simp2.md" 2>"$T/err" >/dev/null; echo $?) $(grep -c 'no smaller than HEAD' "$T/err")"
+# merges: a merge of the base, being made or in the history, is no change, and a simplify record on a merge commit counts
+SM="$T/simpm"; git init -q -b main "$SM"; mc() { git -C "$SM" -c user.name=t -c user.email=t@t "$@"; }
+seq 1 10 > "$SM/a.py"; git -C "$SM" add -A; mc commit -q -m base
+git -C "$SM" update-ref refs/remotes/origin/main HEAD; git -C "$SM" checkout -q -b fix; (cd "$SM" && bash "$R/bin/pr-steps" preflight 'none, because no UI' >/dev/null)
+for i in 1 2 3 4 5; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done
+base_edit() { mc checkout -q main; sed -i "$1s/.*/main$1/" "$SM/a.py"; mc commit -qam "main$1"; git -C "$SM" update-ref refs/remotes/origin/main HEAD; mc checkout -q fix; mc merge -q --no-commit origin/main >/dev/null; }
+base_edit 1
+check "committing a merge of the base is no change, though the branch changed its file 5 times" 0 "$(bg 'git commit --no-edit' "$SM")"
+mc commit -q --no-edit; (cd "$SM" && bash "$R/bin/pr-steps" simplify "$T/simp.md" >/dev/null)
+for i in 6 7 8; do echo "p$i" >> "$SM/a.py"; mc commit -qam "p$i"; done; echo p9 >> "$SM/a.py"; git -C "$SM" add a.py
+check "a simplify record on a merge commit starts the counts over" 0 "$(bg 'git commit -m p9' "$SM")"
+mc commit -q -m p9; base_edit 2; mc commit -q --no-edit; echo p10 >> "$SM/a.py"; git -C "$SM" add a.py
+check "a merge of the base in the history is no change either: the 5th change since the record passes" 0 "$(bg 'git commit -m p10' "$SM")"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

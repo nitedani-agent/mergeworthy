@@ -258,7 +258,7 @@ KEYWORDS = ('!', '{', 'if', 'then', 'else', 'elif', 'do', 'while', 'until')  # a
 def prog(t):
     """Drop env assignments, shell keywords and wrappers (with their options, and timeout's duration); return the command's argv."""
     while t:
-        if re.match(r'^\w+=', t[0]) or t[0] in KEYWORDS:
+        if re.match(r'^(\w+|\$\{?\w+\}?)=', t[0]) or t[0] in KEYWORDS:  # `env "$v=x" cmd` assigns too
             t = t[1:]
             continue
         w = os.path.basename(t[0])

@@ -56,10 +56,12 @@ def threads(session_id):
 
 def _busy(c, tid):
     return bool(c.execute(f"select 1 from orchestration_v2_projection_runs where thread_id = ? and status in {_in(ACTIVE_RUNS)}", (tid, *ACTIVE_RUNS)).fetchone()
-                or c.execute(f"select 1 from orchestration_v2_projection_subagents where thread_id = ? and status in {_in(ACTIVE_TASKS)}", (tid, *ACTIVE_TASKS)).fetchone())
+                or c.execute(f"select 1 from orchestration_v2_projection_subagents where ? in (thread_id, child_thread_id) and status in {_in(ACTIVE_TASKS)}",
+                         (tid, *ACTIVE_TASKS)).fetchone())
 
 def busy(session_id):
-    """True when the Claude session's T3 thread has an active run, or a task it delegated still active: T3 will act on it again."""
+    """True when the Claude session's T3 thread has an active run, a task it delegated still active, or, as a delegated task,
+    is still active itself (its turn ended while a background command of its own runs): T3 will act on it again."""
     return _ask(session_id, _busy, False)
 
 def task_done(session_id):

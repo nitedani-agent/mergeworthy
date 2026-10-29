@@ -697,13 +697,13 @@ check "GitLab: an issue close is reported, and with every thread closed or merge
 got=$(glpy '
 thread("issues", "4", "closed"); thread("merge_requests", "9", "merged")
 out = []
-for line in ("o/r\n", "o/r all  # watched whole\n"):
-    open(os.path.join(m.HERE, "repos.txt"), "w").write(line)
+for line, age in (("o/r\n", 60), ("o/r\n", 7200), ("o/r all  # watched whole\n", 7200)):  # a bare line: gh-watch-start before the next PR
+    open(os.path.join(m.HERE, "repos.txt"), "w").write(line); os.utime(os.path.join(m.HERE, "repos.txt"), (m.time.time() - age,) * 2)
     out.append(run(m.retire_if_done).count("WATCHER RETIRED"))
 os.remove(os.path.join(m.HERE, "repos.txt"))
 print(*out)
 ')
-check "retire_if_done: every thread done, a bare owner/repo line in repos.txt doesn't keep the watcher, an owner/repo all line does" "1 0" "$got"
+check "retire_if_done: every thread done, a bare owner/repo line in repos.txt keeps the watcher for an hour after it was written, an owner/repo all line always" "0 1 0" "$got"
 got=$(glpy 'print(len(m.read_threads()), sorted(m.listed_threads(m.HERE)))')
 check "GitLab lines stay out of the GitHub thread lists" "0 []" "$got"
 # gh-watch-start's argument loop, without its supervisor: the GitLab forms are stored, a GitHub !N is refused
@@ -1000,5 +1000,16 @@ print(len(started), [p.wait() for p in started], open(os.path.join(m.HERE, "disk
 ')
 check "a temp-HOME main() starts one disk-sweep --delete, which skips Docker and runs no prune" "1 [0] 1 0" "$got $(grep -c prune "$T/docker.log")"
 
+# SHAPE STALE counts your PR's code: a committed build bundle (dist/) is not
+got=$(py '
+Answer = lambda data: type("A", (), {"status": 200, "json": lambda self: data})()
+files = [{"filename": "dist/a.mjs", "additions": 300, "deletions": 0}, {"filename": "src/a.ts", "additions": 5, "deletions": 0}]
+m.request = lambda path, *a, **k: Answer({"user": {"login": "me"}, "base": {"ref": "main"}} if path.endswith("/pulls/8")
+                                         else {"commits": [{"sha": "c1", "parents": [{}]}]} if "/compare/" in path else {"files": files})
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf): m.emit_refactor_stale("o/r", "o/r#8", "new")
+print(buf.getvalue().count("### SHAPE STALE"))
+')
+check "SHAPE STALE doesn't count a committed build bundle (dist/)" 0 "$got"
 rm -rf "$T"
 echo "failures: $fails"; [ "$fails" = 0 ]

@@ -386,13 +386,15 @@ NOT_CODE = re.compile(r'(^|/)(tests?|__tests__|e2e|specs?|docs?)/|\.(test|spec)\
 def check_patches(d, pending=None, amend=False):
     """`finality` step 1 as a mechanism: a code file (no test or doc) changed by 5 commits of the branch gets no 6th until
     `pr-steps simplify` records on the head (delegate/simplify.md); a commit with that record, HEAD too, starts the counts over after it.
+    A merge commit, made or being made, is no change: it syncs the base.
     pending: the files the commit being made changes; None for a push, which checks the commits alone. amend: it replaces HEAD."""
     g = lambda *a: subprocess.run(['git', '-C', d, *a], capture_output=True, text=True).stdout
     base = g('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD').strip() or 'origin/main'
+    if pending is not None and g('rev-parse', '-q', '--verify', 'MERGE_HEAD').strip(): pending = []
     count = {}
-    commits = g('rev-list', '--reverse', '--no-merges', 'HEAD', '--not', base).split()
+    commits = g('rev-list', '--reverse', 'HEAD', '--not', base).split()
     for c in commits:
-        files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()
+        files = g('diff-tree', '--no-commit-id', '--name-only', '-r', c).split()  # none for a merge commit
         if amend and c == commits[-1]: pending, files = sorted(set(pending or []) | set(files)), []  # the amended commit is the pending one
         for f in files:
             count[f] = count.get(f, 0) + 1

@@ -59,7 +59,8 @@ fi
 [ -s "$out" ] || { echo "$out is empty: run the step and save its output" >&2; exit 1; }
 last=$(grep -v '^[[:space:]]*$' "$out" | tail -n1 || true)
 sha=$(git rev-parse HEAD)
-# pr-steps small <report>: a fix of at most 60 lines outside tests, docs and lockfiles, with a test in the diff (a diff of docs
+built='(^|/)dist/'  # a committed build bundle: not code a reviewer reads
+# pr-steps small <report>: a fix of at most 60 lines outside tests, docs, lockfiles and dist/, with a test in the diff (a diff of docs
 # alone: a commit's Cold-read trailer, rules step 4), reviewed once by delegate/small-review.md, stands for verify, shape,
 # reverify, fresh and the approach (converge §Small fix); gates still run
 if [ "$step" = small ]; then
@@ -67,9 +68,9 @@ if [ "$step" = small ]; then
   base=$(git merge-base HEAD "${pb:+origin/$pb}" 2>/dev/null || git merge-base HEAD "$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)" 2>/dev/null) || { echo "no merge-base with the base branch" >&2; exit 1; }
   testre='(^|/)(tests?|__tests__|e2e|specs?)/|\.(test|spec)\.|(^|/)\.test[A-Za-z-]*\.'
   docs='\.md$|(^|/)docs?/'
-  skip="$testre|$docs"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
+  skip="$testre|$docs|$built"'|lock\.(json|yaml)$|\.lock$|(^|/)\.changeset/'
   n=$(git diff --numstat "$base" HEAD | awk -v r="$skip" '$3 !~ r {s+=$1+$2} END{print s+0}')
-  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs and lockfiles: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
+  [ "$n" -le 60 ] || { echo "$n changed lines outside tests, docs, lockfiles and dist/: past a small fix's 60, run converge steps 1-4" >&2; exit 1; }
   if ! git diff --name-only --diff-filter=AM "$base" HEAD | grep -Eq "$testre"; then
     git diff --name-only "$base" HEAD | grep -Evq "$docs" && { echo "the diff adds or changes no test: a small fix carries a test that fails on the base and passes on the head" >&2; exit 1; }
     python3 "$(dirname "$(realpath "$0")")/../.githooks/cold-read" "$base..HEAD" || { echo "the diff changes only docs and has no cold read: a commit of it carries a 'Cold-read: <path>' trailer naming the cold read's record (mergeworthy:rules step 4)" >&2; exit 1; }
@@ -110,7 +111,7 @@ delta() {
   local B; B=$(git symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)
   pid() { git diff "$(git merge-base "$1" "$B" 2>/dev/null)" "$1" 2>/dev/null | git patch-id --stable | cut -d' ' -f1; }
   if git rev-parse -q --verify "$B" >/dev/null && [ -n "$(pid "$1")" ] && [ "$(pid "$1")" = "$(pid HEAD)" ]; then echo 0; return; fi
-  git diff --numstat "$1" HEAD | awk '{s+=$1+$2} END{print s+0}'
+  git diff --numstat "$1" HEAD | awk -v r="$built" '$3 !~ r {s+=$1+$2} END{print s+0}'
 }
 # A small follow-up (≤ 80 changed lines, no new behavior) carries an earlier head's recorded step: "carries the pass of <sha>"
 carries() {
