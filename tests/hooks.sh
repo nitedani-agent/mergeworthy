@@ -2024,6 +2024,13 @@ tr_file 'README tidied.' work
 check "the final message is the hook input's, not the transcript's last line (which may not be written yet)" "2 1" "$(slj 'Tell me when to re-check CI.') $(grep -ci 'tell me when' "$T/err")"
 tr_file 'Ask me to check the run when you want it.' work
 check "stop_hook_active no longer lets the next stop through: the hand-back still blocks" 2 "$(slj '' 1)"
+# a claude -p --no-session-persistence run's Stop input, as captured: its transcript_path names a file that is never written
+nopersist() { # CLAUDE_PID
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"4c63f963","transcript_path":sys.argv[1]+"/never/4c63f963.jsonl","cwd":sys.argv[1],"prompt_id":"e89cd96c","permission_mode":"default","effort":{"level":"medium"},"hook_event_name":"Stop","stop_hook_active":False,"last_assistant_message":"OK","background_tasks":[],"session_crons":[]}))' "$T" \
+    | CLAUDE_PID=$1 MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo "$? $(wc -c < "$T/err")"; }
+(exec -a 'claude -p --no-session-persistence reply with exactly OK' sleep 600) & NPID=$!
+check "a claude -p --no-session-persistence run ends silently; a session whose transcript can't be read still blocks once" "0 0 2" "$(nopersist $NPID) $(nopersist $$ | cut -d' ' -f1)"
+kill "$NPID"; wait "$NPID" 2>/dev/null
 tr_file 'README tidied.' work
 ci() { # session [cwd]
   python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "${2:-$T}" "$1" | MERGEWORTHY_STOP_CHECKIN=on python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }

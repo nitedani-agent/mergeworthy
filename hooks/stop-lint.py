@@ -5,7 +5,7 @@ on GitHub with no live Monitor on a watcher's events.log in this session (the se
 wakes it), or with a line still owed in a watcher's replies-owed.md (mergeworthy:reply).
 The final message is the hook input's last_assistant_message (the transcript may not hold it yet). stop_hook_active skips only
 the check-in: every other check holds until it is met (Claude Code itself ends the turn after 8 blocks in a row)."""
-import glob, hashlib, json, os, re, sys, time
+import glob, hashlib, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import failclosed
 d = json.load(sys.stdin)
@@ -35,6 +35,8 @@ try:
 except (KeyError, TypeError, OSError):
     # Without the transcript, what the session did can't be checked: block once; on the stop after, the final message's
     # own checks still run (this session can't make its transcript readable)
+    claude = subprocess.run(['ps', '-p', os.environ.get('CLAUDE_PID', ''), '-o', 'command='], capture_output=True, text=True).stdout
+    if '--no-session-persistence' in claude.split(): sys.exit(0)  # a run that keeps no transcript (claude -p for a program's output)
     if not active:
         print(f"stop-lint can't read this session's transcript ({d.get('transcript_path')}), so whether its work is finished can't be checked. "
               "Re-check it yourself: anything owed, unfinished or unwatched, do now; then end the turn.", file=sys.stderr)
