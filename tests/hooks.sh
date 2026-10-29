@@ -11,12 +11,13 @@ cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # stub gh: answers `gh api <path>` from $FX/<path with / ? & = replaced by _>; exit 1 when the fixture is missing (a 404)
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
-# ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported")
+# ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported"; a URL not on github.com: gh's "no pull requests found")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands
 [ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
+[ "$1 $2" = "pr checks" ] && [ "${3#https://github.com/}" = "$3" ] && { echo "no pull requests found for branch \"$3\"" >&2; exit 1; }
 if [ "$1 $2" = "pr checks" ]; then f="$FX/pr_checks_$(printf '%s' "$3" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 1; echo "no checks reported on the 'x' branch" >&2; exit 1; fi
 [ "$1" = api ] || exit 1
 f="$FX/$(printf '%s' "$2" | tr '/?&=' '____')"
@@ -41,6 +42,8 @@ git init -q -b fix "$TCO"; git -C "$TCO" -c user.name=t -c user.email=t@t commit
 quick() { # <checkout> [extra log lines]: records its HEAD's quick gates
   local f; f=$(mktemp "$T/quick.XXXXXX"); printf 'pnpm test -> exit 0 (3 tests)\n%s' "${2:-}" > "$f"; (cd "$1" && bash "$R/bin/pr-steps" quick "$f" >/dev/null); }
 quick "$TCO"
+printf 'Root cause: src/a.ts:3 does it\n| Candidate | Rating | Why |\n|---|---|---|\n| Not building it | 3 | the bug stays |\n| Fix it | 8 | one place |\n\nChosen: Fix it\n' > "$T/approach.md"
+(cd "$TCO" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check() { # name want got
   echo "$1: $3 (want $2)"; [ "$2" = "$3" ] || fails=$((fails+1))
 }
@@ -1492,7 +1495,7 @@ check "BLOCK: a chosen approach rated 6" 1 "$(prs2 approach "$T/ap6.md")"
 check "BLOCK: a chosen approach that is no candidate" 1 "$(prs2 approach "$T/apx.md")"
 check "BLOCK: gh pr ready after refused approach records" 2 "$(ready)"
 check "an approach with three rated candidates and a chosen 8 records, with no Browser line" 0 "$(prs2 approach "$T/ap.md")"
-glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
+glab() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?; }
 mkdir -p "$HOME/.config/pnpm"; echo '//registry.npmjs.org/:_authToken=x' > "$HOME/.npmrc"; cp "$HOME/.npmrc" "$HOME/.config/pnpm/config.yaml"
 check "BLOCK: printing a credential file; counting a line in it, or a file that isn't one, passes" "2 2 2 0 0" "$(glab "cat $HOME/.npmrc") $(glab 'cat ~/.config/pnpm/config.yaml') $(glab "grep token $HOME/.npmrc") $(glab "grep -c registry $HOME/.npmrc") $(glab "cat $T/tr.jsonl")"
 check "BLOCK: setting a draft's file time (touch -d / -r, also after a cd into drafts/); a plain touch elsewhere passes" "2 2 0 0" "$(glab "cd /w/drafts/vike-1707 && touch -d 2024-06-20T12:26:20Z proposal.parent.md") $(glab "touch -r a.md /w/drafts/x/thread-context.md") $(glab "touch /w/drafts/x/new.md") $(glab "touch -d yesterday /tmp/stamp")"
@@ -1520,8 +1523,8 @@ check "BLOCK: pkill -f behind wrappers (timeout, netns-run, nice, ionice) and in
 check "reading a .review.out, gate-pass, a claude -p reviewer's stdout and an agent writing its own output pass" "0 0 0 0" "$(guard 'cat /w/x.review.out > /w/copy.md') $(guard 'gate-pass /w/x.md /w/x.review.out') $(guard 'claude -p "$(cat /w/p.md)" > /w/x.review.out') $(guard 'echo CLEAN > /w/x.review.out' a1)"
 check "BLOCK: glab mr create, not a draft, outside a converged repo" 2 "$(glab 'glab mr create --title x')"
 check "BLOCK: glab mr update --ready outside a converged repo" 2 "$(glab 'glab mr update 5 --ready')"
-check "glab mr create --draft passes" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --draft --title x')"
-check "glab mr create --wip passes" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --wip --title x')"
+check "glab mr create --draft passes on a branch with its approach" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --draft --title x' "$G2")"
+check "glab mr create --wip passes there too" 0 "$(MERGEWORTHY_WATCHER=off glab 'glab mr create --wip --title x' "$G2")"
 check "gh pr ready passes once all five steps and the approach hold" 0 "$(ready)"
 check "glab mr update --ready passes there too" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"glab mr update 5 --ready"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>&1; echo $?)"
 printf 'm\n' > "$G2/m"; git -C "$G2" add m; git -c user.name=maint -c user.email=m@m -C "$G2" commit -q -m "a maintainer's tweak"
@@ -1992,7 +1995,7 @@ GW="$T/glw"; mkdir -p "$GW"; : > "$GW/threads.txt"; : > "$GW/repos.txt"
 echo "$GPID" > "$GW/gh-watch.pid"; echo sess-gl > "$GW/session"; echo "$GW" > "$HOME/.claude/gh-watch-dirs.txt"
 glguard() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-gl","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "${2:-$T}" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "BLOCK: glab issue create with no watcher on the project" "2 1" "$(glguard 'glab issue create -R ns/sub/proj --title x') $(grep -c 'gitlab.com/ns/sub/proj' "$T/err")"
-git init -q "$T/glrepo"; git -C "$T/glrepo" remote add origin git@gitlab.com:ns/sub/proj.git
+git init -q "$T/glrepo"; git -C "$T/glrepo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$T/glrepo" remote add origin git@gitlab.com:ns/sub/proj.git; (cd "$T/glrepo" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 check "BLOCK: glab mr create --draft in a clone of an unwatched project" 2 "$(glguard 'glab mr create --draft --title x' "$T/glrepo")"
 echo gitlab.com/ns/sub/proj > "$GW/repos.txt"
 check "glab issue create passes once a watcher covers the project" "0 0" "$(glguard 'glab issue create -R https://gitlab.com/ns/sub/proj --title x') $(glguard 'glab mr create --draft --title x' "$T/glrepo")"
@@ -2096,6 +2099,7 @@ check "BLOCK: pr-steps quick on a log saying a gate was not run, on a line of it
 TK2="$HOME/.mergeworthy/work/vike-3671"; CK="$TK2/vike"; mkdir -p "$TK2"
 printf 'Tier: S, because one CI fix in one repo\n\n- [ ] Fix CI https://github.com/vikejs/vike/pull/3671\n' > "$TK2/scope.md"
 git init -q -b fix-telefunc "$CK"; git -C "$CK" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK" remote add upstream https://github.com/vikejs/vike.git
+(cd "$CK" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 printf '[{"name":"TypeScript","bucket":"fail"},{"name":"Examples Vue/Others (ubuntu-latest)","bucket":"fail"},{"name":"Lint","bucket":"pass"}]' > "$FX/pr_checks_https___github.com_vikejs_vike_pull_3671"
 quick "$CK"
 check "replay: a CI fix whose gate log doesn't run the failing jobs: blocked, naming each failing one" "2 1 1 0" \
@@ -2110,7 +2114,7 @@ check "a watcher of the checkout's work folder on the upstream repo covers it" 0
 # two tasks' work folders, one watched by session sess-a: its events wake that session alone, so a session acting from the other folder needs a watcher of its own
 printf 'vikejs/vike\ngitlab.com/ns/proj\n' > "$TK2/repos.txt"; echo sess-a > "$TK2/session"
 TK4="$HOME/.mergeworthy/work/vike-other"; CK4="$TK4/vike"; mkdir -p "$TK4"; printf 'Tier: S, because one fix\n\n- [ ] Fix it https://github.com/vikejs/vike/issues/1\n' > "$TK4/scope.md"
-git init -q -b fix-telefunc "$CK4"; git -C "$CK4" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK4" remote add upstream https://github.com/vikejs/vike.git; quick "$CK4"
+git init -q -b fix-telefunc "$CK4"; git -C "$CK4" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$CK4" remote add upstream https://github.com/vikejs/vike.git; quick "$CK4"; (cd "$CK4" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
 bgs() { # session command cwd: pre-bash-guard's exit code, its message in $T/err
   python3 -c 'import json,sys; print(json.dumps({"session_id":sys.argv[1],"tool_input":{"command":sys.argv[2]},"cwd":sys.argv[3]}))' "$@" | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 unwatched() { bgs "$@" >/dev/null; grep -c 'no running watcher' "$T/err"; }
@@ -2352,14 +2356,75 @@ cat > "$T/bin/glab" <<'EOF'
 [ "$1" = api ] || exit 1
 f="$FX/gl_$(printf '%s' "$4" | tr '/?&=%' '_____')"
 [ -f "$f" ] && cat "$f" || { echo 'glab: 404 Not found (HTTP 404)' >&2; exit 1; }
+[ "$5" != --paginate ] || [ ! -f "$f.page2" ] || cat "$f.page2"  # glab prints the next page's array right after the first
 EOF
 GL="$T/gl"; git init -q -b scratch "$GL"; git -C "$GL" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$GL" remote add origin git@gitlab.com:me/app.git
-echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"
+for mr in me_2Fapp_merge_requests_4 me_2Fapp_merge_requests_5 me_2Fapp_merge_requests_6 acme_2Fapp_merge_requests_9; do echo '{"head_pipeline":null}' > "$FX/gl_projects_$mr"; done  # the MRs below have no pipeline
+echo me > "$FX/gl_login"; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_scratch"
 (cd "$GL" && bash "$R/bin/pr-steps" preflight 'none, because the test repo has no UI' >/dev/null)
 check "a commit in a checkout of a GitLab repo isn't held to gh's account" 0 "$(bg 'git -c user.name=Someone -c user.email=me@example.com commit -q --allow-empty -m x' "$GL")"
 check "GitLab: ssh://git@gitlab.com:22/ is the same own namespace" 0 "$(bg 'git push ssh://git@gitlab.com:22/me/app.git HEAD:scratch' "$GL")"
 check "GitLab: a push to its own namespace with no MR passes; to a group's repo, or an open MR's branch, it is blocked, naming why" "0 2 1 2 1" \
   "$(bg 'git push origin HEAD:scratch' "$GL") $(bg 'git push git@gitlab.com:acme/app.git HEAD:scratch' "$GL") $(grep -c "acme/app isn't me's" "$T/err") $(echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/4","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_scratch"; bg 'git push origin HEAD:scratch' "$GL") $(grep -c 'updates https://gitlab.com/me/app/-/merge_requests/4' "$T/err")"
+# pull-request step 5 comes before the build and the draft PR: a branch with no approach record opens no PR or MR, draft or not, and updates no open one
+NA="$TASKW/mr-b"; git init -q -b mr-b "$NA"; git -C "$NA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a; git -C "$NA" remote add origin git@gitlab.com:me/app.git; quick "$NA"
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/5","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_mr-b"
+printf '%s\n**State: draft** (my bug check is still running)\n\nRoutes after vike(app) skip the auth +middleware. This PR runs it first.\n' '<img src="https://github.com/claude.png" width="20" height="20" alt="Claude">' > "$T/na.md"; sha256sum "$T/na.md" | cut -d' ' -f1 > "$T/na.md.gate"
+na() { for c in "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/title.md)\" --body-file $T/na.md" "gh api repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" \
+                'glab mr create --draft --title x' 'glab api projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x' 'git push origin HEAD:mr-b'; do
+    printf '%s %s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")" "$(grep -c 'pull-request step 5).*pr-steps approach <work folder>/approach.md' "$T/err")"; done | xargs; }
+check "BLOCK: with no approach record, a draft gh pr create, gh api POST pulls, a draft glab mr create, glab api POST merge_requests and a push updating an open MR, naming step 5" "2 1 2 1 2 1 2 1 2 1" "$(na)"
+echo '[]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_mr-b"
+check "a collaboration push updating no PR or MR needs no approach record" 0 "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git HEAD:mr-b' "$NA")"
+api_forms() { for c in "GH_REPO=o/r gh api 'repos/{owner}/{repo}/pulls' -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" "gh api /repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" \
+                       "gh api https://api.github.com/repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" "gh api https://github.example.com/api/v3/repos/o/r/pulls -f title=x -f head=mr-b -f base=main -F body=@$T/na.md" \
+                       'glab api api/v4/projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x' "glab api 'projects/me%2Fapp/merge_requests?foo=bar' -X POST -f source_branch=mr-b -f target_branch=main -f title=x" \
+                       'glab api https://gitlab.com/api/v4/projects/me%2Fapp/merge_requests -X POST -f source_branch=mr-b -f target_branch=main -f title=x'; do
+    printf '%s ' "$(MERGEWORTHY_WATCHER=off bg "$c" "$NA")"; done | xargs; }
+check "BLOCK: with no approach record, a PR or MR created through the API in each form gh and glab take ({owner}/{repo}, a leading slash, a full URL, GitHub Enterprise's, api/v4/, a query)" "2 2 2 2 2 2 2" "$(api_forms)"
+check "BLOCK: an issue opened through the API in those forms, in a repo no watcher covers, naming it with its host" "2 1 2 1 2 1 2 1" \
+  "$(bg "GH_REPO=nobody/x gh api 'repos/{owner}/{repo}/issues' -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers nobody/x' "$T/err") $(bg "glab api '/api/v4/projects/nobody%2Fx/issues?x=1' -X POST -f title=x" "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.com/nobody/x' "$T/err") $(bg 'glab api https://gitlab.example.com/api/v4/projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gitlab.example.com/nobody/x' "$T/err") $(bg "gh api https://github.example.com/api/v3/repos/nobody/x/issues -f title=x -F body=@$T/na.md" "$NA") $(grep -c 'no running watcher of this task or session covers github.example.com/nobody/x' "$T/err")"
+check "BLOCK: an issue or MR opened through the API by a project's numeric id, since which project it is can't be told, naming that" "2 1" \
+  "$(bg 'glab api projects/123/issues -X POST -f title=x' "$NA") $(grep -c "can't tell which repo this acts on" "$T/err")"
+check "a GitLab project path through the API is on --hostname's or GITLAB_HOST's host" "2 1 2 1" \
+  "$(bg 'glab api --hostname gl.example.com projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers gl.example.com/nobody/x' "$T/err") $(bg 'GITLAB_HOST=https://h.example.com glab api projects/nobody%2Fx/issues -X POST -f title=x' "$NA") $(grep -c 'no running watcher of this task or session covers h.example.com/nobody/x' "$T/err")"
+(cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null)
+check "each passes once the branch has its approach record" "0 0 0 0 0 0 0 0 0 0" "$(na)"
+check "the API forms pass too" "0 0 0 0 0 0 0" "$(api_forms)"
+# a push is held to the approach of each branch it publishes, whichever is checked out
+git -C "$NA" checkout -q -b unrelated
+echo '[{"web_url":"https://gitlab.com/me/app/-/merge_requests/6","draft":true}]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_unrecorded"
+check "a push of a recorded branch passes from an unrecorded one; of an unrecorded branch with an open MR, from a recorded one, it blocks, naming the branch" "0 2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b' "$NA") $( (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" branch -q unrecorded; MERGEWORTHY_WATCHER=off bg 'git push origin unrecorded:unrecorded' "$NA") $(grep -c 'unrecorded has no approach record' "$T/err")"
+# a PR or MR create is held to the record of the branch it names (--head, -H owner:branch, --source-branch, -s, head=, source_branch=), else the checked-out one
+named() { for c in 'glab mr create --draft --source-branch unrecorded --title x' 'glab mr create --draft -s unrecorded --title x' \
+    "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/title.md)\" --body-file $T/na.md --head $1" "gh pr create --draft --repo o/r --title \"\$(cat /w/drafts/title.md)\" --body-file $T/na.md -H someone:$1" \
+    "gh api repos/o/r/pulls -f title=x -f head=someone:$1 -f base=main -F body=@$T/na.md" "glab api projects/me%2Fapp/merge_requests -X POST -f source_branch=$1 -f target_branch=main -f title=x"; do
+    printf '%s %s ' "$(MERGEWORTHY_WATCHER=off bg "${c//unrecorded/$1}" "$NA")" "$(grep -c "$1 has no approach record" "$T/err")"; done | xargs; }
+check "BLOCK: from a recorded checkout, a PR or MR create naming a branch with no record, in each form, naming it" "2 1 2 1 2 1 2 1 2 1 2 1" "$(named unrecorded)"
+check "from a checkout with no record, a PR or MR create naming a recorded branch passes, in each form" "0 0 0 0 0 0 0 0 0 0 0 0" "$(git -C "$NA" checkout -q unrecorded; named mr-b; git -C "$NA" checkout -q unrelated)"
+git -C "$NA" branch -q fresh; echo '[]' > "$FX/gl_projects_me_2Fapp_merge_requests_state_opened_source_branch_fresh"
+check "BLOCK: a push updating an open MR needs the record of every branch it publishes, a new one beside it too, naming it" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push origin mr-b:mr-b fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
+ghpr() { python3 -c 'import json,sys; print(json.dumps({"data": {"viewer": {"login": "me"}, "repository": {"owner": {"login": "me"}, **{f"b{i}": {"associatedPullRequests": {"nodes": [{"url": "https://github.com/me/app/pull/7", "isDraft": True}] if x == "pr" else []}} for i, x in enumerate(sys.argv[1:])}}}}))' "$@" > "$FX/graphql_me"; }
+check "BLOCK: the same on GitHub, naming it" "2 1" \
+  "$(ghpr pr none; MERGEWORTHY_WATCHER=off bg 'git push https://github.com/me/app.git mr-b:mr-b fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
+echo '[{"web_url":"https://gitlab.com/acme/app/-/merge_requests/9","draft":true}]' > "$FX/gl_projects_acme_2Fapp_merge_requests_state_opened_source_branch_fresh"
+check "BLOCK: a push updating an open MR of a group's GitLab project (not the login's) needs the record too, naming it" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'fresh has no approach record' "$T/err")"
+# an MR's failing jobs are read from its head pipeline through glab, on the MR's host
+git -C "$NA" checkout -q fresh; (cd "$NA" && bash "$R/bin/pr-steps" approach "$T/approach.md" >/dev/null); git -C "$NA" checkout -q unrelated
+echo '{"head_pipeline":{"id":77}}' > "$FX/gl_projects_acme_2Fapp_merge_requests_9"
+echo '[{"name":"flaky","status":"failed","allow_failure":true}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
+check "a push updating a draft MR of a group's GitLab project passes with its approach recorded and only an allowed-to-fail job failing" 0 \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA")"
+echo '[{"name":"lint","status":"failed"}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
+check "BLOCK: the same push while the MR's pipeline has a failed job its gate log doesn't name, naming the job and the MR" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'these CI jobs fail (https://gitlab.com/acme/app/-/merge_requests/9).*"lint"' "$T/err")"
+python3 -c 'import json; print(json.dumps([{"name": f"flaky-{i}", "status": "failed", "allow_failure": True} for i in range(100)]))' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100"
+echo '[{"name":"lint","status":"failed"}]' > "$FX/gl_projects_acme_2Fapp_pipelines_77_jobs_scope[]_failed_scope[]_canceled_per_page_100.page2"
+check "BLOCK: the same with the failed job on the second page of the pipeline's jobs, behind 100 allowed-to-fail ones, naming it" "2 1" \
+  "$(MERGEWORTHY_WATCHER=off bg 'git push git@gitlab.com:acme/app.git fresh:fresh' "$NA") $(grep -c 'these CI jobs fail (https://gitlab.com/acme/app/-/merge_requests/9).*"lint"' "$T/err")"
 tr_cmd 'cd /tmp/x && git push origin HEAD:fix'
 check "a session that pushed, with no scope.md in a work folder it used, is told to write one (stop-lint reads its git commands)" "2 1" "$(slj 'Pushed the fix.') $(grep -c 'no work folder it used has a scope.md' "$T/err")"
 check "the parses a stop made are kept for the session's next stop, which blocks the same" "1 2" "$(ls "$HOME/.claude/mergeworthy-parses/s-fc.json" | wc -l) $(slj 'Pushed the fix.')"

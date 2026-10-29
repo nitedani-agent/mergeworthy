@@ -313,6 +313,23 @@ def gitlab_repo(a, run_dir):
         repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
+def api_opens(ep, rest, env, d):
+    """(repo, 'issue' or 'pr') a `gh api` or `glab api` POST to ep, run in d, opens, in each form the CLIs take (a full URL, a leading slash, an api/v3/
+    or api/v4/ prefix, a query, gh's {owner}/{repo} from GH_REPO or the checkout, glab's :fullpath or :id, a GitLab host from --hostname or GITLAB_HOST);
+    None for any other endpoint, repo None when it can't be told (a project's numeric id)."""
+    host, path = re.match(r'(?:https?://([^/]+))?/?(?:api/v[34]/)?([^?]*)', ep).groups()
+    if (m := re.fullmatch(r'repos/([^/]+/[^/]+)/(issues|pulls)', path)):
+        base = re.sub(r'^.*?([^/]+/[^/]+)$', r'\1', env.get('GH_REPO') or os.environ.get('GH_REPO') or cwd_repo(d) or '')
+        repo = m[1].replace('{owner}', base.split('/')[0]).replace('{repo}', base.split('/')[-1]) if base else m[1]
+        return (None if '{' in repo else repo if host in (None, 'api.github.com') else f'{host}/{repo}'), 'pr' if m[2] == 'pulls' else 'issue'
+    if (m := re.fullmatch(r'projects/([^/]+)/(issues|merge_requests)', path)):
+        import urllib.parse
+        project = urllib.parse.unquote(m[1])
+        host = host or (opt(rest, ['--hostname']) or [None])[-1] or env.get('GITLAB_HOST') or os.environ.get('GITLAB_HOST') or 'gitlab.com'
+        repo = gitlab_repo(rest, d) if project in (':fullpath', ':id') else f"{re.sub(r'^https?://|/+$', '', host)}/{project}" if '/' in project else None
+        return repo, 'pr' if m[2] == 'merge_requests' else 'issue'
+    return None
+
 def check_compose(env, t):
     """delegate/agent.md §Machine, own ports: a compose stack you start publishes no fixed host port and pins no container name;
     netns-run doesn't isolate what the Docker daemon publishes. A config that can't be read blocks (the stack wouldn't start either)."""
@@ -427,7 +444,7 @@ def repo_of(url):
     return host, m[2]
 
 def pushed(git_dir, opts, env, rest):
-    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run in git_dir with the command's other global options
+    """([remote URLs], [(commit, branch it updates, local branch it publishes)]) of a `git push <rest>` run in git_dir with the command's other global options
     (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
     a local path."""
     if '--delete' in rest or '-d' in rest: return [], []
@@ -468,7 +485,10 @@ def pushed(git_dir, opts, env, rest):
         branch = dst or (to[1] if not pos[1:] else head if src == 'HEAD' else src)
         if re.search(r'[$`]', branch):
             block(f"the branch this push updates ({branch}) is computed when it runs, so whether it is a PR's can't be told: write it out")
-        out.append((sha, re.sub(r'^refs/heads/', '', branch)))
+        local = re.sub(r'^refs/heads/', '', src)
+        if src == 'HEAD': local = head or 'HEAD'
+        elif run('show-ref', '--verify', '-q', f'refs/heads/{local}').returncode: local = branch  # a commit, not a branch: the one it updates
+        out.append((sha, re.sub(r'^refs/heads/', '', branch), re.sub(r'^refs/heads/', '', local)))
     return urls, out
 
 def collaboration(d, url, heads):
@@ -495,9 +515,7 @@ def collaboration(d, url, heads):
         data, err = ask(['gh', 'api', 'graphql', '-f', f'query={q}', '-f', f'o={owner}', '-f', f'n={repo.split("/")[1]}',
                          *[x for i, (_, b) in enumerate(heads) for x in ('-f', f'b{i}=refs/heads/{b}')]])
         data = (data.get('data') or {}).get('repository') and data['data'] if isinstance(data, dict) else None
-    elif login and owner != login:
-        return [f"{repo} isn't {login}'s"], []
-    else:
+    else:  # a group's project too: whether the push updates an MR decides its approach check
         import urllib.parse
         answers = [ask(['glab', 'api', '--hostname', host, f"projects/{urllib.parse.quote(repo, safe='')}/merge_requests?state=opened&source_branch={urllib.parse.quote(b)}"]) for _, b in heads]
         data = [x for a, _ in answers for x in a] if all(isinstance(a, list) for a, _ in answers) else None
@@ -509,22 +527,40 @@ def collaboration(d, url, heads):
         block(f"{'gh' if hub else 'glab'} couldn't tell whether this push to {repo} updates a {'PR' if hub else 'MR'} ({err[:160]}), so its push gates can't be checked: retry once it answers")
     if not hub:
         mrs = [{'url': x.get('web_url'), 'isDraft': bool(x.get('draft'))} for x in data if isinstance(x, dict)]
-        return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs), mrs
+        return [f"it updates {', '.join(p['url'] for p in mrs)}"] * bool(mrs) + [f"{repo} isn't {login}'s"] * bool(login and owner != login), mrs
     prs = [p for i in range(len(heads)) for p in ((data['repository'].get(f'b{i}') or {}).get('associatedPullRequests') or {}).get('nodes') or []]
     why = [f"it updates {', '.join(p['url'] for p in prs)}"] * bool(prs) + \
           [f"{repo} isn't {data['viewer']['login']}'s"] * (data['repository']['owner']['login'] != data['viewer']['login'])
     return why, prs
 
 def failing_jobs(urls):
-    """{job name: PR URL} of every failing CI job on these PRs' heads; a PR whose checks gh can't read blocks."""
+    """{job name: PR URL} of every failing CI job on these PRs' (MRs') heads: gh reads a PR's checks, glab an MR's head pipeline
+    on the MR's own host; a PR or MR whose CI can't be read blocks."""
+    import urllib.parse
+    def api(host, path, *flags):
+        return subprocess.run(['glab', 'api', '--hostname', host, path, *flags], capture_output=True, text=True, timeout=30, check=True).stdout
+    def pages(out):  # glab api --paginate prints each page's array as it came, back to back: [...][...]
+        jobs, at = [], 0
+        while not at or out[at:].strip():  # an empty answer is no page: it blocks like any unreadable one
+            page, at = json.JSONDecoder().raw_decode(out, len(out) - len(out[at:].lstrip()))
+            jobs += page
+        return jobs
     out = {}
     for u in urls:
+        mr = re.match(r'https?://([^/]+)/(.+?)/-/merge_requests/(\d+)', u)
         try:
-            r = subprocess.run(['gh', 'pr', 'checks', u, '--json', 'name,bucket'], capture_output=True, text=True, timeout=30)
-            rows = [] if 'no checks reported' in r.stderr else json.loads(r.stdout)
-        except (OSError, subprocess.TimeoutExpired, ValueError):
-            block(f"gh couldn't read the CI of {u}, so whether this head reproduces its failing jobs can't be checked: retry once gh answers")
-        out.update({x.get('name'): u for x in rows if isinstance(x, dict) and x.get('bucket') in ('fail', 'cancel')})
+            if mr:
+                project = f"projects/{urllib.parse.quote(mr[2], safe='')}"
+                pipeline = (json.loads(api(mr[1], f'{project}/merge_requests/{mr[3]}')).get('head_pipeline') or {}).get('id')
+                failed = [x.get('name') for x in pages(api(mr[1], f'{project}/pipelines/{pipeline}/jobs?scope[]=failed&scope[]=canceled&per_page=100', '--paginate'))
+                          if isinstance(x, dict) and not x.get('allow_failure')] if pipeline else []
+            else:
+                r = subprocess.run(['gh', 'pr', 'checks', u, '--json', 'name,bucket'], capture_output=True, text=True, timeout=30)
+                failed = [x.get('name') for x in ([] if 'no checks reported' in r.stderr else json.loads(r.stdout)) if isinstance(x, dict) and x.get('bucket') in ('fail', 'cancel')]
+        except (OSError, subprocess.SubprocessError, ValueError, AttributeError, TypeError):
+            cli = 'glab' if mr else 'gh'
+            block(f"{cli} couldn't read the CI of {u}, so whether this head reproduces its failing jobs can't be checked: retry once {cli} answers")
+        out.update(dict.fromkeys(failed, u))
     return out
 
 def check_workflow(what, d, commits, updates=()):
@@ -561,6 +597,22 @@ def check_workflow(what, d, commits, updates=()):
             block(f"these CI jobs fail ({', '.join(sorted(set(jobs[j] for j in missed)))}) and {sha[:10]}'s gate log has no passing line naming them: "
                   + '; '.join(f'"{j}"' for j in missed) + ". Run each job's command here on this head (its workflow file names it; install what it needs), "
                   "add `<job name>: <command> -> exit 0` to the log, and `pr-steps quick <log>` again (code §Gates)")
+
+def need_approach(d, what, branch=None):
+    """pull-request step 5 comes before the build and the draft PR: the branch's approach record, before it opens a PR or MR (draft or not)
+    or updates an open one; branch defaults to the checked-out one."""
+    rec = branch_record(d, 'approach', branch)
+    if not rec:
+        block(f"{what} runs from the branch's checkout, so its approach record can be checked")
+    if not os.path.exists(rec):
+        block(f"{branch or 'this branch'} has no approach record: rate the approaches before building it and opening its PR or MR (mergeworthy:pull-request step 5), "
+              f"then `pr-steps approach <work folder>/approach.md`, before {what}")
+
+def opened_branch(a, options=(), fields=()):
+    """The branch a PR or MR create with arguments a opens from, as it names it (the last of options, or a head= or source_branch= field
+    among fields; owner:branch gives branch); None when it names none, for the checked-out one."""
+    named = opt(a, list(options)) + [v.split('=', 1)[1] for v in opt(a, list(fields)) if v.split('=', 1)[0] in ('head', 'source_branch')]
+    return where.expand(named[-1]).split(':')[-1] if named else None
 
 NEED_DRAFT ="post from a draft file (--body-file /abs/drafts/<name>.md, -F body=@/abs/drafts/<name>.md or --input) that passed the gate"
 
@@ -638,12 +690,14 @@ def check(t, has_cd):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
             g = git_globals(t)
             urls, heads = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
-            why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
-            if why and not all(sha for sha, _ in heads):
+            why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, [h[:2] for h in heads]) for u in urls])] or ([], [])
+            if why and not all(sha for sha, _, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
             if why:  # a push of its own (no PR, its own repo) is free; collaboration runs the task's records first
-                check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _ in heads], [p['url'] for p in prs])
+                check_workflow(f"this push ({'; '.join(why)})", repo, [sha for sha, _, _ in heads], [p['url'] for p in prs])
                 check_patches(repo)
+                if prs:  # each branch it publishes, whichever is checked out
+                    for _, _, local in heads: need_approach(repo, f"this push ({'; '.join(why)})", local)
                 head, missing = missing_steps(repo)
                 if missing and any(not p['isDraft'] for p in prs):
                     block(f"this branch's PR is out of draft and HEAD {head[:10]} has no pr-steps {', '.join(missing)} record (approach: pull-request step 5, once per branch): run converge's pipeline on it first (each step ends with its `pr-steps <step> <output>`), or `gh pr ready --undo` while it converges")
@@ -671,6 +725,7 @@ def check(t, has_cd):
         check_refactor_ask(*post_target('pr', a[2:], run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
         check_workflow('`gh pr create`', known(run_dir), [git_head(run_dir)])
+        need_approach(run_dir, '`gh pr create`', opened_branch(a[2:], ['--head', '-H']))
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
         head, missing = missing_steps(known(run_dir))
@@ -678,6 +733,10 @@ def check(t, has_cd):
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
         need_watch(gitlab_repo(a[2:], run_dir), run_dir)
+        if a[0] == 'mr': need_approach(run_dir, '`glab mr create`', opened_branch(a[2:], ['--source-branch', '-s']))
+    if p == 'glab' and a[:1] == ['api'] and (call := api_call(a[1:]))[0] == 'POST' and (opens := api_opens(call[1], a[1:], env, run_dir)):
+        need_watch([opens[0]], run_dir)
+        if opens[1] == 'pr': need_approach(run_dir, '`glab api` creating an MR', opened_branch(a[1:], fields=['-f', '--raw-field', '-F', '--field']))
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
@@ -762,8 +821,9 @@ def check(t, has_cd):
         literal = [v for v in fields if re.match(r'^(body|query)=', v) and not v.startswith('body=@') and not (ep == 'graphql' and v.startswith('query='))]
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
-        m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
-        if m and method == 'POST': need_watch(m.group(1), run_dir)
+        if method == 'POST' and (opens := api_opens(ep, rest, env, run_dir)):
+            need_watch([opens[0]], run_dir)
+            if opens[1] == 'pr': need_approach(run_dir, '`gh api` creating a PR', opened_branch(rest, fields=['-f', '--raw-field', '-F', '--field']))
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None
