@@ -14,4 +14,5 @@ check "the namespace has a route out (tap0)" 1 "$("$R/bin/netns-run" ip route | 
 check "DNS inside goes to slirp4netns's forwarder, not a host stub like 127.0.0.53" "nameserver 10.0.2.3" "$("$R/bin/netns-run" grep -m1 '^nameserver' /etc/resolv.conf)"
 check "a name resolves inside" 0 "$("$R/bin/netns-run" getent hosts github.com >/dev/null; echo $?)"
 check "the host's search domains stay" "$(grep -E '^search[[:space:]]' /etc/resolv.conf)" "$("$R/bin/netns-run" grep -E '^search[[:space:]]' /etc/resolv.conf)"
+check "the command runs as the caller's uid, with the caller's home" "$(id -u) $(getent passwd "$(id -u)" | cut -d: -f6)" "$("$R/bin/netns-run" bash -c 'echo "$(id -u) $(getent passwd "$(id -u)" | cut -d: -f6)"')"
 echo "failures: $fails"; [ "$fails" = 0 ]
