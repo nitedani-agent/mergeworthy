@@ -43,6 +43,7 @@ The watcher (`task` step 5) writes each comment you owe to `events.log` and `rep
 | `### FOLLOW-UP`, `### MAINTAINER REVIEW` | `rules` step 6 (the PR's session still answers the review) |
 | `### AGENT COMMAND`, `### UNROUTED /agent` | the user typing: `task` |
 | `### NEW ISSUE`, `### NEW PR` (a repo watched whole: `owner/repo all`) | answer it like a comment you owe (steps 3–7) |
+| `### ISSUE CLOSED` | what it says, then go on |
 
 ### Which comments
 

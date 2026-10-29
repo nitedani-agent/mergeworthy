@@ -151,16 +151,16 @@ chmod +x "$T/stub/gh"; date -u +%s > "$T/stub/now"; : > "$T/stub/fail"; echo "$F
 python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' '<img src="https://github.com/claude.png" alt="Claude"> *Claude* Yes: see the test.' > "$HOME/.claude/gated-posts.txt"
 sround() { env -u CLAUDE_CODE_SESSION_ID PATH="$T/stub:$PATH" GH_HOST=github.com GH_WATCH_ME=me python3 "$R/bin/steward" round "${1:-$F}" 2>&1; }
 sround > /dev/null; rc=$?; rm "$T/stub/fail"; echo $(( $(date -u +%s) + 1 )) > "$T/stub/new6"; sround > /dev/null; rc="$rc $?"
-check "round in the steward's folder with no watcher state, cut short by a failed call, then retried: exits 1 then 0, each saying where it starts; only the comment and review posted after its start are reported, owed and the comment reacted to, the review sent for sorting, not the old comments, review, red CI, wait ping, 👎 or issue" \
-  "1 0 2|### o/r#5 review 802 by boss|### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-802 by|### o/r#6 comment 702 by boss|o/r#5 review 802 by boss|o/r#6 comment 702 by boss|1 1" \
-  "$rc $(grep -c '^note: rounds in .* start at .*, its first; until one completes, nothing older is recorded as owed or as an event$' "$F/events.log")|$(grep '^###' "$F/events.log" | cut -d' ' -f1-6 | tr '\n' '|')$(grep -v '^#' "$F/replies-owed.md" | cut -d' ' -f1-5 | tr '\n' '|')$(grep -c ' -X POST .*reactions' "$T/stub/calls") $(grep -c ' -X POST .*comments/702/reactions' "$T/stub/calls")"
+check "round in the steward's folder with no watcher state, cut short by a failed call, then retried: exits 1 then 0, each saying where it starts; only the comment and review posted after its start are reported, the review sent for sorting, not the old comments, review, red CI, wait ping, 👎 or issue; nothing owed or reacted to" \
+  "1 0 2|### o/r#5 review 802 by boss|### MAINTAINER REVIEW o/r#5: https://github.com/o/r/pull/5#pullrequestreview-802 by|### o/r#6 comment 702 by boss|none 0" \
+  "$rc $(grep -c '^note: rounds in .* start at .*, its first; until one completes, nothing older is recorded as owed or as an event$' "$F/events.log")|$(grep '^###' "$F/events.log" | cut -d' ' -f1-6 | tr '\n' '|')$([ -e "$F/replies-owed.md" ] && echo owed || echo none) $(grep -c ' -X POST .*reactions' "$T/stub/calls")"
 n=$(wc -l < "$F/events.log"); sround > /dev/null; : > "$T/stub/later"; sround > /dev/null
-check "round: the rounds after it report only what is new since: the later comment, owed, with its reaction, and the red CI of a PR opened since" \
-  "### o/r#5 comment 502 by boss|### CI o/r#7: red=['test']: fix it,|1|o/r#5 comment 502 by boss|1" \
-  "$(tail -n +$((n + 1)) "$F/events.log" | grep '^###' | cut -d' ' -f1-6 | tr '\n' '|')$(grep -c 'comment 502' "$F/replies-owed.md")|$(tail -1 "$F/replies-owed.md" | cut -d' ' -f1-5)|$(grep -c ' -X POST .*comments/502/reactions' "$T/stub/calls")"
+check "round: the rounds after it report only what is new since: the later comment, not owed nor reacted to, and the red CI of a PR opened since" \
+  "### o/r#5 comment 502 by boss|### CI o/r#7: red=['test']: fix it,|none 0" \
+  "$(tail -n +$((n + 1)) "$F/events.log" | grep '^###' | cut -d' ' -f1-6 | tr '\n' '|')$([ -e "$F/replies-owed.md" ] && echo owed || echo none) $(grep -c ' -X POST .*reactions' "$T/stub/calls")"
 rm "$HOME/.mergeworthy/steward"
 G="$T/daemoned"; mkdir -p "$G"; echo '{"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}}' > "$G/gh-watch-state.json"; sround "$G" > /dev/null
-check "round in a folder whose daemon ran but no round did: it reports as the daemon would" "0 1" "$(grep -c '^note: rounds' "$G/events.log") $(grep -c '^### o/r#5 comment 501 ' "$G/events.log")"
+check "round in a folder whose daemon ran but no round did, not the steward's: it reports, owes and reacts as the daemon would" "0 1 1 1" "$(grep -c '^note: rounds' "$G/events.log") $(grep -c '^### o/r#5 comment 501 ' "$G/events.log") $(grep -c 'o/r#5 comment 501 by boss' "$G/replies-owed.md") $(grep -c ' -X POST .*comments/501/reactions' "$T/stub/calls")"
 # ---------- fired: failclosed logs each block once a day by the line that wrote it; `steward fired` reads that log against the hooks ----------
 guard() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$T" | bash "$R/hooks/run" pre-bash-guard.py; }
 gate='block(f"no gate record for {p}: run post-lint'; changed='block(f"{p} changed after its gate'; LOG="$HOME/.mergeworthy/hooks-fired.log"

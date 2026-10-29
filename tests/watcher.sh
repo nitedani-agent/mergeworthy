@@ -53,6 +53,25 @@ m.run_scan()
 print("scan=" + ",".join(sorted(seen["scan"])) + " reactions=" + ",".join(sorted(seen["reactions"])))
 ')
 check "threads read by scan and by scan_reactions" "scan=1,2 reactions=1,2" "$got"
+# an issue that closes wakes the dirs listing it, once (the session that opened it); a mergeworthy issue says to update the plugin; a PR doesn't
+got=$(py '
+json.dump({"since": "2026-01-01T00:00:00Z", "seen": {}, "prs": {}, "ci": {}, "is_pr": {}, "since_by": {}, "closed_scan": 0}, open(m.STATE, "w"))
+open(m.THREADS, "w").write("o/r 3\nnitedani/mergeworthy 12\no/r 4\n")
+st = {"open": True}
+last = lambda: {"open": st["open"], "last": None, "prev": None, "people": [], "renames": []}
+m.fetch_thread = lambda repo, num, *a, **k: (num == "4", "me", [], {"head": "a", "state": "open" if st["open"] else "closed", "conflict": False} if num == "4" else None, None, last(), {}, True, None)
+m.emit_tracker_stale = lambda *a: None
+m.read_reactions = lambda *a: None
+out = []
+for open_ in (True, False, False):
+    st["open"] = open_
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf): m.run_scan(everything=True)
+    out.append("|".join(l for l in buf.getvalue().splitlines() if l.startswith("### ISSUE CLOSED")))
+print(*out, sep=";")
+')
+check "an issue closing emits ISSUE CLOSED once; a mergeworthy one says to update the plugin; a PR closing doesn't" \
+  ";### ISSUE CLOSED o/r#3|### ISSUE CLOSED nitedani/mergeworthy#12: the steward shipped its fix: update your installed mergeworthy (README, Install), then go on;" "$got"
 
 # a waiting-on.txt key with a trailing note is read as a thread, and emit_dependents still matches it; a # line is not
 got=$(py '
@@ -128,6 +147,22 @@ print("\n".join(out), file=sys.stderr)
 ' 2>"$T/event")
 check "comment bodies: lines starting ### / body lines all indented" "1 True" "$got"
 sed 's/^/  | /' "$T/event"
+
+# a comment in the steward's folder is only logged: no :eyes:, no owed reply; the same comment in an ordinary dir gets both
+got=$(py '
+m.ONCE = False
+sw = os.path.expanduser("~/.mergeworthy/steward")
+os.makedirs(os.path.dirname(sw), exist_ok=True); open(sw, "w").write(os.path.join(m.HERE, "stew") + " tid\n")
+out = []
+for d in ("stew", "plain"):
+    m.HERE = os.path.join(sys.argv[2], d); os.makedirs(m.HERE)
+    eyes, buf = [], io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        m.handle_comment({"seen": {}}, "o/r", "o/r#5", "comment", 8, "2026-10-05T00:00:00Z", "someone", "<url>", "Please fix.", react=lambda *a: eyes.append(a))
+    out += [d, buf.getvalue().count("### o/r#5 comment 8 by someone"), len(eyes), os.path.exists(os.path.join(m.HERE, "replies-owed.md"))]
+os.remove(sw); print(*out)
+')
+check "a comment in the steward's folder is logged without :eyes: or an owed reply; in an ordinary dir it gets both" "stew 1 0 False plain 1 1 True" "$got"
 
 # a maintainer's comment carrying a refactor prompt URL its project file names is a refactor ask, recorded for pr-steps
 mkdir -p "$HOME/.mergeworthy/projects/o"
@@ -604,10 +639,14 @@ rm -f "$W/retired"
 
 # The Monitor command gh-watch-start prints delivers an event within 2 s, and only lines that start an event
 M="$T/mon"; mkdir -p "$M"; : > "$M/events.log"
-cmd=$(dir="$M"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")" | sed 's/^ *//')
+mon() { (dir="$M"; eval "$(grep -m1 "^${1:-}events=" "$R/bin/gh-watch-start")"; eval "$(grep -m1 "tail -n 0 -F" "$R/bin/gh-watch-start")") | sed 's/^ *//'; }  # the Monitor it prints, with its events line
+cmd=$(mon)
 ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
 printf '### ev1\n    ### a body line\nWATCH ERROR x\n' >> "$M/events.log"; sleep 2
 check "Monitor command: events within 2 s, body lines dropped" "### ev1|WATCH ERROR x|" "$(tr '\n' '|' < "$M/out")"
+cmd=$(mon '  '); : > "$M/events.log"; ( timeout 4 bash -c "$cmd" > "$M/out" 2>&1 & ); sleep 1
+printf '### o/r#5 comment 9 by bob\nWATCH ERROR x\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n' >> "$M/events.log"; sleep 2
+check "the steward's Monitor command passes only a new mergeworthy issue" "### NEW ISSUE nitedani/mergeworthy#7 by eve|" "$(tr '\n' '|' < "$M/out")"
 
 # A rate-limited `gh api user` prints the error JSON on stdout: it is no login. The watcher refuses to start rather than take it
 # as ME (every comment by the user's account, the agent's own gated posts too, then reads as a human's and gets an :eyes:).
@@ -738,6 +777,9 @@ c.execute("""insert into orchestration_v2_projection_provider_threads values ('"
 c.execute("""insert into orchestration_v2_projection_subagents values ('"'s1', 'thr-p', 'thr-c'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
 t3start sess-child >/dev/null
 check "gh-watch-start run by a delegated task binds the thread that delegated it, not the task's" "thr-p" "$(head -n1 "$T/t3watch/t3-thread")"
+mkdir -p "$HOME/.mergeworthy"; echo "$T/t3watch tid" > "$HOME/.mergeworthy/steward"; out=$(t3start sess-child); b=$(head -n1 "$T/t3watch/t3-thread"); out2=$(t3start sess-plain); rm "$HOME/.mergeworthy/steward"
+check "gh-watch-start in the steward's folder: under T3 it binds the thread and arms no Monitor; outside it, the Monitor passes only a new mergeworthy issue" "thr-p 1 1 0" \
+  "$b $(echo "$out" | grep -c 'arm no Monitor') $(echo "$out2" | grep -c "'### NEW ISSUE nitedani/mergeworthy#'\*)") $(echo "$out2" | grep -c "'###'\*|")"
 out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"
@@ -755,6 +797,16 @@ a=$(tpass); printf '### new\n' >> "$T/t3daemon/events.log"; b=$(tpass)
 check "a daemon with no t3-thread binds the main session's thread and t3's path from the log's end, then sends what follows" \
   "thr-p $T/bin/t3 8|thr-p $T/bin/t3 16|t3 thread send thr-p -;Watcher events in $T/t3daemon/events.log (mergeworthy:reply):;### new;" "$a|$b|$(tr '\n' ';' < "$T/t3.log")"
 rm "$T/t3daemon/t3-thread" "$T/t3daemon/t3-wake.cursor"; echo sess-plain > "$T/t3daemon/session"; c=$(tpass); rm "$T/t3daemon/session"
+echo "$T/t3daemon/live tid" > "$HOME/.mergeworthy/steward"; mkdir -p "$T/t3daemon/live"; cp "$T/t3daemon/events.log" "$T/t3daemon/live/"; echo sess-child > "$T/t3daemon/live/session"
+: > "$T/t3.log"
+check "a daemon in the steward's folder binds its session's thread and sends it only a new mergeworthy issue" "thr-p|t3 thread send thr-p -;Watcher events in $T/t3daemon/live/events.log (mergeworthy:reply):;### NEW ISSUE nitedani/mergeworthy#7 by eve;" "$(W="$T/t3daemon/live" PATH="$T/bin:/usr/bin:/bin" py '
+for name in ("follow_update", "steward_line", "agent_jobs_pass", "announce"):
+    setattr(m, name, lambda *a, **k: None)
+m.scan_gitlab = lambda: open(os.path.join(m.HERE, "events.log"), "a").write("### o/r#5 comment 9 by bob\n### NEW ISSUE nitedani/mergeworthy#7 by eve\n### NEW PR nitedani/mergeworthy#8 by eve\n")
+m.level = lambda: m.PAUSED; m.tick()
+print(m.first_line(os.path.join(m.HERE, "t3-thread")).split()[0])
+')|$(tr '\n' ';' < "$T/t3.log")"
+rm -r "$HOME/.mergeworthy/steward" "$T/t3daemon/live"
 check "a daemon whose session has no T3 thread, or that has no session, stays unbound" "unbound |unbound " "$c|$(tpass)"
 echo sess-child > "$T/t3daemon/session"; : > "$T/t3.log"; e=$(TEV='### found in the binding pass' tpass)
 check "the pass that binds the thread sends it the events that pass found" "thr-p $T/bin/t3 46|### found in the binding pass" "$e|$(tail -n1 "$T/t3.log")"
@@ -846,6 +898,28 @@ L = "Is https://github.com/openai.png the badge you mean? Please drop it."
 print(*(m.answerable(u, b, set(), own=True) for b in (B, C, "Please fix the test.", Q, L)))
 ')
 check "a post starting with a badge, from any account, is an agent post; a person quoting or linking one is a person" "False False True True True" "$got"
+# the steward's dir: every new mergeworthy issue is reported to it though an ordinary dir watching the repo whole comes first, the opener's
+# dir already lists it or it is the agent's (rules step 2); the ordinary dir keeps its own handling, the opener its thread; a PR isn't
+got=$(py "$WHOLE"'
+mk = lambda name, repos, threads: (os.makedirs(os.path.join(WH, name), exist_ok=True), open(os.path.join(WH, name, "gh-watch.pid"), "w").write(str(os.getpid())),
+                                   open(os.path.join(WH, name, "repos.txt"), "w").write(repos), open(os.path.join(WH, name, "threads.txt"), "w").write(threads),
+                                   open(os.path.join(WH, name, "events.log"), "w").close(), os.path.join(WH, name))[-1]
+ORD, SW, OP = mk("ordinary", "nitedani/mergeworthy all\n", ""), mk("steward", "nitedani/mergeworthy all\n", ""), mk("opener", "", "nitedani/mergeworthy 20\nnitedani/mergeworthy 21\n")
+open(os.path.expanduser("~/.mergeworthy/steward"), "w").write(SW + " tid\n")
+reg = os.path.expanduser("~/.claude/gh-watch-dirs.txt"); kept = open(reg).read(); open(reg, "w").write("\n".join((ORD, SW, OP)) + "\n")
+m.HERE = ORD
+it = lambda n, who="me", body=B, pr=False: {"id": 2000 + n, "number": n, "user": {"login": who}, "body": body, "title": f"t{n}", "html_url": f"<m{n}>",
+                                           "created_at": "2026-10-29T10:00:00Z", "updated_at": "2026-10-29T10:00:00Z", **({"pull_request": {}} if pr else {})}
+m.react_eyes = lambda *a: None
+for i in (it(20), it(21, pr=True), it(20), it(22, "eve", "It breaks.")):
+    m.moved_thread("nitedani/mergeworthy", i, True)
+os.remove(os.path.expanduser("~/.mergeworthy/steward")); open(reg, "w").write(kept)
+evs = lambda d: ",".join(l.split()[3] for l in open(os.path.join(d, "events.log")) if l.startswith("###"))
+lst = lambda d: ",".join(l.split()[1] for l in open(os.path.join(d, "threads.txt")))
+print(evs(SW), evs(ORD), lst(SW) or "-", lst(ORD), lst(OP))
+')
+check "the steward's dir gets each new mergeworthy issue once, an agent's one the opener lists too, though an ordinary dir watches the repo first; that dir handles the unlisted one; not a PR" \
+  "nitedani/mergeworthy#20,nitedani/mergeworthy#22 nitedani/mergeworthy#22 - 22 20,21" "$got"
 check "whole repo: moved threads join its dir unless another dir lists them; a bare line's repo joins nothing" "o/r 8 o/r 9 o/r 10 o/r 11 o/r 1|o/r 7|" \
   "$(echo $(cat "$WH/all/threads.txt"))|$(echo $(cat "$WH/other/threads.txt"))|$(cat "$WH/bare/threads.txt")"
 scanned() { py "$WHOLE"'
@@ -870,6 +944,11 @@ os.remove(sw)
 print(a, open(os.path.join(m.HERE, "repos.txt")).read().strip())
 ')
 check "the steward's dir watches the mergeworthy repo whole while ~/.mergeworthy/steward names it" "(1, [('nitedani/mergeworthy', True), ('x/y', False)]) x/y" "$got"
+got=$(py "$WHOLE"'
+m.HERE = os.path.expanduser("~/.mergeworthy/work/steward/live"); os.makedirs(m.HERE, exist_ok=True); m.steward_line()
+print(m.repo_lines(m.HERE))
+')
+check "with no steward declared, the default steward folder's dirs watch the mergeworthy repo whole" "{'nitedani/mergeworthy': True}" "$got"
 # a --round dir has no daemon: each pass reads a list itself back to its last complete pass, though a daemon
 # polled it between (its validator, its baseline), and /agent on a thread no one lists goes to it
 mkdir -p "$WH/pass"; : > "$WH/pass/threads.txt"; : > "$WH/pass/events.log"; echo 'p/q all' > "$WH/pass/repos.txt"; echo "$WH/pass" >> "$HOME/.claude/gh-watch-dirs.txt"

@@ -9,6 +9,16 @@ def read():
     except (OSError, ValueError): return None
     return os.path.expanduser(wd).rstrip('/'), tid
 
+def folder():
+    """The steward's folder: the first word of ~/.mergeworthy/steward, else ~/.mergeworthy/work/steward (mergeworthy:steward)."""
+    return (read() or (os.path.expanduser('~/.mergeworthy/work/steward'),))[0]
+
+def quiet(d):
+    """True for the steward's folder and the watch dirs inside it: their watcher reacts to nothing, owes no reply and wakes its
+    thread only for a new mergeworthy issue (gh-watch.py's WAKES); the rest of their events.log waits for the next pass."""
+    s, d = os.path.realpath(folder()), os.path.realpath(d)
+    return d == s or d.startswith(s + '/')
+
 def passed_by(wd):
     """The session whose watcher round in wd passed in the last day (gh-watch-start --round writes <wd>/passed), or None."""
     try:

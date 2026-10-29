@@ -9,7 +9,7 @@ import hashlib, json, os, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
 from shellcmd import segments, prog, new_post_drafts, Where
-import work_folder
+import steward, work_folder
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 r = d.get('tool_response') or {}
@@ -129,7 +129,7 @@ for repo, num, line in found:
     if len(homes) == 1: pairs.append((repo, line, homes.pop()))
     else: lost.append(line)
 for repo, line, home in pairs:
-    if watched := next((dr for dr in live_dirs if line in lines(dr, 'threads.txt')), None):
+    if watched := next((dr for dr in live_dirs if line in lines(dr, 'threads.txt') and not steward.quiet(dr)), None):  # the steward's dirs wake no one on it
         home = watched
     elif home:
         open(os.path.join(home, 'threads.txt'), 'a').write(line + '\n')

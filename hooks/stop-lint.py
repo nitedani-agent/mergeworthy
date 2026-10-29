@@ -349,11 +349,13 @@ if watcher_on and not paused and not child:
                       "Deliver it now, or post (through the gate) why it's late and when it lands; then open the line with `DONE <commit or link>` (mergeworthy:task §Files).", file=sys.stderr)
                 sys.exit(2)
 # Each FOLLOW-UP the watcher reported is sorted by a verdict line in followups-sorted.txt within 30 minutes (mergeworthy:rules step 6),
-# by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's
+# by the session whose dir's events.log got it (steward.recipient chose it): the session's own dirs, and a declared steward's; the
+# steward's folder only in the pass whose round ran there (pass_dirs)
 if watcher_on and not paused and not child:
     import datetime, time
     st = steward.read()
     for wd in sorted(own_dirs | ({st[0]} if st and steward.is_steward(d.get('session_id'), cwd_d) else set())):
+        if steward.quiet(wd) and wd not in pass_dirs: continue
         try: log = open(os.path.join(wd, 'events.log'), errors='replace').read()
         except OSError: continue
         f = os.path.join(wd, 'followups-sorted.txt')

@@ -193,6 +193,11 @@ check "BLOCK: that watcher's owed reply holds the session's turn, from any cwd" 
 rm "$WD/t3-thread"; echo s-t3 > "$WD/session"  # the session's watcher dropped its thread (gh-watch.py's wake_thread fallback)
 check "BLOCK: under T3, a post whose own watcher dropped its t3-thread says that watcher stopped waking the thread, not that it wakes it" "2 1 0" \
   "$(stop_as s-t3) $(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err") $(grep -c 'wakes this T3 thread itself' "$T/err")"
+mv "$WD/replies-owed.md" "$T/owed.keep"; mkdir -p "$HOME/.mergeworthy"; echo "$WD tid" > "$HOME/.mergeworthy/steward"
+b1=$(stop_as s-t3); b1e=$(grep -c "watcher in $WD stopped waking this T3 thread" "$T/err"); echo thr-h > "$WD/t3-thread"
+check "BLOCK: the steward's watcher, though it delivers only new mergeworthy issues, needs working delivery like any: unbound, the post blocks; bound to its T3 thread, it passes" "2 1 0" "$b1 $b1e $(stop_as s-t3)"
+rm "$WD/t3-thread"
+rm "$HOME/.mergeworthy/steward"; mv "$T/owed.keep" "$WD/replies-owed.md"
 rm "$WD/session" "$WD/scope.md" "$HOME/.t3/userdata/statev2.sqlite"
 tr_cmd "mw post $WD/drafts/r.md -- gh pr comment 5 --repo o/r --body-file $WD/drafts/r.md"
 check "BLOCK: a post through mw post" 2 "$(stop "$T/work")"
@@ -452,6 +457,12 @@ preg() { python3 -c 'import json,sys; print(json.dumps({"session_id":"sess-3","t
   | python3 "$R/hooks/post-bash-register.py"; cat "$D4/threads.txt" 2>/dev/null || echo none; rm -f "$D4/threads.txt"; }
 check "a new PR, and a comment on a thread only the passed dir lists, join the session's live dir, not the dir its steward pass read" "o/r 9|o/r 5|o/r 5" \
   "$(preg 'gh pr create --repo o/r --fill' https://github.com/o/r/pull/9)|$(preg 'gh issue comment 5 --repo o/r --body-file x' https://github.com/o/r/issues/5#issuecomment-1)|$(cat "$D3/threads.txt")"
+# the steward's live dir may list a new mergeworthy issue first: it wakes no one on its closing, so the opener's dir still gets it
+SL="$T/reg-steward"; mkdir -p "$SL" "$HOME/.mergeworthy"; echo "$SPID" > "$SL/gh-watch.pid"; echo 'nitedani/mergeworthy 12' > "$SL/threads.txt"; echo "$SL tid" > "$HOME/.mergeworthy/steward"
+printf '%s\n' "$SL" "$D4" > "$HOME/.claude/gh-watch-dirs.txt"
+check "an issue the session opens on mergeworthy joins its own dir though the steward's lists it" "nitedani/mergeworthy 12" \
+  "$(preg 'gh issue create --repo nitedani/mergeworthy --title t --body-file x' https://github.com/nitedani/mergeworthy/issues/12)"
+rm "$HOME/.mergeworthy/steward"
 kill "$SPID"; wait "$SPID" 2>/dev/null
 
 # ---------- finality trigger: the third proposal on a thread needs a thread map ----------
@@ -1971,7 +1982,7 @@ sg() { # command session cwd
     | python3 "$R/hooks/pre-bash-guard.py" 2>"$T/err"; echo $?; }
 check "no steward declared: a push in a mergeworthy checkout passes" 0 "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T")"
 echo "$SW steward-thread" > "$HOME/.mergeworthy/steward"
-check "BLOCK: another session's commit or push in a mergeworthy checkout, naming the steward's inbox" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "$SW/inbox.md" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
+check "BLOCK: another session's commit or push in a mergeworthy checkout, saying to open an issue there" "2 1 2" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" other-session "$T") $(grep -c "open an issue on nitedani/mergeworthy" "$T/err") $(sg "git commit -m x" other-session "$T/mwc")"
 check "the steward's delegated agent (its T3 parent thread) and a session in its watch dir push; another repo passes" "0 0 0" "$(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" child-session "$T") $(sg "git -C $T/mwc push $T/elsewhere.git HEAD:main" x "$SW") $(sg "git -C $T/gr push $T/elsewhere.git HEAD:main" other-session "$T")"
 python3 - "$HOME/.t3/userdata/statev2.sqlite" <<'EOF2'
 import sqlite3, sys
@@ -1986,12 +1997,16 @@ check "without T3's database, the session its watch dir's session file names is 
 mv "$T/state.bak" "$HOME/.t3/userdata/statev2.sqlite"
 printf '### FOLLOW-UP o/r#5: abcdef1234 by carol changes lines from your PR  <c>  at %s\n' "$(date -u -d '-40 minutes' +%FT%TZ)" > "$SW/events.log"; : > "$WD/events.log"; echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
 tr_file "Done."
-check "with a steward, its unsorted FOLLOW-UP blocks it, not an orchestrator" "0 2" "$(stop "$WD") $(stop "$SW")"
+stop_in() { python3 -c 'import json,sys; print(json.dumps({"transcript_path":sys.argv[1],"cwd":sys.argv[2],"session_id":sys.argv[3]}))' "$T/tr.jsonl" "$1" "$2" \
+  | MERGEWORTHY_STOP_CHECKIN=off python3 "$R/hooks/stop-lint.py" 2>"$T/err"; echo $?; }  # cwd session
+s1=$(stop_in "$SW" steward-session); echo "$SW" >> "$HOME/.claude/gh-watch-dirs.txt"; echo steward-session > "$SW/passed"
+check "with a steward, its unsorted FOLLOW-UP waits for its pass, then blocks it, not an orchestrator" "0 2 0" "$s1 $(stop_in "$SW" steward-session) $(stop "$WD")"
 cp "$SW/events.log" "$WD/events.log"
 check "a FOLLOW-UP that fell back to the orchestrator's dir (no steward watcher ran) blocks the orchestrator" 2 "$(stop "$WD")"
 echo 'abcdef1234 WORKED https://github.com/o/r/pull/5#issuecomment-1' > "$SW/followups-sorted.txt"
-check "a WORKED verdict sorts it" 0 "$(stop "$SW")"
-rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt"
+check "a WORKED verdict sorts it" 0 "$(stop_in "$SW" steward-session)"
+echo "$WD" > "$HOME/.claude/gh-watch-dirs.txt"
+rm -f "$HOME/.mergeworthy/steward" "$WD/events.log" "$SW/followups-sorted.txt" "$SW/passed"
 # ---------- hooks/run: hook scripts run from ~/.mergeworthy/current; a changed hook list asks once for a restart ----------
 PO="$T/plugins/cache/mw/old"; PN="$T/plugins/cache/mw/new"; mkdir -p "$PO/hooks" "$PN/hooks" "$T/co/hooks"; cp "$R/hooks/run" "$PO/hooks/"; cp "$R/hooks/run" "$T/co/hooks/"; CUR=$(readlink "$HOME/.mergeworthy/current")
 printf 'print("old")\n' > "$PO/hooks/x.py"; printf 'print("new")\n' > "$PN/hooks/x.py"; printf 'print("checkout")\n' > "$T/co/hooks/x.py"

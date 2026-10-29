@@ -8,7 +8,7 @@ that `round` writes <folder>'s watcher files, `metrics` appends its records to <
   with no block in N days (default 60): the removal candidates.
 - round: `gh-watch-start --round <folder> nitedani/mergeworthy` (covered, for its rule PRs) with every open PR of yours whose body starts
   with an agent's badge: one watcher round, no daemon; the round watches
-  nitedani/mergeworthy whole only when ~/.mergeworthy/steward names <folder> (gh-watch.py's steward_line).
+  nitedani/mergeworthy whole when <folder> is the steward's (gh-watch.py's steward_line).
 - owed: the leftovers of every work folder whose session is idle (its log unwritten for 2 hours, or unknown): replies-owed.md
   lines not done nor held (a holding or drafting line whose ETA is ahead), FOLLOW-UP and MAINTAINER REVIEW events without a verdict in followups-sorted.txt, PROMISED lines not DONE.
   One `<folder> (<watcher>, <session>)\t<kind>\t<line>` per item.
