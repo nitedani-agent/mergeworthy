@@ -6,7 +6,7 @@ MERGEWORTHY_MERGE=reviewer blocks every `gh pr merge`."""
 import json, re, sys, os, hashlib, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested
+from shellcmd import parse, segments, prog, opt, api_call, new_post_drafts, branch_record, no_preflight, no_instructions_read, written_files, git_argv, git_globals, operands, unquoted, GUARDED, _nested, Where
 import steward, post_words, work_folder
 def missing_steps(d):
     head = subprocess.run(['git', '-C', d, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
@@ -36,18 +36,23 @@ def setting(name, default):
 d = json.load(sys.stdin)
 cmd = d.get('tool_input', {}).get('command', '')
 cwd = d.get('cwd') or os.getcwd()
-def expandvars(p):
-    """p with the command's own variables (`D=~/x; ... $D/a.md`), then the environment's, put in."""
-    return re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), p)
+where = Where(cwd)  # where each of the command's simple commands runs (walk), with the variables it set
 
 def block(msg):
     print(f"BLOCKED by pre-bash-guard: {msg}", file=sys.stderr); sys.exit(2)
+
+def known(d):
+    """d, a dir a check reads (where the command runs, from Where); one Where can't tell blocks."""
+    if d is None:
+        block("can't tell which dir this command runs in (after a cd to an expansion it can't resolve, `cd -`, popd, or a cd in a subshell, child shell, "
+              "branch, loop or function), so its checks can't run: cd to an absolute path first (`cd /abs/dir && <command>`), or pass absolute paths")
+    return d
 
 def short_has(t, letter):  # -f, -9f, -fu ...
     return re.match(r'^-[A-Za-z0-9]*' + letter + r'[A-Za-z0-9]*$', t) is not None
 
 def gated_file(p, has_cd, create=False):
-    p = os.path.expanduser(expandvars(p))
+    p = os.path.expanduser(where.expand(p))
     if not os.path.isabs(p):
         if has_cd:
             block(f"relative draft path {p} after a cd: use an absolute path")
@@ -114,21 +119,23 @@ def watch_dirs():
             pass
     return live
 
-def need_watch(repo):
-    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher must cover the repo (post-bash-register adds
-    the new thread). A comment on an existing thread isn't blocked here: post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
+def need_watch(repo, path):
+    """Opening an issue or PR starts the live loop (mergeworthy:task step 5): a running watcher of the task's work folder holding path,
+    or of this session, must cover the repo (post-bash-register adds the new thread). A comment on an existing thread isn't blocked here:
+    post-bash-register adds that thread, and stop-lint requires a watcher's Monitor after any post."""
     if setting('WATCHER', 'on') != 'on': return
     repos = [repo] if isinstance(repo, str) else [r for r in repo if r]
     if not repos:
         block("can't tell which repo this acts on, so the watcher check can't run: pass -R <owner/repo>")
+    path = known(path)
     def lines(d, f):
         return [l.strip() for l in open(os.path.join(d, f))] if os.path.exists(os.path.join(d, f)) else []
-    # a dir this session's steward pass read in the last day covers too (gh-watch-start --round): its next pass reads the thread
-    reg, sid = os.path.expanduser('~/.claude/gh-watch-dirs.txt'), d.get('session_id')
-    passed = [w for w in ((l.strip() for l in open(reg)) if os.path.exists(reg) else ()) if sid and steward.passed_by(w) == sid]
-    covering = [d for d in watch_dirs() + passed if any(l.split()[:1] in ([r] for r in repos) for l in lines(d, 'repos.txt') + lines(d, 'threads.txt'))]
+    sid = d.get('session_id')
+    covering = [w for w in work_folder.watched_by(watch_dirs(), sid, path)
+                if any(l.split()[:1] in ([r] for r in repos) for l in lines(w, 'repos.txt') + lines(w, 'threads.txt'))]
     if not covering:
-        block(f"no running watcher covers {' or '.join(repos)}: `gh-watch-start <your work folder> {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
+        block(f"no running watcher of this task or session covers {' or '.join(repos)} (another session's watcher wakes that session, not this one): "
+              f"`gh-watch-start {work_folder.task_of(path) or '<your work folder>'} {repos[0]}`, arm the Monitor it prints if any, then retry (mergeworthy:task step 5)")
 
 def check_turn(repo, num, args=()):
     """post §Thread rules: at most two comments in a row: while your last two comments on a thread have no reply after them and the last
@@ -178,7 +185,7 @@ def check_finality(repo, num, files):
     rounds = [int(l.split()[1]) for l in open(log) if l.split()[:1] == [f'{repo}#{num}']] if os.path.exists(log) else []
     if len(rounds) < 2: return
     for f in files:
-        f = os.path.expanduser(expandvars(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: continue
@@ -211,7 +218,7 @@ def post_target(group, rest, run_dir):
     if group == 'pr':
         try:
             r = subprocess.run(['gh', 'pr', 'view', *([ref] if ref else []), *(['-R', repo] if ref and repo else []), '--json', 'number', '--jq', '.number'],
-                               cwd=run_dir, capture_output=True, text=True, timeout=20)
+                               cwd=run_dir if ref and repo else known(run_dir), capture_output=True, text=True, timeout=20)
             n = r.stdout.strip() if r.returncode == 0 else ''
         except (OSError, subprocess.TimeoutExpired): pass
     if not (repo and n.isdigit()):
@@ -224,7 +231,7 @@ def check_context(thread, files):
     if not thread: return
     tc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'thread-context')
     for f in files:
-        f = os.path.expanduser(expandvars(f[5:] if f.startswith('body=') else f)).lstrip('@')
+        f = os.path.expanduser(where.expand(f[5:] if f.startswith('body=') else f)).lstrip('@')
         f = f if os.path.isabs(f) else os.path.join(cwd, f)
         try: flags = open(f + '.lint').read().split()
         except OSError: flags = []
@@ -290,7 +297,7 @@ def real_passes(sha):
 
 def cwd_repo(run_dir):
     import subprocess
-    url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+    url = subprocess.run(['git', '-C', known(run_dir), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
     m = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
     return m.group(1) if m else None
 
@@ -300,7 +307,7 @@ def gitlab_repo(a, run_dir):
     if repo:
         repo = re.sub(r'^(https://)?gitlab\.com/', '', repo)
     else:
-        url = subprocess.run(['git', '-C', run_dir, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+        url = subprocess.run(['git', '-C', known(run_dir), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
         repo = (re.search(r'gitlab\.com[:/](.+?)(?:\.git)?$', url) or [None, None])[1]
     return 'gitlab.com/' + repo.strip('/') if repo and '://' not in repo else None
 
@@ -317,7 +324,7 @@ def check_compose(env, t):
         a = a[k:]
     if not (a[:1] == ['up'] or a[:1] == ['run'] and '--service-ports' in a): return
     try:
-        r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=run_dir, env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
+        r = subprocess.run(t[:n] + glob + ['config', '--format', 'json'], cwd=known(run_dir), env={**os.environ, **env}, capture_output=True, text=True, timeout=30)
         svcs = json.loads(r.stdout)['services'] if r.returncode == 0 else {}
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
         block(f"`{' '.join(t[:n] + glob)} config` couldn't be read ({e}), so its ports can't be checked: fix the config, then start it")
@@ -407,9 +414,9 @@ def repo_of(url):
         except (OSError, subprocess.TimeoutExpired, TypeError): pass
     return host, m[2]
 
-def pushed(git_cmd, env, rest):
-    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run as git_cmd (git and the command's own global options,
-    in run_dir, with env): the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
+def pushed(git_dir, opts, env, rest):
+    """([remote URLs], [(commit, branch it updates)]) of a `git push <rest>` run in git_dir with the command's other global options
+    (opts) and env: the remote's push URLs (pushurl, pushInsteadOf), or the URL given; no commits for a delete, tags only, or
     a local path."""
     if '--delete' in rest or '-d' in rest: return [], []
     if {'--all', '--branches', '--mirror'} & set(rest):
@@ -419,7 +426,7 @@ def pushed(git_cmd, env, rest):
         if skip: skip = False
         elif x in ('-o', '--push-option', '--repo', '--receive-pack', '--exec'): skip = True
         elif not x.startswith('-'): pos.append(x)
-    run = lambda *a: subprocess.run([*git_cmd, *a], cwd=run_dir, env=env, capture_output=True, text=True)
+    run = lambda *a: subprocess.run(['git', '-C', git_dir, *opts, *a], env=env, capture_output=True, text=True)
     git = lambda *a: run(*a).stdout.strip()
     to = git('rev-parse', '--abbrev-ref', '@{push}').split('/', 1)  # where a bare `git push` goes: remote/branch
     head = git('symbolic-ref', '--short', '-q', 'HEAD')
@@ -433,7 +440,7 @@ def pushed(git_cmd, env, rest):
         rules = [l.split(' ', 1) for l in git('config', '--get-regexp', r'^url\..*\.(push)?insteadof$').splitlines() if ' ' in l]
         best = max((r for r in rules if remote.startswith(r[1])), key=lambda r: (r[0].endswith('pushinsteadof'), len(r[1])), default=None)
         urls = [best[0][4:best[0].rindex('.')] + remote[len(best[1]):] if best else remote]
-        if not best and not re.search(r'[/:]', remote) and not os.path.exists(os.path.join(run_dir, remote)):  # a bare name git can't resolve
+        if not best and not re.search(r'[/:]', remote) and not os.path.exists(os.path.join(git_dir, remote)):  # a bare name git can't resolve
             block(f"`{remote}` is neither a remote of this checkout nor a URL or path, so where this push goes can't be told")
     push_urls.extend(urls)
     if all(repo_of(u) is None for u in urls):
@@ -529,7 +536,7 @@ def check_workflow(what, d, commits, updates=()):
     if what.startswith('this push'):  # the PR this push updates is answered by a watcher on its repo (task step 5): upstream, origin or the fork pushed to
         urls = subprocess.run(['git', '-C', top, 'remote', '-v'], capture_output=True, text=True).stdout + ' ' + ' '.join(push_urls)
         repos = sorted({m[0] or 'gitlab.com/' + m[1] for m in re.findall(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?(?:\s|$)|gitlab\.com[:/]([\w./-]+?)(?:\.git)?(?:\s|$)', urls)})
-        if repos: need_watch(repos)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
+        if repos: need_watch(repos, top)  # a host no watcher reads (neither GitHub nor GitLab) has nothing to arm
     for sha in commits:
         rec = os.path.expanduser(f'~/.claude/pr-steps/{sha}')
         logs = [l.split()[1] for l in (open(rec) if os.path.isfile(rec) else []) if l.split()[:1] in (['quick'], ['gates']) and len(l.split()) > 1]
@@ -581,10 +588,10 @@ def check(t, has_cd):
                           "a turn that ended or 'waiting_for_children' is alive. Stop it through its task (interrupt) only after that, "
                           "and when two run the same job keep the one with the most progress")
     if p == 'git':
-        repo, overrides, sub, rest = git_argv(t, run_dir)
-        if sub in ('commit', 'push'):
+        repo, overrides, sub, rest = git_argv(t, where)
+        if sub in ('commit', 'push') and repo is not None:
             check_steward(repo)
-        if sub == 'commit' and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
+        if sub == 'commit' and repo is not None and os.path.isdir(repo):  # in a folder this hook can't resolve (`cd "$(mktemp -d)"`), a commit stays local
             if why := no_preflight(repo):
                 block(why)
             check_commit_identity(overrides, repo)
@@ -592,13 +599,12 @@ def check(t, has_cd):
             check_patches(repo, subprocess.run(['git', '-C', repo, 'diff', '--name-only', *([] if every else ['--cached']), 'HEAD'], capture_output=True, text=True).stdout.split(), '--amend' in rest)
         if sub == 'push' and {'--dry-run', '-n'} & set(rest):
             sub = 'push --dry-run'  # publishes nothing
-        if sub == 'push' and not os.path.isdir(repo) and '--help' not in rest:
-            # a checkout the command makes first (`git clone ../o.git d; cd d`): a push to a local path, or to the local repo it was cloned from, publishes nothing
-            to = next((x for x in operands(rest) if not x.startswith('-')), 'origin')
-            if (repo_of(to if to != 'origin' else clones.get(os.path.normpath(repo), to)) is None and
-                    (to != 'origin' or os.path.normpath(repo) in clones)):
+        if sub == 'push' and (repo is None or not os.path.isdir(repo)) and '--help' not in rest:
+            # a checkout the command makes first (`git clone ../o.git d && cd d`): a push to a local path, or to the local repo it was cloned from, publishes nothing
+            to, made = next((x for x in operands(rest) if not x.startswith('-')), 'origin'), repo and os.path.normpath(repo)
+            if repo_of(to if to != 'origin' else clones.get(made, to)) is None and (to != 'origin' or made in clones):
                 return
-            block(f"can't tell which checkout this push runs in (a cd to {repo}), so what it publishes can't be checked: cd to an absolute path first")
+            block(f"can't tell which checkout this push runs in ({'a cd to ' + repo if repo else 'a dir change it can' + chr(39) + 't follow'}), so what it publishes can't be checked: cd to an absolute path first")
         if sub == 'stash':
             first = rest[0] if rest else ''
             ok = first in ('list', 'show', 'apply', 'branch', 'create', 'store') or \
@@ -614,7 +620,8 @@ def check(t, has_cd):
                 block("force-push only with --force-with-lease=<branch>:<sha you last pushed>, after checking others' commits")
             if {'--git-dir', '--work-tree'} & {x.split('=')[0] for x in git_globals(t)} or {'GIT_DIR', 'GIT_WORK_TREE'} & set(env):
                 block("push from the checkout itself (cd or -C, without --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE), so what it publishes can be checked")
-            urls, heads = pushed(['git', *git_globals(t)], {**os.environ, **env}, rest)
+            g = git_globals(t)
+            urls, heads = pushed(repo, [x for i, x in enumerate(g) if x != '-C' and g[i - 1:i] != ['-C']], {**os.environ, **env}, rest)
             why, prs = [sum(x, []) for x in zip(*[collaboration(repo, u, heads) for u in urls])] or ([], [])
             if why and not all(sha for sha, _ in heads):
                 block(f"this push ({'; '.join(why)}) publishes a commit computed when it runs, so its records can't be checked: push a branch or a sha written out")
@@ -634,12 +641,12 @@ def check(t, has_cd):
                   'and pass --title "$(cat <that file>)" (mergeworthy:pull-request step 7)')
         if a[1] == 'edit' and opt(a[2:], ['--title', '-t']) and (who := title_setter(*post_target('pr', a[2:], run_dir))):
             block(f"{who[0]} set this PR's title ({who[1]}): it is their decision. Keep it, or ask them on the PR first (mergeworthy:pull-request step 7)")
-    written = written_files(t)
+    written = [x if os.path.isabs(x) else os.path.join(known(run_dir), x) for x in map(os.path.expanduser, written_files(t))]
     for x in written:
-        if why := no_instructions_read(os.path.join(run_dir, os.path.expanduser(x)), d):
+        if why := no_instructions_read(x, d):
             block(why)
     # A review's verdict is the reviewer's final message, which it writes itself (`codex exec -o`, an agent's output file); an agent's stdout is it too
-    if any(os.path.realpath(os.path.join(run_dir, os.path.expanduser(x))).startswith(RECORDS) for x in written):
+    if any(os.path.realpath(x).startswith(RECORDS) for x in written):
         block("the step records in ~/.claude/pr-steps are written by `pr-steps <step> <its output>` alone, which checks the output first")
     if p not in ('claude', 'codex') and any(x.endswith('.review.out') for x in written) and not by_agent():
         block("a review's output is the reviewer's final message, written by the reviewer: `codex exec -o <out>`, or the agent writes <out> itself. "
@@ -647,14 +654,14 @@ def check(t, has_cd):
     if p == 'gh' and a[:2] == ['pr', 'ready'] and '--undo' not in a:
         check_refactor_ask(*post_target('pr', a[2:], run_dir), comment=False)
     if p == 'gh' and a[:2] == ['pr', 'create'] and '--help' not in a and '-h' not in a:
-        check_workflow('`gh pr create`', run_dir, [git_head(run_dir)])
+        check_workflow('`gh pr create`', known(run_dir), [git_head(run_dir)])
     if (p == 'gh' and len(a) >= 2 and a[0] == 'pr' and ((a[1] == 'create' and '--draft' not in a and '-d' not in a) or (a[1] == 'ready' and '--undo' not in a))) or \
        (p == 'glab' and len(a) >= 2 and a[0] == 'mr' and ((a[1] == 'create' and '--draft' not in a and '--wip' not in a) or (a[1] == 'update' and ('--ready' in a or '-r' in a)))):
-        head, missing = missing_steps(run_dir)
+        head, missing = missing_steps(known(run_dir))
         if missing:
             block(f"HEAD {head[:10] or '(no git repo in cwd)'} has no pr-steps {', '.join(missing)} record: run those steps of mergeworthy:converge's pipeline on the final HEAD, each ending with `pr-steps <step> <its output>` (again after a base merge); or open it with --draft")
     if p == 'glab' and len(a) >= 2 and a[0] in ('issue', 'mr') and a[1] == 'create' and '--help' not in a and '-h' not in a:
-        need_watch(gitlab_repo(a[2:], run_dir))
+        need_watch(gitlab_repo(a[2:], run_dir), run_dir)
     if p == 'gh' and len(a) >= 2 and a[0] == 'pr' and a[1] == 'merge':
         if setting('MERGE', 'on-request-squash') == 'reviewer':
             block('never merge: the reviewer merges this repo\'s PRs (MERGEWORTHY_MERGE=reviewer)')
@@ -688,12 +695,12 @@ def check(t, has_cd):
                     return  # an approval without a body posts no text
                 block(NEED_DRAFT)
             if sub == 'create':
-                need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
+                need_watch((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir), run_dir)
             if a[0] == 'pr' and sub == 'create':  # a draft's body says why on its State line, a ready PR's has none (pull-request step 7)
                 draft = '--draft' in rest or '-d' in rest
                 w = post_words.words((opt(rest, ['--repo', '-R']) or [None])[-1] or cwd_repo(run_dir))
                 for f in files:
-                    f = os.path.join(cwd, os.path.expanduser(expandvars(f)))
+                    f = os.path.join(cwd, os.path.expanduser(where.expand(f)))
                     lines = [l.strip() for l in open(f).read().split('\n') if l.strip()] if os.path.exists(f) else []
                     lead = lines[1:2] if lines[:1] and lines[0].startswith('<img') else lines[:1]  # under the badge
                     if lines and draft != bool(post_words.state_line(w).match((lead or [''])[0])):
@@ -720,7 +727,7 @@ def check(t, has_cd):
         if literal or not (bodies or inputs):
             block(NEED_DRAFT)
         m = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/(?:issues|pulls)', ep)
-        if m and method == 'POST': need_watch(m.group(1))
+        if m and method == 'POST': need_watch(m.group(1), run_dir)
         c = re.fullmatch(r'/?repos/([\w.-]+/[\w.-]+)/issues/(\d+)/comments', ep)
         if c and method == 'POST': check_turn(c.group(1), c.group(2), rest); check_finality(c.group(1), c.group(2), bodies + inputs)
         thread = None
@@ -756,33 +763,22 @@ if any(prog(x)[:1] and os.path.basename(prog(x)[0]) == 'gate-pass' for x in segs
         any(prog(x)[:1] == ['gh'] and (prog(x)[1:3] and prog(x)[1] in ('issue', 'pr') and prog(x)[2:3] and prog(x)[2] in ('comment', 'create', 'edit', 'review', 'close', 'merge')
                                         or prog(x)[1:2] == ['api'] and any(w.startswith('body=') or w in ('--input',) for w in prog(x))) for x in segs):
     block("run gate-pass as its own command and read its exit code, then post in the next command: this check reads the gate record before the command runs (mergeworthy:post step 4)")
-has_cd = False
-run_dir = cwd  # where the command's git calls run: follows `cd <dir>` within the command
-shell_vars = {}  # NAME=value set by the command itself (`W=~/x; cd $W`), for the cd targets after it
 clones = {}  # folder: the repo it was cloned from, for a `git clone` in this command
-for s in segs:
-    if prog(s)[:2] == ['git', 'clone'] and (ops := [x for x in operands(prog(s)[2:]) if not x.startswith('-')]):
+for s in where.walk(segs):
+    run_dir, has_cd = where.dir, where.moved
+    if run_dir is not None and prog(s)[:2] == ['git', 'clone'] and (ops := [where.expand(x) for x in operands(prog(s)[2:]) if not x.startswith('-')]):
         src = ops[0] if repo_of(ops[0]) else os.path.join(run_dir, os.path.expanduser(ops[0]))
         clones[os.path.normpath(os.path.join(run_dir, ops[1] if ops[1:] else re.sub(r'(\.git)?/*$', '', ops[0]).rsplit('/', 1)[-1]))] = src
     # a command named by a variable this command set (`G="git -C x"; $G commit`) is checked as what it runs
-    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and v[1] in shell_vars:
-        s = ((segments(shell_vars[v[1]]) or [[]])[0]) + prog(s)[1:]
+    if prog(s)[:1] and (v := re.fullmatch(r'\$\{?(\w+)\}?', prog(s)[0])) and where.vars.get(v[1]) is not None:
+        s = ((segments(where.vars[v[1]]) or [[]])[0]) + prog(s)[1:]
     # a command named by an expansion (`"${a[@]}"`, `$GIT push`), or a shell running a computed script (`sh -c "$(...)"`), runs what this
     # hook can't see: it blocks when its arguments, or the variables it names, hold a guarded verb
     named = prog(s)[0] if prog(s)[:1] and prog(s)[0][:1] in '$`' else (_nested(s) or '') if (_nested(s) or '')[:1] in '$`' else ''
     if named:
-        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', shell_vars.get(v, ''))]
+        words = [x for x in prog(s)[1:] if ' ' not in x] + re.findall(r'[\w-]+', named) + [w for v in re.findall(r'\w+', named) for w in re.split(r'[\s()]+', where.vars.get(v, ''))]
         w = {x.lower() for x in words}
         if w & {'git', 'gh', 'glab'} and w & {'push', 'commit', 'pr', 'issue', 'api', 'release', 'mr'} or 'git' not in w and w & {'push', 'commit'}:
             block(f"`{named}` runs a command named only when it runs, with `{' '.join(words)[:80]}`: write the command out, so it can be checked")
-    if s and all(re.match(r'^\w+=', x) for x in s):
-        shell_vars.update(x.split('=', 1) for x in s)
     check(s, has_cd)
-    if prog(s)[:1] in (['cd'], ['pushd']):
-        has_cd = True
-        args = [x for x in prog(s)[1:] if x not in ('-P', '-L', '-e', '--')]
-        to = re.sub(r'\$\{?(\w+)\}?', lambda m: shell_vars.get(m[1], os.environ.get(m[1], m[0])), args[0]) if args else '~'
-        if to == '$(git rev-parse --show-toplevel)':
-            to = subprocess.run(['git', '-C', run_dir, 'rev-parse', '--show-toplevel'], capture_output=True, text=True).stdout.strip() or to
-        run_dir = os.path.join(run_dir, os.path.expanduser(to))
 sys.exit(0)

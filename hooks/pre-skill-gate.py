@@ -7,7 +7,7 @@ a gated action whose transcript can't be read is blocked, as nothing shows which
 import json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import failclosed
-from shellcmd import segments, prog, opt, api_call, git_argv, rlines, transcript
+from shellcmd import segments, prog, opt, api_call, git_argv, rlines, transcript, Where
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITE = ('post', 'writing')
@@ -67,7 +67,7 @@ def bash_actions(cmd, cwd='.'):
         if name == 'gh' and opt(a, ['--attach']):
             out.append('an upload')
         if name == 'git':
-            _, _, sub, rest = git_argv(t, cwd)
+            _, _, sub, rest = git_argv(t, Where(cwd))
             if sub == 'push' and not {'--dry-run', '-n'} & set(rest):
                 out.append('git push')
         elif name == 'gh' and len(a) >= 2 and a[0] in ('pr', 'issue'):

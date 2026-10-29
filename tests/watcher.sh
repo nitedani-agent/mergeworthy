@@ -732,6 +732,12 @@ t3start() { PATH="$T/cronbin:$PATH" CLAUDE_CODE_SESSION_ID=$1 bash "$GI/bin/gh-w
 out=$(t3start sess-t3)
 check "gh-watch-start under T3 Code records the thread, t3's full path and the log's end, and says no Monitor is needed" "thr-9 $T/bin/t3 11 1" \
   "$(echo $(cat "$T/t3watch/t3-thread")) $(cat "$T/t3watch/t3-wake.cursor") $(echo "$out" | grep -c 'arm no Monitor')"
+# a delegated task (thr-c, delegated by thr-p) that starts it binds the main session's thread: T3 would start a finished task again on each send
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1])
+c.execute("""insert into orchestration_v2_projection_provider_threads values ('"'p2', 'thr-c', '{\"nativeThreadRef\":{\"nativeId\":\"sess-child\"}}'"')""")
+c.execute("""insert into orchestration_v2_projection_subagents values ('"'s1', 'thr-p', 'thr-c'"')"""); c.commit()' "$HOME/.t3/userdata/statev2.sqlite"
+t3start sess-child >/dev/null
+check "gh-watch-start run by a delegated task binds the thread that delegated it, not the task's" "thr-p" "$(head -n1 "$T/t3watch/t3-thread")"
 out=$(t3start sess-plain)
 check "gh-watch-start outside T3 Code drops the thread and prints the Monitor" "none 1" "$([ -e "$T/t3watch/t3-thread" ] || [ -e "$T/t3watch/t3-wake.cursor" ] && echo kept || echo none) $(echo "$out" | grep -c 'tail -n 0 -F')"
 GP=$(cat "$T/t3watch/gh-watch.pid" 2>/dev/null); ps -o args= -p "$GP" 2>/dev/null | grep -qx 'sleep 30' && kill "$GP"

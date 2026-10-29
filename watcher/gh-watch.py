@@ -651,7 +651,7 @@ _ticks, _t3_missing = [0], [None]  # tick() counts its passes; the pass in which
 
 
 def wake_thread():
-    """Under T3 Code (gh-watch-start wrote the session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
+    """Under T3 Code (gh-watch-start wrote the main session's thread, then t3's path, to HERE/t3-thread) the event lines events.log got
     since the last pass, from any writer, go to that thread as one message; t3-wake.cursor holds the byte offset sent up to. A failed
     send is retried (False), except when the thread is gone, or the t3 binary on two passes in a row (a `t3 update` relinks it for an
     instant): then t3-thread goes, and events.log alone keeps the events, as outside T3 Code."""

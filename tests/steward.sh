@@ -177,7 +177,7 @@ out=$(python3 "$R/bin/steward" fired)
 check "fired: each check with its last day and the days it blocked, the log's start" "1 1 1" \
   "$(echo "$out" | grep -cF "$(date -u +%F)"$'\t2 days\tpre-bash-guard.py\t'"$gate") $(echo "$out" | grep -cF "$(date -u +%F)"$'\t1 days\tpre-bash-guard.py\t'"$changed") $(echo "$out" | grep -c '^# the log starts 2026-01-01')"
 check "fired: once the log is 60 days old, a check with no block since is a candidate; one that blocked, and a hook that never blocks, aren't" "1 0 0" \
-  "$(echo "$out" | grep -cE $'^pre-bash-guard.py:[0-9]+\tblock\\(f"relative draft path') $(echo "$out" | grep -E $'^pre-bash-guard.py:[0-9]+\t' | grep -cF -e "$gate" -e "$changed" -e '{msg}') $(echo "$out" | grep -cE '^(post-bash-register|session-memory)')"
+  "$(echo "$out" | grep -cE $'^pre-bash-guard.py:[0-9]+\tblock\\(f"relative draft path') $(echo "$out" | grep -E $'^pre-bash-guard.py:[0-9]+\t' | grep -cF -e "$gate" -e "$changed" -e '{msg}') $(echo "$out" | grep -cE '^session-memory')"
 echo "failures: $fails"
 rm -rf "$T"
 [ "$fails" -eq 0 ]

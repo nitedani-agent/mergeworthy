@@ -1,11 +1,11 @@
 ---
 name: steward
-description: "\"steward\", \"run the steward\": one on-demand pass over what GitHub owes, this machine's sessions and the PR metrics, then rule changes from the evidence and a report; nothing left running."
+description: "\"steward\", \"run the steward\": one on-demand pass over what GitHub owes, this machine's sessions and the PR metrics, then rule changes from the evidence and a report; only its posts' watcher left running."
 ---
 
 # Steward
 
-One pass, when the user asks; after it nothing of it runs (no Monitor, daemon, schedule or agent). Its folder `<S>` is the first word of `~/.mergeworthy/steward`, else `~/.mergeworthy/work/steward/`. Run every command from `<S>`: where that file names it, that makes you the steward (`rules` step 2). Read only this machine's files, and GitHub through `gh`. Mergeworthy changes, `<S>/inbox.md`'s lines included, ship as PRs, their worktrees inside `<S>` (`rules` steps 3–4, then `pull-request`, never `rules` step 5's push), at most 3 a pass; `<S>`'s next round watches them, so no `gh-watch-start`.
+One pass, when the user asks; before posting, `gh-watch-start <S>/live <owner/repo>`, all it leaves running (a daemon in `<S>` refuses the next round). Its folder `<S>` is the first word of `~/.mergeworthy/steward`, else `~/.mergeworthy/work/steward/`. Run every command from `<S>`: where that file names it, that makes you the steward (`rules` step 2). Read only this machine's files, and GitHub through `gh`. Mergeworthy changes, `<S>/inbox.md`'s lines included, ship as PRs, their worktrees inside `<S>` (`rules` steps 3–4, then `pull-request`, never `rules` step 5's push), at most 3 a pass.
 
 ## Steps
 
