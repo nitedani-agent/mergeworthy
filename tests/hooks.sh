@@ -13,6 +13,7 @@ cat > "$T/bin/gh" <<'EOF'
 # ...and `gh pr view [<ref>] --json number` from $FX/pr_view_<ref with / and : replaced by _>, or $FX/pr_view_current without a ref (none: gh's "no pull requests found")
 # ...and `gh pr checks <url> --json name,bucket` from $FX/pr_checks_<url with / and : replaced by _> (none: "no checks reported")
 # A `--jq .a.b` on a fixture holding a JSON object answers that field, as gh does; any other fixture is the answer as it stands
+[ -n "${GH_STUB_PWD:-}" ] && echo "$1 $2 $PWD" >> "$GH_STUB_PWD"  # each call and where it ran, for a check that must run gh in the command's dir
 [ "$1 $2" = "config get" ] && { [ ! -f "$FX/login" ] || cat "$FX/login"; exit; }  # the login gh's own config names: $FX/login
 [ "$1 $2" = "pr view" ] && [ -n "$GH_STUB_NOHOST" ] &&{ echo 'none of the git remotes configured for this repository point to a known GitHub host' >&2; exit 1; }
 if [ "$1 $2" = "pr view" ]; then r=$3; case "$r" in -*|'') r=current;; esac; f="$FX/pr_view_$(printf '%s' "$r" | tr '/:' '__')"; [ -f "$f" ] && cat "$f" && exit 0; echo 'no pull requests found for branch "x"' >&2; exit 1; fi
@@ -1533,6 +1534,35 @@ check "BLOCK: a new HEAD has no steps, but the approach is not what it lacks" 2 
 check "the approach block message does not name approach on the new HEAD" 0 "$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":"gh pr ready 5 -R o/r"},"cwd":sys.argv[1]}))' "$G2" | python3 "$R/hooks/pre-bash-guard.py" 2>&1 | grep -c 'pr-steps approach')"
 H=$(git -C "$G2" rev-parse HEAD); for k in verify loopb refactor reverify fresh gates; do echo "$k /x/$k.md 2026-10-13T00:00:00Z" >> "$HOME/.claude/pr-steps/$H"; done
 check "a head recorded before the shape pass (loopb and refactor) counts as shaped" 0 "$(ready)"
+# pre-bash-guard: `gh pr merge` waits for a PR that is up to date with its base and whose CI ran after the base last touched its files; never --admin
+M='gh pr merge 41 -R o/r --squash --delete-branch --subject "Fix it (#41)" --body ""'
+mpr() { # mergeStateStatus, when its last check completed
+  printf '{"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"%s","changedFiles":1,"files":[{"path":"a.py"}],"statusCheckRollup":[{"completedAt":"%s"}]}' "$1" "$2" > "$FX/pr_view_41"; }
+printf '{"total_commits":1,"commits":[{"sha":"b1","commit":{"committer":{"date":"2026-10-28T12:00:00Z"}}}]}' > "$FX/repos_o_r_compare_hd...main"
+printf '{"files":[{"filename":"a.py"}]}' > "$FX/repos_o_r_commits_b1"
+mpr CLEAN 2026-10-28T13:00:00Z
+check "a PR up to date with its base, CI run after the base's last commit, merges" 0 "$(guard "$M")"
+check "BLOCK: --admin, naming it" "2 1" "$(guard "$M --admin") $(grep -c 'never `gh pr merge --admin`' "$T/err")"
+mpr BEHIND 2026-10-28T13:00:00Z
+check "BLOCK: a PR GitHub reports BEHIND, naming it and the way out" "2 1" "$(guard "$M") $(grep -c 'reports it BEHIND against main: merge or rebase main into it (after a rebase, `git range-diff`' "$T/err")"
+mpr DIRTY 2026-10-28T13:00:00Z
+check "BLOCK: a PR GitHub reports DIRTY, naming it" "2 1" "$(guard "$M") $(grep -c 'reports it DIRTY against main' "$T/err")"
+mpr CLEAN 2026-10-28T11:00:00Z
+check "BLOCK: a base commit after the last CI run touching the PR's files, naming them" "2 1" "$(guard "$M") $(grep -c 'base main got commits touching a.py after its last CI run' "$T/err")"
+printf '{"files":[{"filename":"b.py"}]}' > "$FX/repos_o_r_commits_b1"
+check "a base commit after the last CI run touching none of the PR's files merges" 0 "$(guard "$M")"
+check "BLOCK: a merge by URL checks that PR, not the current branch's" "2 1" "$(cp "$FX/pr_view_41" "$FX/pr_view_current"; sed 's/"CLEAN"/"BEHIND"/' "$FX/pr_view_41" > "$FX/pr_view_https___github.com_o_r_pull_41"
+  guard 'gh pr merge https://github.com/o/r/pull/41 --squash --subject "Fix it (#41)" --body ""') $(grep -c 'reports it BEHIND' "$T/err")"
+rm "$FX/pr_view_current" "$FX/pr_view_https___github.com_o_r_pull_41"; mkdir -p "$T/other"
+check "the merge's PR is read in the dir and with the env the merge runs in: every gh call there, the view included" "0 0 1" "$(guard "cd $T/other && GH_STUB_PWD=$T/pwd $M") $(grep -vc " $T/other$" "$T/pwd") $(grep -c '^pr view ' "$T/pwd")"
+printf '{"total_commits":251,"commits":[]}' > "$FX/repos_o_r_compare_hd...main.big"; mv "$FX/repos_o_r_compare_hd...main" "$FX/cmp.keep"; mv "$FX/repos_o_r_compare_hd...main.big" "$FX/repos_o_r_compare_hd...main"
+check "BLOCK: a base past one page of GitHub's compare, naming it" "2 1" "$(guard "$M") $(grep -c "moved past one page of GitHub's lists" "$T/err")"
+mv "$FX/cmp.keep" "$FX/repos_o_r_compare_hd...main"
+python3 -c 'import json; print(json.dumps({"url":"https://github.com/o/r/pull/41","headRefName":"fix","headRefOid":"hd","baseRefName":"main","mergeStateStatus":"CLEAN","changedFiles":101,"files":[{"path":f"f{i}.py"} for i in range(100)],"statusCheckRollup":[{"completedAt":"2026-10-28T11:00:00Z"}]}))' > "$FX/pr_view_41"
+printf '{"files":[{"filename":"z101.py"}]}' > "$FX/repos_o_r_commits_b1"
+check "BLOCK: a base commit after the last CI run on a PR past gh's 100 files, which may touch one gh left out" "2 1" "$(guard "$M") $(grep -c "100 files a PR" "$T/err")"
+rm "$FX/pr_view_41"
+check "BLOCK: a merge state gh can't read" "2 1" "$(guard "$M") $(grep -c "gh couldn't read this PR's merge state" "$T/err")"
 # ---------- pre-bash-guard: a maintainer's refactor ask (the watcher's refactor-asks.txt) is answered by a pass recorded after it ----------
 # The guard reads the record only, on the PR's head or any commit it lists; whether a post shows that pass's result is the post review's.
 sguard() { python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$T" | MERGEWORTHY_WATCHER=off python3 "$R/hooks/pre-bash-guard.py" >/dev/null 2>"$T/err"; }

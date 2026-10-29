@@ -146,6 +146,7 @@ It parses the whole command with mvdan/sh, the parser of `shfmt` (`hooks/shellcm
 - a shell write (a redirection, `tee`, `sed -i`, `cp`, `mv`, `install`) into a git repo whose root `AGENTS.md` or `CLAUDE.md` this session hasn't read (a Read, `cat` or `sed` with no error) since its last compaction, naming the files; `pre-design-gate.py` blocks Edit, Write, MultiEdit and NotebookEdit the same way;
 - a shell write of a `.review.out` file (a redirection, `tee`, `cp`, `mv`, `sed -i`) by the main session: the reviewer writes its own (`codex exec -o`, the agent's output file, a `claude -p` reviewer's stdout);
 - `gh pr merge` without `--squash --subject "<title> (#N)" --body ""`, and with `merge=reviewer`, every merge;
+- `gh pr merge --admin`; a merge of a PR GitHub reports BEHIND or DIRTY, or whose base got commits touching its files after its last CI run, or whose merge state gh can't read; and, touched or not, one whose base moved past what one page of GitHub's lists shows (100 files a PR once its base moved after CI, 250 commits a compare, 300 files a commit);
 - `--delete-branch` while PRs are based on the branch;
 - a `git commit` whose author isn't the pushing GitHub account (`merging` step 1);
 - `docker compose up` (or `run --service-ports`) publishing a fixed host port or a `container_name`, unless prefixed `MERGEWORTHY_HOST_PORTS=user-asked`;
